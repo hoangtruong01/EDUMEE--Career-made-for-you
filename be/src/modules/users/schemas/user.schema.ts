@@ -1,99 +1,108 @@
-import { UserRole } from '@common/enums';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 export type UserDocument = User & Document;
 
+export interface IUser extends Document {
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  isActive: boolean;
+  isVerified: boolean;
+  fullName?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 @Schema({
   timestamps: true,
+  collection: 'users',
   toJSON: {
     virtuals: true,
-    transform: (doc, ret: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    transform: (_doc, ret: Record<string, unknown>) => {
       ret.id = ret._id;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       delete ret._id;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       delete ret.__v;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       delete ret.password;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return ret;
     },
   },
 })
 export class User {
-  _id: Types.ObjectId;
+  _id?: Types.ObjectId;
 
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
-  email: string;
+  email?: string;
 
   @Prop({ required: true })
-  password: string;
+  password?: string;
 
   @Prop({ trim: true })
-  firstName: string;
+  firstName?: string;
 
   @Prop({ trim: true })
-  lastName: string;
+  lastName?: string;
 
   @Prop()
-  avatar: string;
+  avatar?: string;
 
   @Prop()
-  phone: string;
+  phone?: string;
 
-  @Prop({ type: String, enum: UserRole, default: UserRole.USER })
-  role: UserRole;
-
-  @Prop({ default: false })
-  isVerified: boolean;
+  // User role enum
+  @Prop({ 
+    required: true, 
+    enum: UserRole, 
+    default: UserRole.USER 
+  })
+  role?: UserRole;
 
   @Prop({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
+
+  @Prop({ default: false })
+  isVerified!: boolean;
 
   @Prop()
-  verificationToken: string;
+  emailVerifiedAt?: Date;
 
   @Prop()
-  resetPasswordToken: string;
-
-  @Prop()
-  resetPasswordExpires: Date;
-
-  @Prop()
-  lastLogin: Date;
-
-  @Prop({ type: Object })
-  profile: {
-    bio?: string;
-    location?: string;
-    website?: string;
-    socialLinks?: {
-      linkedin?: string;
-      github?: string;
-      twitter?: string;
-    };
-  };
+  lastLoginAt?: Date;
 
   // OAuth providers
   @Prop()
-  googleId: string;
+  googleId?: string;
 
   @Prop()
-  facebookId: string;
+  facebookId?: string;
 
-  createdAt: Date;
-  updatedAt: Date;
+  // Security
+  @Prop()
+  verificationToken?: string;
+
+  @Prop()
+  resetPasswordToken?: string;
+
+  @Prop()
+  resetPasswordExpires?: Date;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Indexes
-UserSchema.index({ email: 1 });
 UserSchema.index({ role: 1 });
+UserSchema.index({ isActive: 1 });
+UserSchema.index({ isVerified: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ googleId: 1 }, { sparse: true });
+UserSchema.index({ facebookId: 1 }, { sparse: true });
 
 // Virtual for full name
 UserSchema.virtual('fullName').get(function () {

@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { LoginDto, RegisterDto } from './dto';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 export interface JwtPayload {
   sub: string;
@@ -12,7 +13,7 @@ export interface JwtPayload {
 }
 
 export interface AuthResponse {
-  user: Partial<User>;
+  user: Partial<User & { role: UserRole }>;
   accessToken: string;
   refreshToken: string;
 }
@@ -26,7 +27,15 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const user = await this.usersService.create(registerDto);
+    const createUserDto = {
+      email: registerDto.email,
+      password: registerDto.password,
+      firstName: registerDto.firstName,
+      lastName: registerDto.lastName,
+      role: registerDto.role || UserRole.USER,
+    };
+
+    const user = await this.usersService.create(createUserDto);
     return this.generateAuthResponse(user);
   }
 
@@ -109,17 +118,17 @@ export class AuthService {
     }
   }
 
-  private generateAuthResponse(user: User): AuthResponse {
+  private generateAuthResponse(user: UserDocument): AuthResponse {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
     return {
       user: {
         _id: user._id,
-        email: user.email,
+        email: user.email || '',
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role: user.role || UserRole.USER,
         avatar: user.avatar,
       },
       accessToken,
@@ -127,11 +136,11 @@ export class AuthService {
     };
   }
 
-  private generateAccessToken(user: User): string {
+  private generateAccessToken(user: UserDocument): string {
     const payload: JwtPayload = {
       sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
+      email: user.email || '',
+      role: user.role || UserRole.USER,
     };
 
     return this.jwtService.sign(payload, {
@@ -140,11 +149,11 @@ export class AuthService {
     });
   }
 
-  private generateRefreshToken(user: User): string {
+  private generateRefreshToken(user: UserDocument): string {
     const payload: JwtPayload = {
       sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
+      email: user.email || '',
+      role: user.role || UserRole.USER,
     };
 
     return this.jwtService.sign(payload, {

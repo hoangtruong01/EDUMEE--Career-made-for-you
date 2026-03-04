@@ -1,19 +1,19 @@
-import { UserRole } from '@common/enums';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
-  IsEnum,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
   MinLength,
+  IsEnum,
 } from 'class-validator';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'user@example.com' })
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({ example: 'Password123!', minLength: 8 })
   @IsString()
@@ -23,7 +23,7 @@ export class CreateUserDto {
     message:
       'Password must contain at least 1 uppercase, 1 lowercase, and 1 number or special character',
   })
-  password: string;
+  password!: string;
 
   @ApiPropertyOptional({ example: 'John' })
   @IsOptional()
@@ -37,8 +37,15 @@ export class CreateUserDto {
   @MaxLength(50)
   lastName?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.USER })
+  @ApiPropertyOptional({ 
+    example: UserRole.USER,
+    enum: UserRole,
+    enumName: 'UserRole',
+    description: 'User role (defaults to USER if not specified). Available values: user, admin, mentor, employer, hr, recruiter'
+  })
   @IsOptional()
-  @IsEnum(UserRole)
+  @IsEnum(UserRole, {
+    message: 'role must be one of: user, admin, mentor, employer, hr, recruiter'
+  })
   role?: UserRole;
 }
