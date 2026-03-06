@@ -3,7 +3,15 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { Briefcase, Calendar, Filter, GraduationCap, MessageCircle, Star } from 'lucide-react';
+import {
+  Bell,
+  Briefcase,
+  Calendar,
+  Filter,
+  GraduationCap,
+  MessageCircle,
+  Star,
+} from 'lucide-react';
 import { useState } from 'react';
 
 const mentors = [
@@ -144,15 +152,17 @@ const MentorMatching = () => {
             </div>
 
             <div className="mt-4 flex gap-2">
-              <Button
-                variant="hero"
-                size="sm"
-                className="flex-1 gap-1"
-                disabled={!mentor.available}
-              >
-                <Calendar className="h-4 w-4" />
-                {mentor.available ? 'Đặt lịch' : 'Hết slot'}
-              </Button>
+              {mentor.available ? (
+                <Button variant="hero" size="sm" className="flex-1 gap-1">
+                  <Calendar className="h-4 w-4" />
+                  Đặt lịch
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="flex-1 gap-1">
+                  <Bell className="h-4 w-4" />
+                  Nhận thông báo khi có slot
+                </Button>
+              )}
               <Button variant="outline" size="sm" className="gap-1">
                 <MessageCircle className="h-4 w-4" /> Nhắn tin
               </Button>

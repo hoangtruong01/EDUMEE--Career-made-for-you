@@ -42,18 +42,27 @@ const allCareers = [
 ];
 
 const PressureBar = ({ level }: { level: number }) => (
-  <div className="flex gap-1">
-    {[1, 2, 3, 4, 5].map((i) => (
-      <div key={i} className={`h-2 w-full rounded-full ${i <= level ? 'bg-accent' : 'bg-muted'}`} />
-    ))}
+  <div className="flex items-center gap-2">
+    <div className="flex flex-1 gap-1">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className={`h-2 w-full rounded-full ${i <= level ? 'bg-accent' : 'bg-muted'}`}
+        />
+      ))}
+    </div>
+    <span className="text-muted-foreground w-7 text-right text-xs font-medium">{level}/5</span>
   </div>
 );
 
 const GrowthBar = ({ level }: { level: number }) => (
-  <div className="flex gap-1">
-    {[1, 2, 3, 4, 5].map((i) => (
-      <div key={i} className={`h-2 w-full rounded-full ${i <= level ? 'bg-mint' : 'bg-muted'}`} />
-    ))}
+  <div className="flex items-center gap-2">
+    <div className="flex flex-1 gap-1">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className={`h-2 w-full rounded-full ${i <= level ? 'bg-mint' : 'bg-muted'}`} />
+      ))}
+    </div>
+    <span className="text-muted-foreground w-7 text-right text-xs font-medium">{level}/5</span>
   </div>
 );
 
@@ -95,10 +104,7 @@ const CareerCompare = () => {
         </div>
 
         {/* Comparison Cards */}
-        <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${selectedCareers.length}, 1fr)` }}
-        >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {selectedCareers.map((career, i) => (
             <motion.div
               key={career.id}

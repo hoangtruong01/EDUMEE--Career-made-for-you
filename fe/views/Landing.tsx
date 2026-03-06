@@ -217,9 +217,9 @@ const Landing = () => {
         <div className="text-muted-foreground container flex flex-col items-center justify-between gap-4 text-sm md:flex-row">
           <div className="font-display text-foreground flex items-center gap-2 font-bold">
             <Sparkles className="text-primary h-4 w-4" />
-            CareerBuddy
+            EDUMEE
           </div>
-          <p>© 2026 CareerBuddy. Người bạn đồng hành sự nghiệp của bạn.</p>
+          <p>© 2026 EDUMEE. Người bạn đồng hành sự nghiệp của bạn.</p>
         </div>
       </footer>
     </div>

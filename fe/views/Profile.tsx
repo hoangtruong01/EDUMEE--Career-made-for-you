@@ -17,14 +17,20 @@ import {
   Target,
   User,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 const Profile = () => {
   const router = useRouter();
+  const [comingSoon, setComingSoon] = useState<string | null>(null);
 
   const handleLogout = () => {
     router.push('/');
+  };
+
+  const showComingSoon = (label: string) => {
+    setComingSoon(label);
+    setTimeout(() => setComingSoon(null), 2000);
   };
 
   return (
@@ -107,24 +113,36 @@ const Profile = () => {
           className="glass-card overflow-hidden rounded-2xl"
         >
           {[
-            { icon: User, label: 'Thông tin tài khoản', href: '#' },
-            { icon: FileText, label: 'Xuất báo cáo PDF', href: '#' },
-            { icon: Bell, label: 'Thông báo', href: '#' },
-            { icon: Shield, label: 'Bảo mật', href: '#' },
-            { icon: Palette, label: 'Giao diện', href: '#' },
-            { icon: Settings, label: 'Cài đặt', href: '#' },
+            { icon: User, label: 'Thông tin tài khoản' },
+            { icon: FileText, label: 'Xuất báo cáo PDF' },
+            { icon: Bell, label: 'Thông báo' },
+            { icon: Shield, label: 'Bảo mật' },
+            { icon: Palette, label: 'Giao diện' },
+            { icon: Settings, label: 'Cài đặt' },
           ].map((menuItem, i) => (
-            <Link key={menuItem.label} href={menuItem.href}>
-              <div
-                className={`hover:bg-muted/50 flex items-center gap-3 px-6 py-4 transition-colors ${i > 0 ? 'border-border/50 border-t' : ''}`}
-              >
-                <menuItem.icon className="text-muted-foreground h-5 w-5" />
-                <span className="flex-1 text-sm font-medium">{menuItem.label}</span>
-                <ChevronRight className="text-muted-foreground h-4 w-4" />
-              </div>
-            </Link>
+            <button
+              key={menuItem.label}
+              onClick={() => showComingSoon(menuItem.label)}
+              className={`hover:bg-muted/50 flex w-full items-center gap-3 px-6 py-4 text-left transition-colors ${i > 0 ? 'border-border/50 border-t' : ''}`}
+            >
+              <menuItem.icon className="text-muted-foreground h-5 w-5" />
+              <span className="flex-1 text-sm font-medium">{menuItem.label}</span>
+              <ChevronRight className="text-muted-foreground h-4 w-4" />
+            </button>
           ))}
         </motion.div>
+
+        {/* Coming soon toast */}
+        {comingSoon && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="bg-foreground text-background shadow-elevated fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-2 text-sm font-medium"
+          >
+            {comingSoon} — Sắp ra mắt!
+          </motion.div>
+        )}
 
         {/* Logout */}
         <Button

@@ -1,11 +1,13 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Brain,
+  ChevronDown,
   GitCompare,
   GraduationCap,
   Map,
@@ -16,6 +18,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 
 const personalityResult = {
   type: 'Nhà Khám Phá Sáng Tạo',
@@ -44,7 +47,7 @@ const personalityResult = {
   ],
 };
 
-const nextActions = [
+const primaryActions = [
   {
     icon: Target,
     label: 'Xem mô phỏng nghề theo từng level',
@@ -63,6 +66,9 @@ const nextActions = [
     href: '/career-compare',
     color: 'bg-lavender text-secondary',
   },
+];
+
+const moreActions = [
   {
     icon: TrendingUp,
     label: 'Xem hướng chuyên sâu & xu hướng',
@@ -100,6 +106,9 @@ const item = {
 };
 
 const AssessmentResult = () => {
+  const [showMore, setShowMore] = useState(false);
+  const visibleActions = showMore ? [...primaryActions, ...moreActions] : primaryActions;
+
   return (
     <div className="min-h-screen pb-20">
       {/* Header */}
@@ -214,7 +223,7 @@ const AssessmentResult = () => {
             animate="show"
             className="grid gap-3 sm:grid-cols-2"
           >
-            {nextActions.map((action) => (
+            {visibleActions.map((action) => (
               <motion.div key={action.href} variants={item}>
                 <Link href={action.href}>
                   <div className="border-border hover:border-primary/30 hover:shadow-soft bg-card group flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-all">
@@ -230,6 +239,16 @@ const AssessmentResult = () => {
               </motion.div>
             ))}
           </motion.div>
+          {!showMore && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground mt-3 w-full gap-1"
+              onClick={() => setShowMore(true)}
+            >
+              Xem thêm lựa chọn <ChevronDown className="h-4 w-4" />
+            </Button>
+          )}
         </motion.div>
       </div>
     </div>

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Lock,
   Target,
   Trophy,
 } from 'lucide-react';
@@ -93,8 +94,8 @@ const LearningRoadmap = () => {
               className={`glass-card overflow-hidden rounded-2xl ${isLocked ? 'opacity-60' : ''}`}
             >
               <button
-                onClick={() => setExpanded(isExpanded ? null : i)}
-                className="flex w-full items-center gap-4 p-6 text-left"
+                onClick={() => !isLocked && setExpanded(isExpanded ? null : i)}
+                className={`flex w-full items-center gap-4 p-6 text-left ${isLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div
                   className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${
@@ -121,11 +122,17 @@ const LearningRoadmap = () => {
                 {isCurrent && (
                   <Badge className="bg-primary/10 text-primary border-primary/20">Đang học</Badge>
                 )}
-                {isExpanded ? (
-                  <ChevronUp className="text-muted-foreground h-5 w-5" />
-                ) : (
-                  <ChevronDown className="text-muted-foreground h-5 w-5" />
+                {isLocked && (
+                  <Badge variant="outline" className="text-muted-foreground border-border gap-1">
+                    <Lock className="h-3 w-3" /> Chưa mở
+                  </Badge>
                 )}
+                {!isLocked &&
+                  (isExpanded ? (
+                    <ChevronUp className="text-muted-foreground h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="text-muted-foreground h-5 w-5" />
+                  ))}
               </button>
 
               {isExpanded && (

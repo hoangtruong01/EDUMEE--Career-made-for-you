@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { Clock, Eye, MessageCircle, Star, ThumbsUp } from 'lucide-react';
+import { Clock, Eye, MessageCircle, PenSquare, Star, ThumbsUp } from 'lucide-react';
 import { useState } from 'react';
 
 const tags = ['Tất cả', 'IT', 'Marketing', 'Kinh doanh', 'Thiết kế', 'Y tế', 'Giáo dục'];
@@ -81,19 +81,25 @@ const Community = () => {
       </div>
 
       <div className="container mt-6 space-y-6">
-        {/* Tags */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {tags.map((tag) => (
-            <Button
-              key={tag}
-              variant={activeTag === tag ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setActiveTag(tag)}
-              className="flex-shrink-0"
-            >
-              {tag}
-            </Button>
-          ))}
+        {/* Tags + Write CTA */}
+        <div className="flex items-center gap-3">
+          <div className="flex flex-1 gap-2 overflow-x-auto pb-2">
+            {tags.map((tag) => (
+              <Button
+                key={tag}
+                variant={activeTag === tag ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTag(tag)}
+                className="flex-shrink-0"
+              >
+                {tag}
+              </Button>
+            ))}
+          </div>
+          <Button variant="hero" size="sm" className="flex-shrink-0 gap-1.5">
+            <PenSquare className="h-4 w-4" />
+            <span className="hidden sm:inline">Viết bài</span>
+          </Button>
         </div>
 
         {/* Posts */}
@@ -142,6 +148,16 @@ const Community = () => {
             </motion.div>
           ))}
         </div>
+
+        {filtered.length === 0 && (
+          <div className="py-16 text-center">
+            <MessageCircle className="text-muted-foreground/30 mx-auto mb-4 h-12 w-12" />
+            <p className="text-muted-foreground mb-1 font-medium">Chưa có bài viết nào</p>
+            <p className="text-muted-foreground/70 text-sm">
+              Hãy thử chọn chủ đề khác hoặc là người đầu tiên chia sẻ!
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
