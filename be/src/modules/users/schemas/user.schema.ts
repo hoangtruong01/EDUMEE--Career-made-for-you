@@ -1,101 +1,78 @@
-import { UserRole } from '@common/enums';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
+import { UserRole, UserVerifyStatus } from '../../../common/enums';
 
-export type UserDocument = User & Document;
+export type UserDocument = HydratedDocument<User>;
 
+// (Nested Schema)
+@Schema({ _id: false }) // Không tạo _id cho object con
+@Schema({ _id: false })
+class Address {
+  @Prop({ default: '' })
+  street!: string;
+
+  @Prop({ default: '' })
+  ward!: string;
+
+  @Prop({ default: '' })
+  district!: string;
+
+  @Prop({ default: '' })
+  city!: string;
+
+  @Prop({ default: '' })
+  country!: string;
+
+  @Prop({ default: '' })
+  zipcode?: string;
+}
+
+// 2. Định nghĩa Schema User
 @Schema({
-  timestamps: true,
-  toJSON: {
-    virtuals: true,
-    transform: (doc, ret: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      ret.id = ret._id;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      delete ret._id;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      delete ret.__v;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      delete ret.password;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return ret;
-    },
-  },
+  collection: 'users', // Tên collection
+  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
 })
 export class User {
-  _id: Types.ObjectId;
-
-  @Prop({ required: true, unique: true, lowercase: true, trim: true })
-  email: string;
+  // tự động tạo _id (ObjectId)
 
   @Prop({ required: true })
-  password: string;
+  name!: string;
 
-  @Prop({ trim: true })
-  firstName: string;
+  @Prop({ required: true })
+  gender!: string;
 
-  @Prop({ trim: true })
-  lastName: string;
+  @Prop({ required: true, unique: true })
+  email!: string;
 
-  @Prop()
-  avatar: string;
+  @Prop({ required: true })
+  date_of_birth!: Date;
 
-  @Prop()
-  phone: string;
+  @Prop({ required: true })
+  password!: string;
 
-  @Prop({ type: String, enum: UserRole, default: UserRole.USER })
-  role: UserRole;
+  @Prop({ default: '' })
+  phone_number!: string;
 
-  @Prop({ default: false })
-  isVerified: boolean;
+  @Prop({ type: Address, default: () => ({}) })
+  Address!: Address;
 
-  @Prop({ default: true })
-  isActive: boolean;
+  @Prop({ default: '' })
+  email_verify_token!: string;
 
-  @Prop()
-  verificationToken: string;
+  @Prop({ default: '' })
+  forgot_password_token!: string;
 
-  @Prop()
-  resetPasswordToken: string;
+  @Prop({ enum: UserVerifyStatus, default: UserVerifyStatus.Unverified })
+  verify!: UserVerifyStatus;
 
-  @Prop()
-  resetPasswordExpires: Date;
+  @Prop({ enum: UserRole, default: UserRole.USER })
+  role!: UserRole;
 
-  @Prop()
-  lastLogin: Date;
+  @Prop({ default: '' })
+  location!: string;
 
-  @Prop({ type: Object })
-  profile: {
-    bio?: string;
-    location?: string;
-    website?: string;
-    socialLinks?: {
-      linkedin?: string;
-      github?: string;
-      twitter?: string;
-    };
-  };
-
-  // OAuth providers
-  @Prop()
-  googleId: string;
-
-  @Prop()
-  facebookId: string;
-
-  createdAt: Date;
-  updatedAt: Date;
+  @Prop({ default: '' })
+  username!: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
-// Indexes
-UserSchema.index({ email: 1 });
-UserSchema.index({ role: 1 });
-UserSchema.index({ createdAt: -1 });
-UserSchema.index({ googleId: 1 }, { sparse: true });
-
-// Virtual for full name
-UserSchema.virtual('fullName').get(function () {
-  return `${this.firstName || ''} ${this.lastName || ''}`.trim();
-});

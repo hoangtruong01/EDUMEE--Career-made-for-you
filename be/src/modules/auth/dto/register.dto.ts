@@ -1,37 +1,57 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEmail,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
-  MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
+class AddressDto {
+  @IsOptional() @IsString() street?: string;
+  @IsOptional() @IsString() ward?: string;
+  @IsOptional() @IsString() district?: string;
+  @IsOptional() @IsString() city?: string;
+  @IsOptional() @IsString() country?: string;
+  @IsOptional() @IsString() zipcode?: string;
+}
+
 export class RegisterDto {
-  @ApiProperty({ example: 'user@example.com' })
-  @IsEmail()
-  email: string;
-
-  @ApiProperty({ example: 'Password123!', minLength: 8 })
+  @IsNotEmpty({ message: 'Tên không được để trống' })
   @IsString()
-  @MinLength(8)
-  @MaxLength(50)
-  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
-    message:
-      'Password must contain at least 1 uppercase, 1 lowercase, and 1 number or special character',
+  name!: string;
+
+  @IsNotEmpty()
+  gender!: string;
+
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  @IsEmail({}, { message: 'Email không đúng định dạng' })
+  email!: string;
+
+  @IsNotEmpty()
+  @IsString()
+  @MinLength(8, { message: 'Mật khẩu phải từ 8 ký tự trở lên' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+    message: 'Mật khẩu phải chứa chữ hoa, chữ thường, số và ký tự đặc biệt',
   })
-  password: string;
+  password!: string;
 
-  @ApiPropertyOptional({ example: 'John' })
+  @IsNotEmpty()
+  confirmPassword!: string; // Service sẽ check confirm_password trùng với password
+
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  firstName?: string;
+  phone_number?: string;
 
-  @ApiPropertyOptional({ example: 'Doe' })
+  @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
+  @IsDateString({}, { message: 'Ngày sinh phải theo định dạng ISO8601' })
+  date_of_birth!: string;
+
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  lastName?: string;
+  @ValidateNested()
+  @Type(() => AddressDto)
+  Address?: AddressDto;
 }
