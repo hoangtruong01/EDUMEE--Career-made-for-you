@@ -17,10 +17,12 @@ import {
   GitCompare,
   Layers,
   MessageSquareHeart,
+  Moon,
   Palette,
   Rocket,
   Sparkles,
   Star,
+  Sun,
   Target,
   Timer,
   TrendingUp,
@@ -30,7 +32,6 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useSyncExternalStore } from 'react';
-import { Moon, Sun } from 'lucide-react';
 
 const landingThemeSubscribe = (cb: () => void) => {
   if (typeof window === 'undefined') return () => {};
@@ -220,7 +221,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen overflow-x-hidden">
       {/* ═══ Navigation Bar ═══ */}
-      <nav className="fixed top-0 right-0 left-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur-xl">
+      <nav className="bg-background/80 fixed top-0 right-0 left-0 z-50 border-b border-white/10 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between">
           <Link href="/" className="font-display flex items-center gap-2 text-xl font-bold">
             <div className="bg-gradient-hero flex h-8 w-8 items-center justify-center rounded-lg">

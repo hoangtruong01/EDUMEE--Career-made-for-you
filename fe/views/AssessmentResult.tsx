@@ -3,18 +3,8 @@
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Download, RotateCcw, Share2, TrendingUp } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
-
-const themeSubscribe = (cb: () => void) => {
-  if (typeof window === 'undefined') return () => {};
-  window.addEventListener('storage', cb);
-  return () => window.removeEventListener('storage', cb);
-};
-const getIsDark = () =>
-  typeof window !== 'undefined' &&
-  (localStorage.getItem('theme') === 'dark' ||
-    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 import Link from 'next/link';
+import { useSyncExternalStore } from 'react';
 import {
   Bar,
   BarChart,
@@ -28,6 +18,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+
+const themeSubscribe = (cb: () => void) => {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', cb);
+  return () => window.removeEventListener('storage', cb);
+};
+const getIsDark = () =>
+  typeof window !== 'undefined' &&
+  (localStorage.getItem('theme') === 'dark' ||
+    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 /* ─── Data ─── */
 const topCareers = [
@@ -116,17 +116,17 @@ const AssessmentResult = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="bg-background min-h-screen pb-20">
       {/* ══ HEADER ══ */}
       <div className="bg-gradient-card pt-10 pb-8 text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-4 py-1.5 text-sm font-medium text-green-600 dark:text-green-400">
             <CheckCircle2 className="h-4 w-4" /> Phân tích hoàn tất
           </span>
-          <h1 className="font-display mt-4 text-4xl font-extrabold text-foreground md:text-5xl">
+          <h1 className="font-display text-foreground mt-4 text-4xl font-extrabold md:text-5xl">
             Kết quả phân tích của bạn
           </h1>
-          <p className="mt-3 text-base text-muted-foreground">
+          <p className="text-muted-foreground mt-3 text-base">
             AI đã phân tích 20 câu trả lời và so sánh với 50,000+ hồ sơ nghề nghiệp
           </p>
         </motion.div>
@@ -135,15 +135,12 @@ const AssessmentResult = () => {
       <div className="container space-y-8 py-8">
         {/* ══ TOP 3 CAREERS ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-foreground">
+          <h2 className="text-foreground mb-5 flex items-center gap-2 text-xl font-bold">
             🎯 Top 3 nghề phù hợp nhất
           </h2>
           <div className="grid gap-5 md:grid-cols-3">
             {topCareers.map((career) => (
-              <div
-                key={career.title}
-                className="glass-card relative overflow-hidden rounded-2xl"
-              >
+              <div key={career.title} className="glass-card relative overflow-hidden rounded-2xl">
                 {/* Gradient top bar */}
                 <div className={`h-2 w-full bg-linear-to-r ${career.gradient}`} />
 
@@ -157,23 +154,25 @@ const AssessmentResult = () => {
                 <div className="p-5">
                   {/* Icon + title + match bar */}
                   <div className="mb-3 flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-2xl">
+                    <span className="bg-muted flex h-12 w-12 items-center justify-center rounded-xl text-2xl">
                       {career.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bold text-foreground">{career.title}</div>
-                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="text-foreground font-bold">{career.title}</div>
+                      <div className="bg-muted mt-1 h-1.5 w-full overflow-hidden rounded-full">
                         <div
                           className={`h-full bg-linear-to-r ${career.gradient}`}
                           style={{ width: `${career.match}%` }}
                         />
                       </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{career.match}% match</div>
+                      <div className="text-muted-foreground mt-0.5 text-xs">
+                        {career.match}% match
+                      </div>
                     </div>
                   </div>
 
                   {/* Salary & growth */}
-                  <div className="mb-3 space-y-1.5 text-sm text-foreground/80">
+                  <div className="text-foreground/80 mb-3 space-y-1.5 text-sm">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-green-500">$</span>
                       {career.salary}
@@ -189,7 +188,7 @@ const AssessmentResult = () => {
                     {career.skills.map((s) => (
                       <span
                         key={s}
-                        className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
+                        className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs"
                       >
                         {s}
                       </span>
@@ -197,7 +196,9 @@ const AssessmentResult = () => {
                   </div>
 
                   {/* AI insight */}
-                  <p className="mb-4 text-xs leading-relaxed text-muted-foreground">💡 {career.insight}</p>
+                  <p className="text-muted-foreground mb-4 text-xs leading-relaxed">
+                    💡 {career.insight}
+                  </p>
 
                   {/* CTA button */}
                   <button
@@ -220,7 +221,7 @@ const AssessmentResult = () => {
         >
           {/* Radar – Biểu đồ năng lực */}
           <div className="glass-card rounded-2xl p-5">
-            <h3 className="mb-4 font-bold text-foreground">Biểu đồ năng lực</h3>
+            <h3 className="text-foreground mb-4 font-bold">Biểu đồ năng lực</h3>
             <ResponsiveContainer width="100%" height={260}>
               <RadarChart data={radarData}>
                 <PolarGrid stroke="hsl(var(--border))" />
@@ -238,7 +239,7 @@ const AssessmentResult = () => {
 
           {/* Bar – Điểm phù hợp theo nghề */}
           <div className="glass-card rounded-2xl p-5">
-            <h3 className="mb-4 font-bold text-foreground">Điểm phù hợp theo nghề</h3>
+            <h3 className="text-foreground mb-4 font-bold">Điểm phù hợp theo nghề</h3>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={barData} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis
@@ -256,10 +257,7 @@ const AssessmentResult = () => {
                   axisLine={false}
                   tickLine={false}
                 />
-                <Tooltip
-                  formatter={(v) => [`${v}%`, 'Điểm phù hợp']}
-                  contentStyle={tooltipStyle}
-                />
+                <Tooltip formatter={(v) => [`${v}%`, 'Điểm phù hợp']} contentStyle={tooltipStyle} />
                 <Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={16}>
                   {barData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -272,26 +270,23 @@ const AssessmentResult = () => {
 
         {/* ══ PERSONALITY PROFILE ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-foreground">
+          <h2 className="text-foreground mb-5 flex items-center gap-2 text-xl font-bold">
             🧠 Hồ sơ tính cách của bạn
           </h2>
           <div className="grid gap-5 sm:grid-cols-2">
             {personalityTraits.map((trait) => (
-              <div
-                key={trait.name}
-                className="glass-card rounded-2xl p-5"
-              >
+              <div key={trait.name} className="glass-card rounded-2xl p-5">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">{trait.name}</span>
+                  <span className="text-foreground text-sm font-semibold">{trait.name}</span>
                   <span className="text-sm font-bold text-violet-600">{trait.value}%</span>
                 </div>
-                <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className="bg-muted mb-2 h-2 w-full overflow-hidden rounded-full">
                   <div
                     className="h-full rounded-full bg-linear-to-r from-violet-500 to-purple-400"
                     style={{ width: `${trait.value}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">{trait.desc}</p>
+                <p className="text-muted-foreground text-xs">{trait.desc}</p>
               </div>
             ))}
           </div>
@@ -319,7 +314,7 @@ const AssessmentResult = () => {
           </div>
           <div className="mt-4">
             <Link href="/personality-test">
-              <Button variant="ghost" className="gap-1.5 text-sm text-muted-foreground">
+              <Button variant="ghost" className="text-muted-foreground gap-1.5 text-sm">
                 <RotateCcw className="h-3.5 w-3.5" /> Làm lại bài đánh giá
               </Button>
             </Link>
