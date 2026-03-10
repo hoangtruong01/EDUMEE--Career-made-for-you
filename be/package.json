@@ -53,6 +53,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/lodash": "^4.17.0",
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
