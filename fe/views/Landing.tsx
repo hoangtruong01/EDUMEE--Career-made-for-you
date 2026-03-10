@@ -1,5 +1,6 @@
 'use client';
 
+import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import {
@@ -28,6 +29,18 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useCallback, useSyncExternalStore } from 'react';
+import { Moon, Sun } from 'lucide-react';
+
+const landingThemeSubscribe = (cb: () => void) => {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', cb);
+  return () => window.removeEventListener('storage', cb);
+};
+const getLandingTheme = () =>
+  typeof window !== 'undefined' &&
+  (localStorage.getItem('theme') === 'dark' ||
+    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 /* ─── Animation Variants ─── */
 const fadeUp = {
@@ -191,10 +204,23 @@ const testimonials = [
 
 /* ─── Component ─── */
 const Landing = () => {
+  const isDark = useSyncExternalStore(landingThemeSubscribe, getLandingTheme, () => false);
+
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('dark', isDark);
+  }
+
+  const toggleTheme = useCallback(() => {
+    const next = !isDark;
+    localStorage.setItem('theme', next ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', next);
+    window.dispatchEvent(new StorageEvent('storage'));
+  }, [isDark]);
+
   return (
     <div className="min-h-screen overflow-x-hidden">
       {/* ═══ Navigation Bar ═══ */}
-      <nav className="fixed top-0 right-0 left-0 z-50 border-b border-white/10 bg-white/70 backdrop-blur-xl">
+      <nav className="fixed top-0 right-0 left-0 z-50 border-b border-white/10 bg-background/80 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between">
           <Link href="/" className="font-display flex items-center gap-2 text-xl font-bold">
             <div className="bg-gradient-hero flex h-8 w-8 items-center justify-center rounded-lg">
@@ -203,6 +229,9 @@ const Landing = () => {
             <span>EDUMEE</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" aria-label="Chế độ sáng/tối" onClick={toggleTheme}>
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
             <Link href="/login">
               <Button variant="ghost" size="sm" className="text-sm font-medium">
                 Đăng nhập
@@ -645,93 +674,7 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* ═══ FOOTER ═══ */}
-      <footer className="border-border border-t py-12">
-        <div className="container">
-          {/* Top row: logo + description + link columns */}
-          <div className="mb-10 grid gap-8 sm:grid-cols-2 md:grid-cols-4">
-            {/* Brand */}
-            <div className="sm:col-span-2">
-              <div className="font-display mb-3 flex items-center gap-2 text-lg font-bold">
-                <div className="bg-gradient-hero flex h-8 w-8 items-center justify-center rounded-lg">
-                  <Sparkles className="h-4 w-4 text-white" />
-                </div>
-                EDUMEE
-              </div>
-              <p className="text-muted-foreground max-w-xs text-sm leading-relaxed">
-                Nền tảng AI tư vấn nghề nghiệp hàng đầu Việt Nam, giúp học sinh và sinh viên tìm con
-                đường sự nghiệp phù hợp nhất.
-              </p>
-            </div>
-
-            {/* Tính năng */}
-            <div>
-              <h4 className="mb-3 text-sm font-semibold">Tính năng</h4>
-              <ul className="text-muted-foreground space-y-2 text-sm">
-                <li>
-                  <Link
-                    href="/assessment-result"
-                    className="hover:text-foreground transition-colors"
-                  >
-                    Đánh giá nghề nghiệp
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/careers" className="hover:text-foreground transition-colors">
-                    Khám phá ngành
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/career-compare" className="hover:text-foreground transition-colors">
-                    So sánh nghề
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="/learning-roadmap"
-                    className="hover:text-foreground transition-colors"
-                  >
-                    Lộ trình học tập
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            {/* Hỗ trợ */}
-            <div>
-              <h4 className="mb-3 text-sm font-semibold">Hỗ trợ</h4>
-              <ul className="text-muted-foreground space-y-2 text-sm">
-                <li>
-                  <Link href="/community" className="hover:text-foreground transition-colors">
-                    Cộng đồng
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/mentor-matching" className="hover:text-foreground transition-colors">
-                    Mentor
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/blog" className="hover:text-foreground transition-colors">
-                    Blog
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/contact" className="hover:text-foreground transition-colors">
-                    Liên hệ
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Bottom row: copyright */}
-          <div className="border-border flex flex-col items-center justify-between gap-2 border-t pt-6 text-sm sm:flex-row">
-            <p className="text-muted-foreground">© 2026 EDUMEE. Tất cả quyền được bảo lưu.</p>
-            <p className="text-muted-foreground">Made with ❤️ for Vietnamese students</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

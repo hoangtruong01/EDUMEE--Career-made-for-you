@@ -3,6 +3,17 @@
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Download, RotateCcw, Share2, TrendingUp } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
+
+const themeSubscribe = (cb: () => void) => {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', cb);
+  return () => window.removeEventListener('storage', cb);
+};
+const getIsDark = () =>
+  typeof window !== 'undefined' &&
+  (localStorage.getItem('theme') === 'dark' ||
+    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 import Link from 'next/link';
 import {
   Bar,
@@ -94,18 +105,28 @@ const fadeUp = {
 
 /* ─── Component ─── */
 const AssessmentResult = () => {
+  const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
+  const tickColor = isDark ? 'hsl(var(--muted-foreground))' : '#6b7280';
+  const tooltipStyle = {
+    borderRadius: 8,
+    border: '1px solid hsl(var(--border))',
+    background: 'hsl(var(--card))',
+    color: 'hsl(var(--foreground))',
+    fontSize: 12,
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-background pb-20">
       {/* ══ HEADER ══ */}
-      <div className="bg-white pt-10 pb-8 text-center">
+      <div className="bg-gradient-card pt-10 pb-8 text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-4 py-1.5 text-sm font-medium text-green-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-4 py-1.5 text-sm font-medium text-green-600 dark:text-green-400">
             <CheckCircle2 className="h-4 w-4" /> Phân tích hoàn tất
           </span>
-          <h1 className="font-display mt-4 text-4xl font-extrabold text-gray-900 md:text-5xl">
+          <h1 className="font-display mt-4 text-4xl font-extrabold text-foreground md:text-5xl">
             Kết quả phân tích của bạn
           </h1>
-          <p className="mt-3 text-base text-gray-500">
+          <p className="mt-3 text-base text-muted-foreground">
             AI đã phân tích 20 câu trả lời và so sánh với 50,000+ hồ sơ nghề nghiệp
           </p>
         </motion.div>
@@ -114,14 +135,14 @@ const AssessmentResult = () => {
       <div className="container space-y-8 py-8">
         {/* ══ TOP 3 CAREERS ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-foreground">
             🎯 Top 3 nghề phù hợp nhất
           </h2>
           <div className="grid gap-5 md:grid-cols-3">
             {topCareers.map((career) => (
               <div
                 key={career.title}
-                className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+                className="glass-card relative overflow-hidden rounded-2xl"
               >
                 {/* Gradient top bar */}
                 <div className={`h-2 w-full bg-linear-to-r ${career.gradient}`} />
@@ -136,23 +157,23 @@ const AssessmentResult = () => {
                 <div className="p-5">
                   {/* Icon + title + match bar */}
                   <div className="mb-3 flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 text-2xl">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-2xl">
                       {career.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bold text-gray-900">{career.title}</div>
-                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div className="font-bold text-foreground">{career.title}</div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           className={`h-full bg-linear-to-r ${career.gradient}`}
                           style={{ width: `${career.match}%` }}
                         />
                       </div>
-                      <div className="mt-0.5 text-xs text-gray-500">{career.match}% match</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{career.match}% match</div>
                     </div>
                   </div>
 
                   {/* Salary & growth */}
-                  <div className="mb-3 space-y-1.5 text-sm text-gray-700">
+                  <div className="mb-3 space-y-1.5 text-sm text-foreground/80">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-green-500">$</span>
                       {career.salary}
@@ -168,7 +189,7 @@ const AssessmentResult = () => {
                     {career.skills.map((s) => (
                       <span
                         key={s}
-                        className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600"
+                        className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                       >
                         {s}
                       </span>
@@ -176,7 +197,7 @@ const AssessmentResult = () => {
                   </div>
 
                   {/* AI insight */}
-                  <p className="mb-4 text-xs leading-relaxed text-gray-500">💡 {career.insight}</p>
+                  <p className="mb-4 text-xs leading-relaxed text-muted-foreground">💡 {career.insight}</p>
 
                   {/* CTA button */}
                   <button
@@ -198,12 +219,12 @@ const AssessmentResult = () => {
           className="grid gap-5 md:grid-cols-2"
         >
           {/* Radar – Biểu đồ năng lực */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-4 font-bold text-gray-900">Biểu đồ năng lực</h3>
+          <div className="glass-card rounded-2xl p-5">
+            <h3 className="mb-4 font-bold text-foreground">Biểu đồ năng lực</h3>
             <ResponsiveContainer width="100%" height={260}>
               <RadarChart data={radarData}>
-                <PolarGrid stroke="#e5e7eb" />
-                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                <PolarGrid stroke="hsl(var(--border))" />
+                <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: tickColor }} />
                 <Radar
                   name="Năng lực"
                   dataKey="A"
@@ -216,28 +237,28 @@ const AssessmentResult = () => {
           </div>
 
           {/* Bar – Điểm phù hợp theo nghề */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-4 font-bold text-gray-900">Điểm phù hợp theo nghề</h3>
+          <div className="glass-card rounded-2xl p-5">
+            <h3 className="mb-4 font-bold text-foreground">Điểm phù hợp theo nghề</h3>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={barData} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis
                   type="number"
                   domain={[0, 100]}
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
+                  tick={{ fontSize: 11, fill: tickColor }}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  tick={{ fontSize: 11, fill: '#6b7280' }}
+                  tick={{ fontSize: 11, fill: tickColor }}
                   width={100}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip
                   formatter={(v) => [`${v}%`, 'Điểm phù hợp']}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  contentStyle={tooltipStyle}
                 />
                 <Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={16}>
                   {barData.map((entry, i) => (
@@ -251,26 +272,26 @@ const AssessmentResult = () => {
 
         {/* ══ PERSONALITY PROFILE ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-foreground">
             🧠 Hồ sơ tính cách của bạn
           </h2>
           <div className="grid gap-5 sm:grid-cols-2">
             {personalityTraits.map((trait) => (
               <div
                 key={trait.name}
-                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                className="glass-card rounded-2xl p-5"
               >
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900">{trait.name}</span>
+                  <span className="text-sm font-semibold text-foreground">{trait.name}</span>
                   <span className="text-sm font-bold text-violet-600">{trait.value}%</span>
                 </div>
-                <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-linear-to-r from-violet-500 to-purple-400"
                     style={{ width: `${trait.value}%` }}
                   />
                 </div>
-                <p className="text-xs text-gray-500">{trait.desc}</p>
+                <p className="text-xs text-muted-foreground">{trait.desc}</p>
               </div>
             ))}
           </div>
@@ -298,7 +319,7 @@ const AssessmentResult = () => {
           </div>
           <div className="mt-4">
             <Link href="/personality-test">
-              <Button variant="ghost" className="gap-1.5 text-sm text-gray-400">
+              <Button variant="ghost" className="gap-1.5 text-sm text-muted-foreground">
                 <RotateCcw className="h-3.5 w-3.5" /> Làm lại bài đánh giá
               </Button>
             </Link>
