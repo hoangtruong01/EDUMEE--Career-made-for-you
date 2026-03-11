@@ -120,14 +120,13 @@ const topContributors = [
 ];
 
 /* ─── Post card ─── */
-const PostCard = ({ post, index }: { post: (typeof posts)[0]; index: number }) => (
+const PostCard = ({ post, index }: { post: (typeof posts)[number]; index: number }) => (
   <motion.div
     initial={{ opacity: 0, y: 15 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: index * 0.07 }}
     className="glass-card hover:shadow-elevated cursor-pointer rounded-2xl p-5 transition-shadow"
   >
-    {/* Author row */}
     <div className="mb-3 flex flex-wrap items-start justify-between gap-y-2">
       <div className="flex items-center gap-2.5">
         <div
@@ -148,11 +147,9 @@ const PostCard = ({ post, index }: { post: (typeof posts)[0]; index: number }) =
       </div>
     </div>
 
-    {/* Title + preview */}
     <h3 className="font-display mb-1.5 leading-snug font-semibold">{post.title}</h3>
     <p className="text-muted-foreground mb-3 line-clamp-2 text-sm">{post.preview}</p>
 
-    {/* Tags */}
     <div className="mb-4 flex flex-wrap gap-1.5">
       {post.tags.map((t) => (
         <span key={t} className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs">
@@ -161,7 +158,6 @@ const PostCard = ({ post, index }: { post: (typeof posts)[0]; index: number }) =
       ))}
     </div>
 
-    {/* Stats row */}
     <div className="flex items-center justify-between">
       <div className="text-muted-foreground flex items-center gap-4 text-sm">
         <button className="hover:text-primary flex items-center gap-1.5 transition-colors">
@@ -201,7 +197,6 @@ const Community = () => {
 
   return (
     <div className="min-h-screen pb-20">
-      {/* Header */}
       <div className="bg-gradient-card">
         <div className="container py-10 text-center">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -218,9 +213,7 @@ const Community = () => {
 
       <div className="container mt-6">
         <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-          {/* ── LEFT: Posts ── */}
           <div className="space-y-4">
-            {/* Search + Post CTA */}
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -236,7 +229,6 @@ const Community = () => {
               </Button>
             </div>
 
-            {/* Category tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1">
               {CATEGORIES.map((cat) => (
                 <button
@@ -253,7 +245,6 @@ const Community = () => {
               ))}
             </div>
 
-            {/* Posts */}
             <div className="space-y-4">
               {filtered.map((post, i) => (
                 <PostCard key={post.id} post={post} index={i} />
@@ -270,9 +261,7 @@ const Community = () => {
             </div>
           </div>
 
-          {/* ── RIGHT: Sidebar ── */}
           <div className="space-y-5">
-            {/* Trending */}
             <div className="glass-card rounded-2xl p-5">
               <div className="mb-3 flex items-center gap-2">
                 <span className="text-base">🔥</span>
@@ -290,7 +279,6 @@ const Community = () => {
               </ol>
             </div>
 
-            {/* Community stats */}
             <div className="glass-card rounded-2xl p-5">
               <h3 className="font-display mb-4 font-semibold">Cộng đồng CareerAI</h3>
               <div className="space-y-3">
@@ -307,16 +295,22 @@ const Community = () => {
                   <span className="font-bold">89</span>
                 </div>
               </div>
-              <Button variant="hero" size="sm" className="mt-4 w-full">
+              <Button
+                onClick={() =>
+                  window.open('https://www.facebook.com/profile.php?id=61586675294663', '_blank')
+                }
+                variant="hero"
+                size="sm"
+                className="mt-4 w-full"
+              >
                 Tham gia ngay
               </Button>
             </div>
 
-            {/* Top contributors */}
             <div className="glass-card rounded-2xl p-5">
               <h3 className="font-display mb-4 font-semibold">Top đóng góp</h3>
               <div className="space-y-3">
-                {topContributors.map((c, i) => (
+                {topContributors.map((c) => (
                   <div key={c.name} className="flex items-center gap-3">
                     <div
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${c.bg}`}

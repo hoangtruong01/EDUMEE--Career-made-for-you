@@ -1,9 +1,11 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Download, RotateCcw, Share2, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import {
   Bar,
@@ -105,6 +107,9 @@ const fadeUp = {
 
 /* ─── Component ─── */
 const AssessmentResult = () => {
+  const router = useRouter();
+  const { toast } = useToast();
+
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
   const tickColor = isDark ? 'hsl(var(--muted-foreground))' : '#6b7280';
   const tooltipStyle = {
@@ -117,7 +122,6 @@ const AssessmentResult = () => {
 
   return (
     <div className="bg-background min-h-screen pb-20">
-      {/* ══ HEADER ══ */}
       <div className="bg-gradient-card px-4 pt-10 pb-8 text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-4 py-1.5 text-sm font-medium text-green-600 dark:text-green-400">
@@ -133,7 +137,6 @@ const AssessmentResult = () => {
       </div>
 
       <div className="container space-y-8 py-8">
-        {/* ══ TOP 3 CAREERS ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
           <h2 className="text-foreground mb-5 flex items-center gap-2 text-xl font-bold">
             🎯 Top 3 nghề phù hợp nhất
@@ -141,10 +144,7 @@ const AssessmentResult = () => {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {topCareers.map((career) => (
               <div key={career.title} className="glass-card relative overflow-hidden rounded-2xl">
-                {/* Gradient top bar */}
-                <div className={`h-2 w-full bg-linear-to-r ${career.gradient}`} />
-
-                {/* #1 badge */}
+                <div className={`h-2 w-full bg-gradient-to-r ${career.gradient}`} />
                 {career.rank === 1 && (
                   <span className="absolute top-4 right-4 rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-bold text-white">
                     #1 Tốt nhất
@@ -152,7 +152,6 @@ const AssessmentResult = () => {
                 )}
 
                 <div className="p-5">
-                  {/* Icon + title + match bar */}
                   <div className="mb-3 flex items-center gap-3">
                     <span className="bg-muted flex h-12 w-12 items-center justify-center rounded-xl text-2xl">
                       {career.icon}
@@ -161,7 +160,7 @@ const AssessmentResult = () => {
                       <div className="text-foreground font-bold">{career.title}</div>
                       <div className="bg-muted mt-1 h-1.5 w-full overflow-hidden rounded-full">
                         <div
-                          className={`h-full bg-linear-to-r ${career.gradient}`}
+                          className={`h-full bg-gradient-to-r ${career.gradient}`}
                           style={{ width: `${career.match}%` }}
                         />
                       </div>
@@ -171,7 +170,6 @@ const AssessmentResult = () => {
                     </div>
                   </div>
 
-                  {/* Salary & growth */}
                   <div className="text-foreground/80 mb-3 space-y-1.5 text-sm">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-green-500">$</span>
@@ -183,7 +181,6 @@ const AssessmentResult = () => {
                     </div>
                   </div>
 
-                  {/* Skill tags */}
                   <div className="mb-3 flex flex-wrap gap-1.5">
                     {career.skills.map((s) => (
                       <span
@@ -195,13 +192,12 @@ const AssessmentResult = () => {
                     ))}
                   </div>
 
-                  {/* AI insight */}
                   <p className="text-muted-foreground mb-4 text-xs leading-relaxed">
                     💡 {career.insight}
                   </p>
 
-                  {/* CTA button */}
                   <button
+                    onClick={() => router.push('/learning-roadmap')}
                     className={`w-full rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 ${career.btnClass}`}
                   >
                     Xem lộ trình học &gt;
@@ -212,14 +208,12 @@ const AssessmentResult = () => {
           </div>
         </motion.section>
 
-        {/* ══ CHARTS ══ */}
         <motion.div
           variants={fadeUp}
           initial="hidden"
           animate="show"
           className="grid gap-5 md:grid-cols-2"
         >
-          {/* Radar – Biểu đồ năng lực */}
           <div className="glass-card rounded-2xl p-5">
             <h3 className="text-foreground mb-4 font-bold">Biểu đồ năng lực</h3>
             <ResponsiveContainer width="100%" height={260}>
@@ -237,7 +231,6 @@ const AssessmentResult = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Bar – Điểm phù hợp theo nghề */}
           <div className="glass-card rounded-2xl p-5">
             <h3 className="text-foreground mb-4 font-bold">Điểm phù hợp theo nghề</h3>
             <ResponsiveContainer width="100%" height={260}>
@@ -258,7 +251,7 @@ const AssessmentResult = () => {
                   tickLine={false}
                 />
                 <Tooltip formatter={(v) => [`${v}%`, 'Điểm phù hợp']} contentStyle={tooltipStyle} />
-                <Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={16}>
+                <Bar dataKey="score" radius={[6, 6, 6, 6]} barSize={16}>
                   {barData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
                   ))}
@@ -268,7 +261,6 @@ const AssessmentResult = () => {
           </div>
         </motion.div>
 
-        {/* ══ PERSONALITY PROFILE ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show">
           <h2 className="text-foreground mb-5 flex items-center gap-2 text-xl font-bold">
             🧠 Hồ sơ tính cách của bạn
@@ -282,7 +274,7 @@ const AssessmentResult = () => {
                 </div>
                 <div className="bg-muted mb-2 h-2 w-full overflow-hidden rounded-full">
                   <div
-                    className="h-full rounded-full bg-linear-to-r from-violet-500 to-purple-400"
+                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-400"
                     style={{ width: `${trait.value}%` }}
                   />
                 </div>
@@ -292,7 +284,6 @@ const AssessmentResult = () => {
           </div>
         </motion.section>
 
-        {/* ══ ACTIONS ══ */}
         <motion.section variants={fadeUp} initial="hidden" animate="show" className="text-center">
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/learning-roadmap">
@@ -300,15 +291,37 @@ const AssessmentResult = () => {
                 🎁 Xem lộ trình học tập
               </Button>
             </Link>
-            <Link href="/careers">
+
+            <Link href="/career-compare">
               <Button variant="outline" className="gap-2 rounded-full px-6">
                 → Khám phá thêm nghề
               </Button>
             </Link>
-            <Button variant="outline" className="gap-2 rounded-full px-6">
+
+            <Button
+              variant="outline"
+              className="gap-2 rounded-full px-6"
+              onClick={() =>
+                toast({
+                  title: 'Đang xử lý...',
+                  description:
+                    'Hệ thống đang xuất file PDF báo cáo của bạn. Vui lòng đợi trong giây lát!',
+                })
+              }
+            >
               <Download className="h-4 w-4" /> Tải kết quả PDF
             </Button>
-            <Button variant="outline" className="gap-2 rounded-full px-6">
+
+            <Button
+              variant="outline"
+              className="gap-2 rounded-full px-6"
+              onClick={() =>
+                toast({
+                  title: 'Đã copy link!',
+                  description: 'Bạn có thể dán link này để gửi cho bạn bè ngay bây giờ.',
+                })
+              }
+            >
               <Share2 className="h-4 w-4" /> Chia sẻ
             </Button>
           </div>

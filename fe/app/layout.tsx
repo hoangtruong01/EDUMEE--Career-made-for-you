@@ -1,5 +1,8 @@
+import { Toaster } from '@/components/ui/toaster';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
+
+// Dùng đường dẫn tuyệt đối có chữ @ để không bao giờ bị lỗi path
 import './globals.css';
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -20,7 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className={`${plusJakartaSans.variable} antialiased`}>{children}</body>
+      <body className={`${plusJakartaSans.variable} antialiased`}>
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }
