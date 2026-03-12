@@ -58,19 +58,24 @@ export default function AdminAnalyticsPage() {
   const maxWeekly = Math.max(...weeklyBars);
 
   const donutStyle = useMemo(() => {
-    let offset = 0;
-    const gradients = sectors.map((sector) => {
-      const from = offset;
-      offset += sector.value;
-      const colorMap: Record<string, string> = {
-        'bg-violet-500': '#8b5cf6',
-        'bg-indigo-400': '#818cf8',
-        'bg-sky-500': '#0ea5e9',
-        'bg-emerald-500': '#10b981',
-        'bg-amber-500': '#f59e0b',
-      };
-      return `${colorMap[sector.color]} ${from}% ${offset}%`;
-    });
+    const colorMap: Record<string, string> = {
+      'bg-violet-500': '#8b5cf6',
+      'bg-indigo-400': '#818cf8',
+      'bg-sky-500': '#0ea5e9',
+      'bg-emerald-500': '#10b981',
+      'bg-amber-500': '#f59e0b',
+    };
+
+    const gradients = sectors.reduce<{ stops: string[]; offset: number }>(
+      (acc, sector) => {
+        const from = acc.offset;
+        const to = from + sector.value;
+        acc.stops.push(`${colorMap[sector.color]} ${from}% ${to}%`);
+        return { stops: acc.stops, offset: to };
+      },
+      { stops: [], offset: 0 },
+    ).stops;
+
     return { background: `conic-gradient(${gradients.join(',')})` };
   }, []);
 
