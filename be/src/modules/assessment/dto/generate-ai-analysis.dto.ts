@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AssessmentAnswerInputDto {
+
   @ApiProperty({ description: 'Question ID' })
   @IsString()
   questionId!: string;
