@@ -25,6 +25,9 @@ export class AssessmentSession {
     @Prop({ enum: SessionStatus, default: SessionStatus.IN_PROGRESS })
     status!: SessionStatus;
 
+    @Prop({ default: 0 })
+    attemptNumber!: number; // Thứ tự lần làm bài của user (mặc định 0)
+
     @Prop({ default: Date.now })
     startedAt!: Date; // Thời gian bắt đầu phiên đánh giá
 

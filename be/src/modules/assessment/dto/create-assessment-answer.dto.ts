@@ -13,6 +13,11 @@ export class CreateAssessmentAnswerDto {
   @IsString()
   userId!: string;
 
+  @ApiProperty({ example: 'string' })
+  @IsNotEmpty()
+  @IsString()
+  sessionId!: string;
+
   @ApiProperty({ example: 'A' })
   @IsNotEmpty()
   @IsString()
