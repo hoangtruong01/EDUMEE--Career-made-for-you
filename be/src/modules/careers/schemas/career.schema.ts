@@ -180,9 +180,6 @@ export class Career {
 
   @Prop({ type: [String] })
   relatedCareers?: Types.ObjectId[]; // References to other careers
-
-  createdAt!: Date;
-  updatedAt!: Date;
 }
 
 export const CareerSchema = SchemaFactory.createForClass(Career);

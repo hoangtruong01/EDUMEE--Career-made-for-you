@@ -25,6 +25,9 @@ export class AssessmentAnswer {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   userId!: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'AssessmentSession' })
+  sessionId?: Types.ObjectId;
+
   // Câu trả lời ABCD
   @Prop({ required: true, enum: ['A', 'B', 'C', 'D'] })
   answer!: string;
