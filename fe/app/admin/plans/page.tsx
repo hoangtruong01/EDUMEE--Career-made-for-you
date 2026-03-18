@@ -95,20 +95,18 @@ const featureList: PlanFeature[] = [
   {
     label: 'Bài test tính cách (Holland, MBTI)',
     free: '1 lần',
-    plus: 'Không giới hạn',
-    pro: 'Không giới hạn',
+    plus: '3 lần',
+    pro: '5 lần',
   },
-  { label: 'Gợi ý nghề nghiệp AI', free: '3 nghề', plus: '10 nghề', pro: 'Không giới hạn' },
+  { label: 'Gợi ý nghề nghiệp AI', free: '1 nghề', plus: '3 nghề', pro: '5 nghề' },
   { label: 'Lộ trình học tập cá nhân', free: false, plus: true, pro: true },
-  { label: 'So sánh nghề nghiệp', free: false, plus: '3 nghề', pro: 'Không giới hạn' },
+  { label: 'So sánh nghề nghiệp', free: false, plus: '3 nghề', pro: '10 nghề' },
   { label: 'Mô phỏng nghề nghiệp', free: false, plus: false, pro: true },
-  { label: 'Kết nối mentor', free: false, plus: '2 mentor / tháng', pro: 'Không giới hạn' },
   { label: 'Cộng đồng thảo luận', free: 'Đọc', plus: 'Đọc và viết', pro: 'Đọc và viết' },
   { label: 'Báo cáo phân tích chi tiết', free: false, plus: true, pro: true },
   { label: 'Xuất PDF hồ sơ nghề nghiệp', free: false, plus: false, pro: true },
-  { label: 'Mentor 1-1 video call', free: false, plus: false, pro: '4 buổi / tháng' },
   { label: 'Chứng chỉ hoàn thành lộ trình', free: false, plus: false, pro: true },
-  { label: 'Hỗ trợ ưu tiên', free: false, plus: 'Email', pro: 'Email + Chat' },
+
 ];
 
 const planStats = [
