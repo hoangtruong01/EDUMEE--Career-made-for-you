@@ -29,7 +29,7 @@ export class CareerFitResultService {
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
     private readonly aiService: AIService,
     private readonly assessmentAnswerService: AssessmentAnswerService,
-  ) {}
+  ) { }
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
     const result = new this.careerFitResultModel({
@@ -46,9 +46,9 @@ export class CareerFitResultService {
     filters: Partial<CareerFitResult> = {},
   ): Promise<{ data: CareerFitResult[]; total: number; page: number; limit: number }> {
     const skip = (page - 1) * limit;
-    
+
     const query = this.buildQuery(filters);
-    
+
     const [data, total] = await Promise.all([
       this.careerFitResultModel
         .find(query)
@@ -164,7 +164,7 @@ export class CareerFitResultService {
     }
 
     const result = await this.careerFitResultModel.findByIdAndDelete(id).exec();
-    
+
     if (!result) {
       throw new NotFoundException('Career fit result not found');
     }
@@ -210,17 +210,18 @@ export class CareerFitResultService {
   async generateAIAnalysis(
     userId: string,
     assessmentAnswers: AssessmentAnswerData[],
-    availableCareers: Career[] = []
+    availableCareers: Career[] = [],
+    assessmentSessionId?: string | Types.ObjectId,
   ): Promise<CareerFitResult[]> {
     try {
       this.logger.log(`Generating AI analysis for user ${userId}`);
-      
+
       // Delete old results for this user before creating new ones
-      const deleteResult = await this.careerFitResultModel.deleteMany({ 
-        userId: new Types.ObjectId(userId) 
+      const deleteResult = await this.careerFitResultModel.deleteMany({
+        userId: new Types.ObjectId(userId)
       });
       this.logger.log(`Deleted ${deleteResult.deletedCount} old career fit results for user ${userId}`);
-      
+
       // Get AI analysis
       const analysis: AIAnalysisResult = await this.aiService.analyzePersonalityAndCareers(
         assessmentAnswers,
@@ -242,31 +243,32 @@ export class CareerFitResultService {
           careerId,
           careerTitle: recommendation.careerTitle,
           overallFitScore: recommendation.fitScore,
-          
+
           // Personality match scores
           personalityMatch: {
             big5Score: recommendation.personalityMatch?.bigFiveAlignment,
             riasecScore: recommendation.personalityMatch?.riasecAlignment,
             overallPersonalityFit: recommendation.personalityMatch?.overallFit,
           },
-          
+
           // Dimension scores from AI analysis
           dimensionScores: {
             ...analysis.personalityAnalysis.bigFiveScores,
             ...analysis.personalityAnalysis.riasecScores,
           },
-          
+
           // Strengths and development areas
           strengths: recommendation.reasons,
           developmentAreas: recommendation.potentialChallenges,
           improvementSuggestions: recommendation.developmentSuggestions,
-          
+
           // AI insights
           aiExplanation: analysis.explanation,
           confidence: analysis.confidence,
-          
+
           // Personality profile
           personalityProfile: analysis.personalityAnalysis.personalityProfile,
+          assessmentSessionId: assessmentSessionId ? new Types.ObjectId(assessmentSessionId) : undefined,
         };
 
         // Save to database
@@ -277,7 +279,7 @@ export class CareerFitResultService {
 
       this.logger.log(`Generated ${careerFitResults.length} career recommendations for user ${userId}`);
       return careerFitResults;
-      
+
     } catch (error) {
       this.logger.error('Failed to generate AI analysis:', error);
       throw new BadRequestException('Failed to generate career analysis');
@@ -293,15 +295,32 @@ export class CareerFitResultService {
   ): Promise<CareerFitResult[]> {
     try {
       this.logger.log(`Fetching assessment answers for user ${userId}`);
-      
+
       // Fetch user's answers from database
       const userAnswers = await this.assessmentAnswerService.findByUser(userId);
-      
+
       if (!userAnswers || userAnswers.length === 0) {
         throw new BadRequestException('No assessment answers found for this user. Please complete the assessment first.');
       }
 
       this.logger.log(`Found ${userAnswers.length} answers for user ${userId}`);
+
+      // Infer sessionId from user's answers (choose the most frequent sessionId)
+      let inferredSessionId: string | undefined;
+      try {
+        const counts: Record<string, number> = {};
+        for (const a of userAnswers) {
+          const sid = (a as any).sessionId?.toString();
+          if (sid) counts[sid] = (counts[sid] || 0) + 1;
+        }
+        const entries = Object.entries(counts);
+        if (entries.length > 0) {
+          entries.sort(([, a], [, b]) => b - a);
+          inferredSessionId = entries[0][0];
+        }
+      } catch (e) {
+        inferredSessionId = undefined;
+      }
 
       // Transform answers to AssessmentAnswerData format
       const assessmentAnswers: AssessmentAnswerData[] = userAnswers.map(answer => {
@@ -314,9 +333,9 @@ export class CareerFitResultService {
         };
       });
 
-      // Use the existing generateAIAnalysis method
-      return this.generateAIAnalysis(userId, assessmentAnswers, availableCareers);
-      
+      // Use the existing generateAIAnalysis method and pass inferred session id if any
+      return this.generateAIAnalysis(userId, assessmentAnswers, availableCareers, inferredSessionId);
+
     } catch (error) {
       this.logger.error('Failed to generate analysis from user answers:', error);
       if (error instanceof BadRequestException) {
@@ -345,24 +364,24 @@ export class CareerFitResultService {
           _id: null,
           totalResults: { $sum: 1 },
           averageFitScore: { $avg: '$overallFitScore' },
-          highFitCount: { 
-            $sum: { 
-              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0] 
-            } 
+          highFitCount: {
+            $sum: {
+              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0]
+            }
           },
-          mediumFitCount: { 
-            $sum: { 
+          mediumFitCount: {
+            $sum: {
               $cond: [
-                { $and: [{ $gte: ['$overallFitScore', 60] }, { $lt: ['$overallFitScore', 80] }] }, 
-                1, 
+                { $and: [{ $gte: ['$overallFitScore', 60] }, { $lt: ['$overallFitScore', 80] }] },
+                1,
                 0
-              ] 
-            } 
+              ]
+            }
           },
-          lowFitCount: { 
-            $sum: { 
-              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0] 
-            } 
+          lowFitCount: {
+            $sum: {
+              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0]
+            }
           },
         }
       }
@@ -381,7 +400,7 @@ export class CareerFitResultService {
     if (results.length === 0) return {};
 
     const topResult = results[0];
-    
+
     return {
       topRecommendation: topResult.careerId,
       reasonsForRecommendation: topResult.strengths?.slice(0, 3) || [],

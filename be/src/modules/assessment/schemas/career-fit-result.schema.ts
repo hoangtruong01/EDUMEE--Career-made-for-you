@@ -8,7 +8,7 @@ export type CareerFitResultDocument = CareerFitResult & Document;
   collection: 'career_fit_results',
   toJSON: {
     virtuals: true,
-     transform: (_doc: Document, ret: Record<string, unknown>): Record<string, unknown> => {
+    transform: (_doc: Document, ret: Record<string, unknown>): Record<string, unknown> => {
       ret.id = ret._id;
       delete ret._id;
       delete ret.__v;
@@ -63,17 +63,17 @@ export class CareerFitResult {
     careerId: Types.ObjectId; // Reference to Career
     fitScore: number; // 0-100 match percentage
     confidenceScore: number; // AI confidence in this recommendation
-    
+
     // Detailed breakdown
     personalityMatch: number;
     interestMatch: number;
     skillMatch: number;
     aptitudeMatch: number;
-    
+
     // Matching factors
     strongPoints: string[]; // What makes this career suitable
     challenges: string[]; // Potential challenges/gaps
-    
+
     // Skill gaps analysis
     skillGaps?: {
       technical: string[];
@@ -132,6 +132,9 @@ export class CareerFitResult {
   @Prop({ type: Date, default: Date.now })
   generatedAt!: Date;
 
+  @Prop({ type: Types.ObjectId, ref: 'AssessmentSession' })
+  assessmentSessionId?: Types.ObjectId;
+
   // Version of the AI model used
   @Prop({ trim: true })
   modelVersion?: string;
@@ -146,8 +149,6 @@ export class CareerFitResult {
     feedbackDate?: Date;
   };
 
-  createdAt!: Date;
-  updatedAt!: Date;
 }
 
 export const CareerFitResultSchema = SchemaFactory.createForClass(CareerFitResult);
