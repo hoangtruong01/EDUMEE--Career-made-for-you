@@ -33,7 +33,7 @@ export class BookingSessionController {
   @ApiOperation({ summary: 'Create a new booking session' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Booking created successfully' })
   create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
-    return this.bookingSessionService.createForMentee(getAuthUserId(user), createDto as unknown as { tutorProfileId: string; [key: string]: unknown });
+    return this.bookingSessionService.createForMentee(getAuthUserId(user), createDto as unknown as { tutorProfileId: string;[key: string]: unknown });
   }
 
   @Get()

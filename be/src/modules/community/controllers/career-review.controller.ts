@@ -44,7 +44,7 @@ export class CareerReviewController {
       this.configService.get<string>('app.anonymousSalt') ||
       this.configService.get<string>('ANON_SALT') ||
       'default_anon_salt';
-    return this.careerReviewService.createForUser(userId, salt, createDto as unknown as { careerId: string; [key: string]: unknown });
+    return this.careerReviewService.createForUser(userId, salt, createDto as unknown as { careerId: string;[key: string]: unknown });
   }
 
   @Get()

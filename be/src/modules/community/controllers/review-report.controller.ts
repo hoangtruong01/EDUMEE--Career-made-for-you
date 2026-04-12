@@ -32,7 +32,7 @@ export class ReviewReportController {
   @ApiOperation({ summary: 'Create a report for a review' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Report created successfully' })
   create(@Body() dto: CreateReviewReportDto, @CurrentUser() user: AuthUserLike) {
-    return this.reviewReportService.createForUser(getAuthUserId(user), dto as unknown as { reviewId: string; [key: string]: unknown });
+    return this.reviewReportService.createForUser(getAuthUserId(user), dto as unknown as { reviewId: string;[key: string]: unknown });
   }
 
   @Get()
