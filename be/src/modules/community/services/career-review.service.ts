@@ -9,14 +9,15 @@ import { Model, FilterQuery } from 'mongoose';
 import { CareerReview, CareerReviewDocument, ReviewStatus } from '../schemas/career-review.schema';
 import { createHash } from 'crypto';
 import { Types } from 'mongoose';
+import { CreateCareerReviewDto, UpdateCareerReviewDto } from '../dto';
 
-interface CreateCareerReviewInput {
-  careerId: string;
-  moderationRequired?: boolean;
-  status?: ReviewStatus;
+type CreateCareerReviewInput = CreateCareerReviewDto & {
   sensitiveContent?: Record<string, unknown>;
-  [key: string]: unknown;
-}
+};
+
+type UpdateCareerReviewInput = Partial<UpdateCareerReviewDto> & {
+  careerId?: string | Types.ObjectId;
+};
 
 function hasMongoDuplicateKeyCode(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -117,10 +118,17 @@ export class CareerReviewService {
       .exec();
   }
 
-  async update(id: string, updateDto: Partial<CareerReview>): Promise<CareerReviewDocument> {
+  async update(id: string, updateDto: UpdateCareerReviewInput): Promise<CareerReviewDocument> {
     if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid review id');
+    const updatePayload: Record<string, unknown> = { ...updateDto };
+    if (typeof updateDto.careerId === 'string') {
+      if (!Types.ObjectId.isValid(updateDto.careerId)) {
+        throw new BadRequestException('Invalid careerId');
+      }
+      updatePayload.careerId = new Types.ObjectId(updateDto.careerId);
+    }
     const review = await this.careerReviewModel
-      .findByIdAndUpdate(id, updateDto, { new: true, runValidators: true })
+      .findByIdAndUpdate(id, updatePayload, { new: true, runValidators: true })
       .exec();
     if (!review) {
       throw new NotFoundException(`Career review with ID ${id} not found`);

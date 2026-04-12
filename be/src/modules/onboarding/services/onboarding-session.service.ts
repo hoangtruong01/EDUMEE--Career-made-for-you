@@ -40,7 +40,7 @@ export class OnboardingSessionService {
     private onboardingSessionModel: Model<OnboardingSessionDocument>,
   ) { }
 
-  async createForUser(userId: string, createDto: Record<string, unknown>): Promise<OnboardingSessionDocument> {
+  async createForUser(userId: string, createDto: object): Promise<OnboardingSessionDocument> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid userId');
     }
@@ -184,7 +184,7 @@ export class OnboardingSessionService {
 
   async update(
     id: string,
-    updateDto: Record<string, unknown>,
+    updateDto: object,
   ): Promise<OnboardingSessionDocument> {
     const session = await this.onboardingSessionModel
       .findByIdAndUpdate(id, updateDto as Partial<OnboardingSession>, { new: true })
