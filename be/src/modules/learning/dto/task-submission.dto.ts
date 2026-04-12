@@ -255,9 +255,10 @@ class SelfAssessmentDto {
 }
 
 export class CreateTaskSubmissionDto {
-  @ApiProperty({ description: 'User ID who is submitting' })
+  @ApiPropertyOptional({ description: 'User ID (filled by server)' })
+  @IsOptional()
   @IsString()
-  userId!: string;
+  userId?: string;
 
   @ApiProperty({ description: 'Task ID being submitted for' })
   @IsString()

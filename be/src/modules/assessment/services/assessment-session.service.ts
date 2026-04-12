@@ -1,26 +1,33 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssessmentSession, AssessmentSessionDocument } from '../schemas/assessment-sesions.schema';
 import { SessionStatus } from '../enums/assessment.enum';
-import { UserSubscription, UserSubscriptionDocument } from '../../users/schemas/user-subscriptions';
-import { AiPlan, AiPlanDocument } from '../../ai/schema/ai-plan.schema';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 
 @Injectable()
 export class AssessmentSessionService {
     constructor(
         @InjectModel(AssessmentSession.name)
         private sessionModel: Model<AssessmentSessionDocument>,
-        @InjectModel(UserSubscription.name)
-        private userSubscriptionModel: Model<UserSubscriptionDocument>,
-        @InjectModel(AiPlan.name)
-        private aiPlanModel: Model<AiPlanDocument>,
+        private readonly aiQuotaService: AiQuotaService,
     ) { }
 
     // Create a new session for a user. Prevent multiple active sessions.
     async createSession(userId: string | Types.ObjectId): Promise<AssessmentSession> {
         const existing = await this.sessionModel.findOne({ userId, status: SessionStatus.IN_PROGRESS }).exec();
         if (existing) throw new BadRequestException('An active session already exists for this user');
+
+        // Quota per month (AiUsageLog-based) for assessment attempts
+        try {
+            await this.aiQuotaService.checkQuota(String(userId), AiFeature.ASSESSMENT);
+        } catch (e: any) {
+            // Standardize quota to 429
+            if (e?.status === HttpStatus.TOO_MANY_REQUESTS) throw e;
+            if (e instanceof HttpException) throw e;
+            throw e;
+        }
 
         // Determine attemptNumber based on prior sessions in the same billing period (month)
         const now = new Date();
@@ -34,22 +41,6 @@ export class AssessmentSessionService {
         // Default attemptNumber is previousCount + 1
         const attemptNumber = previousCount + 1;
 
-        // Check active user subscription and plan limits (assessmentsPerMonth)
-        const subscription = await this.userSubscriptionModel.findOne({
-            userId: new Types.ObjectId(userId),
-            status: { $in: ['active', ''] },
-        }).exec();
-
-        if (subscription && subscription.planId) {
-            const plan = await this.aiPlanModel.findById(subscription.planId).lean().exec();
-            const planLimit = plan?.limits?.assessmentsPerMonth;
-            if (typeof planLimit === 'number' && planLimit >= 0) {
-                if (previousCount >= planLimit) {
-                    throw new BadRequestException('Assessment attempt limit reached for current plan');
-                }
-            }
-        }
-
         const session = new this.sessionModel({
             userId: new Types.ObjectId(userId),
             status: SessionStatus.IN_PROGRESS,
@@ -57,7 +48,9 @@ export class AssessmentSessionService {
             attemptNumber,
         });
 
-        return session.save();
+        const saved = await session.save();
+        await this.aiQuotaService.consumeQuota(String(userId), AiFeature.ASSESSMENT, { requestCount: 1, tokensUsed: 0 });
+        return saved;
     }
 
     async getById(id: string | Types.ObjectId): Promise<AssessmentSession> {

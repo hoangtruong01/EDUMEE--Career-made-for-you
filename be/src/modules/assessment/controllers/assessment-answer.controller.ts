@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -24,6 +25,7 @@ import { AssessmentAnswerService } from '../services/assessment-answer.service';
 import { UpdateAssessmentAnswerDto, BulkAnswerDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { assertOwnerOrAdmin } from '../../../common/auth';
 
 interface CurrentUserPayload {
   userId: string;
@@ -90,12 +92,8 @@ export class AssessmentAnswerController {
     @Body() answers: BulkAnswerDto[],
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    // DEBUG: Log user object to verify JWT payload
-    console.log('Current user from JWT:', JSON.stringify(user));
-    console.log('User ID from JWT:', user?.userId);
-    
     if (!user?.userId) {
-      throw new Error('User ID not found in JWT token');
+      throw new BadRequestException('User ID not found in JWT token');
     }
     
     // Inject userId from token to all answers
@@ -143,7 +141,8 @@ export class AssessmentAnswerController {
     status: 200, 
     description: 'User answers retrieved successfully' 
   })
-  async findByUser(@Param('userId') userId: string) {
+  async findByUser(@Param('userId') userId: string, @CurrentUser() user: CurrentUserPayload) {
+    assertOwnerOrAdmin(userId, user);
     return this.assessmentAnswerService.findByUser(userId);
   }
 

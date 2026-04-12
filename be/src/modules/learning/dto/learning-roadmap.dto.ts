@@ -187,9 +187,10 @@ class PersonalizationDto {
 }
 
 export class CreateLearningRoadmapDto {
-  @ApiProperty({ description: 'User ID who owns this roadmap' })
+  @ApiPropertyOptional({ description: 'User ID (filled by server)' })
+  @IsOptional()
   @IsString()
-  userId!: string;
+  userId?: string;
 
   @ApiProperty({ description: 'Target career ID' })
   @IsString()

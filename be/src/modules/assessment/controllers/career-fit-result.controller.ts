@@ -24,6 +24,7 @@ import { CareerFitResultService } from '../services/career-fit-result.service';
 import { CreateCareerFitResultDto, UpdateCareerFitResultDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { assertOwnerOrAdmin, isAdmin } from '../../../common/auth';
 
 interface CurrentUserPayload {
   userId: string;
@@ -71,11 +72,12 @@ export class CareerFitResultController {
   @ApiQuery({ name: 'careerTitle', required: true, type: String })
   @ApiQuery({ name: 'traits', required: true, type: String, description: 'Comma-separated personality traits' })
   async getCareerInsight(
+    @CurrentUser() user: CurrentUserPayload,
     @Query('careerTitle') careerTitle: string,
     @Query('traits') traits: string,
   ) {
     const personalityTraits = traits.split(',').map(trait => trait.trim());
-    const insight = await this.careerFitResultService.getCareerInsight(careerTitle, personalityTraits);
+    const insight = await this.careerFitResultService.getCareerInsight(user.userId, careerTitle, personalityTraits);
     return { careerTitle, personalityTraits, insight };
   }
 
@@ -95,9 +97,18 @@ export class CareerFitResultController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('userId') userId?: string,
+    @CurrentUser() user?: CurrentUserPayload,
   ) {
     const filters: Partial<any> = {};
-    if (userId) filters.userId = new Types.ObjectId(userId);
+    if (userId) {
+      assertOwnerOrAdmin(userId, user as any);
+      filters.userId = new Types.ObjectId(userId);
+    } else {
+      // Non-admin defaults to own results only.
+      if (!isAdmin(user as any)) {
+        filters.userId = new Types.ObjectId((user as any).userId);
+      }
+    }
     return this.careerFitResultService.findAll(page || 1, limit || 10, filters);
   }
 
@@ -130,8 +141,10 @@ export class CareerFitResultController {
   @Get(':id')
   @ApiOperation({ summary: 'Get career fit result by ID' })
   @ApiParam({ name: 'id', description: 'Career fit result ID' })
-  async findOne(@Param('id') id: string) {
-    return this.careerFitResultService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    const res = await this.careerFitResultService.findOne(id);
+    assertOwnerOrAdmin((res as any).userId.toString(), user);
+    return res;
   }
 
   @Patch(':id')
@@ -140,7 +153,10 @@ export class CareerFitResultController {
   async update(
     @Param('id') id: string,
     @Body() updateDto: UpdateCareerFitResultDto,
+    @CurrentUser() user: CurrentUserPayload,
   ) {
+    const res = await this.careerFitResultService.findOne(id);
+    assertOwnerOrAdmin((res as any).userId.toString(), user);
     return this.careerFitResultService.update(id, updateDto);
   }
 
@@ -148,7 +164,9 @@ export class CareerFitResultController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete career fit result' })
   @ApiParam({ name: 'id', description: 'Career fit result ID' })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    const res = await this.careerFitResultService.findOne(id);
+    assertOwnerOrAdmin((res as any).userId.toString(), user);
     return this.careerFitResultService.remove(id);
   }
 

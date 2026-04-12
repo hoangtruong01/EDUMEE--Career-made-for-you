@@ -40,6 +40,11 @@ export class AiPlan {
         assessmentsPerMonth?: number;
         chatMessagesPerMonth?: number;
         simulationsPerMonth?: number;
+        careerRecommendationRunsPerMonth?: number;
+        maxCareerRecommendationsPerRun?: number;
+        careerComparisonsPerMonth?: number;
+        maxCareersPerComparison?: number;
+        personalizedRoadmapsPerMonth?: number;
     };
 
     @Prop({ type: Object, default: {} })
@@ -49,6 +54,7 @@ export class AiPlan {
         mentorBooking?: boolean;
         careerComparison?: boolean;
         aiChatbot?: boolean;
+        personalizedRoadmap?: boolean;
     };
 }
 

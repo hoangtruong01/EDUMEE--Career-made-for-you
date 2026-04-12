@@ -30,6 +30,9 @@ import {
 } from './dto/index';
 import { Career, CareerCategory } from './schemas/career.schema';
 import { JwtAuthGuard } from '../auth/guards';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '../../common/enums';
 
 @ApiTags('Careers')
 @Controller('careers')
@@ -40,6 +43,8 @@ export class CareerController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new career' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Career created successfully',
@@ -284,6 +289,8 @@ export class CareerController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update career by ID' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiParam({
     name: 'id',
     type: String,
@@ -312,6 +319,8 @@ export class CareerController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete career by ID' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiParam({
     name: 'id',
     type: String,

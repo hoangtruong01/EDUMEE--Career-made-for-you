@@ -8,10 +8,17 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ReviewInteractionsService } from '../services/review-interactions.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { UpsertReviewVoteDto, RemoveReviewVoteDto } from '../dto';
+import { assertOwnerOrAdmin, isAdmin } from '../../../common/auth';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 @ApiTags('review-interactions')
 @ApiBearerAuth('JWT-auth')
@@ -20,23 +27,18 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 export class ReviewInteractionsController {
   constructor(private readonly reviewInteractionsService: ReviewInteractionsService) {}
 
-  @Post()
-  @ApiOperation({ summary: 'Create a new vote' })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Vote created successfully' })
-  create(@Body() createDto: any) {
-    return this.reviewInteractionsService.create(createDto);
-  }
-
   @Post('vote')
   @ApiOperation({ summary: 'Add or update a vote' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Vote added/updated successfully' })
-  upsertVote(@Body() body: { reviewId: string; voterId: string; voteType: string }) {
-    return this.reviewInteractionsService.upsertVote(body.reviewId, body.voterId, body.voteType);
+  upsertVote(@Body() body: UpsertReviewVoteDto, @CurrentUser() user: any) {
+    return this.reviewInteractionsService.upsertVote(body.reviewId, user.userId, body.voteType, body.voteContext);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all votes' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Votes retrieved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findAll(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -68,7 +70,8 @@ export class ReviewInteractionsController {
   @Get('voter/:voterId')
   @ApiOperation({ summary: 'Get votes by voter' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Votes retrieved successfully' })
-  findByVoter(@Param('voterId') voterId: string) {
+  findByVoter(@Param('voterId') voterId: string, @CurrentUser() user: any) {
+    assertOwnerOrAdmin(voterId, user);
     return this.reviewInteractionsService.findByVoter(voterId);
   }
 
@@ -76,6 +79,8 @@ export class ReviewInteractionsController {
   @ApiOperation({ summary: 'Get a vote by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Vote retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Vote not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findOne(@Param('id') id: string) {
     return this.reviewInteractionsService.findOne(id);
   }
@@ -83,14 +88,16 @@ export class ReviewInteractionsController {
   @Delete('vote')
   @ApiOperation({ summary: 'Remove a vote' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Vote removed successfully' })
-  removeVote(@Body() body: { reviewId: string; voterId: string }) {
-    return this.reviewInteractionsService.removeVote(body.reviewId, body.voterId);
+  removeVote(@Body() body: RemoveReviewVoteDto, @CurrentUser() user: any) {
+    return this.reviewInteractionsService.removeVote(body.reviewId, user.userId);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a vote' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Vote deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Vote not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   remove(@Param('id') id: string) {
     return this.reviewInteractionsService.remove(id);
   }

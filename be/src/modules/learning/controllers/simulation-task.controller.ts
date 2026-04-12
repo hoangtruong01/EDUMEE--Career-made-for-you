@@ -14,6 +14,9 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { SimulationTaskService } from '../services/simulation-task.service';
 import { CreateSimulationTaskDto, UpdateSimulationTaskDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 @ApiTags('simulation-tasks')
 @ApiBearerAuth('JWT-auth')
@@ -25,6 +28,8 @@ export class SimulationTaskController {
   @Post()
   @ApiOperation({ summary: 'Create a new simulation task' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Task created successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   create(@Body() createDto: CreateSimulationTaskDto) {
     return this.simulationTaskService.create(createDto);
   }
@@ -139,6 +144,8 @@ export class SimulationTaskController {
   @ApiOperation({ summary: 'Update a simulation task' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Task updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Task not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   update(@Param('id') id: string, @Body() updateDto: UpdateSimulationTaskDto) {
     return this.simulationTaskService.update(id, updateDto);
   }
@@ -154,6 +161,8 @@ export class SimulationTaskController {
   @ApiOperation({ summary: 'Soft delete a simulation task' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Task deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Task not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   remove(@Param('id') id: string) {
     return this.simulationTaskService.remove(id);
   }
@@ -162,6 +171,8 @@ export class SimulationTaskController {
   @ApiOperation({ summary: 'Permanently delete a simulation task' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Task permanently deleted' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Task not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   hardDelete(@Param('id') id: string) {
     return this.simulationTaskService.hardDelete(id);
   }

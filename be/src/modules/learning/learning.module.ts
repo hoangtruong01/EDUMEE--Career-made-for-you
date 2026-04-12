@@ -17,9 +17,11 @@ import {
   WeeklyPlanController,
   CheckpointController,
 } from './controllers';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
+    AiModule,
     MongooseModule.forFeature([
       { name: LearningRoadmap.name, schema: LearningRoadmapSchema },
       { name: SimulationTask.name, schema: SimulationTaskSchema },

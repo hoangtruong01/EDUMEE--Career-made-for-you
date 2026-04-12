@@ -3,6 +3,11 @@ import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn } from 'class-validato
 
 export class BulkAnswerDto {
 
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', description: 'Assessment session ID' })
+  @IsNotEmpty()
+  @IsString()
+  sessionId!: string;
+
   @ApiProperty({ example: 'string' })  
   @IsNotEmpty()
   @IsString()

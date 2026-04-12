@@ -9,6 +9,8 @@ export enum AiFeature {
     ASSESSMENT = 'assessment',
     SIMULATION = 'simulation',
     MENTOR_BOOKING = 'mentor_booking',
+    CAREER_COMPARISON = 'career_comparison',
+    PERSONALIZED_ROADMAP = 'personalized_roadmap',
 }
 
 @Schema({

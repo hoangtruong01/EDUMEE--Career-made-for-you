@@ -9,24 +9,42 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { TaskSubmissionService } from '../services/task-submission.service';
 import { CreateTaskSubmissionDto, UpdateTaskSubmissionDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import { isAdmin } from '../../../common/auth';
 
 @ApiTags('task-submissions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('task-submissions')
 export class TaskSubmissionController {
-  constructor(private readonly taskSubmissionService: TaskSubmissionService) {}
+  constructor(
+    private readonly taskSubmissionService: TaskSubmissionService,
+    private readonly aiQuotaService: AiQuotaService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new task submission' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Submission created successfully' })
-  create(@Body() createDto: CreateTaskSubmissionDto) {
-    return this.taskSubmissionService.create(createDto);
+  async create(@Body() createDto: CreateTaskSubmissionDto, @CurrentUser() user: any) {
+    const { plan } = await this.aiQuotaService.getPlanLimits(user.userId);
+    if (plan.features?.jobSimulation === false) {
+      throw new ForbiddenException('Job simulation is not available in your plan');
+    }
+    await this.aiQuotaService.checkQuota(user.userId, AiFeature.SIMULATION);
+    const res = await this.taskSubmissionService.create({ ...createDto, userId: user.userId } as any);
+    await this.aiQuotaService.consumeQuota(user.userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Get()
@@ -108,13 +126,26 @@ export class TaskSubmissionController {
   @Post(':id/submit')
   @ApiOperation({ summary: 'Submit for evaluation' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Submission sent for evaluation' })
-  submitForEvaluation(@Param('id') id: string) {
-    return this.taskSubmissionService.submitForEvaluation(id);
+  async submitForEvaluation(@Param('id') id: string, @CurrentUser() user: any) {
+    const { plan } = await this.aiQuotaService.getPlanLimits(user.userId);
+    if (plan.features?.jobSimulation === false) {
+      throw new ForbiddenException('Job simulation is not available in your plan');
+    }
+    await this.aiQuotaService.checkQuota(user.userId, AiFeature.SIMULATION);
+    const submission = await this.taskSubmissionService.findOne(id);
+    if (!isAdmin(user) && (submission as any).userId.toString() !== user.userId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    const res = await this.taskSubmissionService.submitForEvaluation(id);
+    await this.aiQuotaService.consumeQuota(user.userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Post(':id/evaluate')
   @ApiOperation({ summary: 'Evaluate a submission' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Submission evaluated successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MENTOR)
   evaluateSubmission(@Param('id') id: string, @Body() evaluation: any) {
     return this.taskSubmissionService.evaluateSubmission(id, evaluation);
   }
@@ -122,6 +153,8 @@ export class TaskSubmissionController {
   @Post(':id/request-revision')
   @ApiOperation({ summary: 'Request revision for a submission' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Revision requested successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MENTOR)
   requestRevision(
     @Param('id') id: string,
     @Body() body: { feedback: string; requiredChanges: string[] },
@@ -132,6 +165,8 @@ export class TaskSubmissionController {
   @Post(':id/approve')
   @ApiOperation({ summary: 'Approve a submission' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Submission approved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MENTOR)
   approveSubmission(@Param('id') id: string) {
     return this.taskSubmissionService.approveSubmission(id);
   }

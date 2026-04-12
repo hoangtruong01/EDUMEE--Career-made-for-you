@@ -1,5 +1,5 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Types } from "mongoose";
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
 import { SessionStatus } from "../enums/assessment.enum";
 
 
@@ -19,7 +19,7 @@ export type AssessmentSessionDocument = AssessmentSession & Document;
     },
 })
 export class AssessmentSession {
-    @Prop({ required: true, type: Types.ObjectId, ref: 'User', unique: true })
+    @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
     userId!: Types.ObjectId;
 
     @Prop({ enum: SessionStatus, default: SessionStatus.IN_PROGRESS })

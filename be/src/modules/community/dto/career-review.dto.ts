@@ -1,97 +1,112 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
-  IsString,
+  IsBoolean,
   IsEnum,
-  IsOptional,
   IsNumber,
-  Min,
+  IsObject,
+  IsOptional,
+  IsString,
   Max,
+  Min,
+  ValidateNested,
 } from 'class-validator';
+import {
+  ReviewCategory,
+  ReviewStatus,
+  ReviewerBackground,
+} from '../schemas/career-review.schema';
 
-export enum ReviewCategory {
-  OVERALL_CAREER = 'overall_career',
-  EDUCATION_PATH = 'education_path',
-  WORK_ENVIRONMENT = 'work_environment',
-  SALARY_BENEFITS = 'salary_benefits',
-  CAREER_GROWTH = 'career_growth',
-  SKILL_REQUIREMENTS = 'skill_requirements',
-  INDUSTRY_INSIGHTS = 'industry_insights',
-  COMPANY_SPECIFIC = 'company_specific',
+class ReviewerContextDto {
+  @ApiProperty({ enum: ReviewerBackground })
+  @IsEnum(ReviewerBackground)
+  background!: ReviewerBackground;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  yearsOfExperience?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  verifiedExperience?: boolean;
+
+  @ApiPropertyOptional({ description: "bronze|silver|gold|platinum" })
+  @IsOptional()
+  @IsString()
+  reviewerTier?: string;
 }
 
-export enum ReviewStatus {
-  DRAFT = 'draft',
-  SUBMITTED = 'submitted',
-  UNDER_MODERATION = 'under_moderation',
-  PUBLISHED = 'published',
-  REJECTED = 'rejected',
-  HIDDEN = 'hidden',
-  FLAGGED = 'flagged',
-}
-
-export class CreateCareerReviewDto {
-  @ApiProperty({ description: 'User ID of the reviewer' })
-  @IsString()
-  userId!: string;
-
-  @ApiProperty({ description: 'Career ID being reviewed' })
-  @IsString()
-  careerId!: string;
-
-  @ApiProperty({ enum: ReviewCategory, description: 'Category of review' })
-  @IsEnum(ReviewCategory)
-  category!: ReviewCategory;
-
-  @ApiProperty({ description: 'Review title' })
-  @IsString()
-  title!: string;
-
-  @ApiProperty({ description: 'Review content' })
-  @IsString()
-  content!: string;
-
-  @ApiProperty({ description: 'Overall rating (1-5)', minimum: 1, maximum: 5 })
+class ReviewContentDto {
+  @ApiProperty({ minimum: 1, maximum: 5 })
   @IsNumber()
   @Min(1)
   @Max(5)
   overallRating!: number;
 
-  @ApiPropertyOptional({ enum: ReviewStatus, description: 'Review status' })
+  @ApiProperty()
+  @IsBoolean()
+  wouldRecommend!: boolean;
+
+  @ApiProperty({ description: "strongly|somewhat|neutral|not_really|strongly_not" })
+  @IsString()
+  recommendationStrength!: string;
+
+  @ApiProperty()
+  @IsString()
+  mainReviewText!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  aspectRatings?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  prosAndCons?: { pros?: string[]; cons?: string[] };
+}
+
+export class CreateCareerReviewDto {
+  @ApiProperty({ description: 'Career ID being reviewed' })
+  @IsString()
+  careerId!: string;
+
+  @ApiProperty({ description: 'Career title (cached for performance)' })
+  @IsString()
+  careerTitle!: string;
+
+  @ApiProperty({ enum: ReviewCategory })
+  @IsEnum(ReviewCategory)
+  reviewCategory!: ReviewCategory;
+
+  @ApiProperty({ type: ReviewerContextDto })
+  @ValidateNested()
+  @Type(() => ReviewerContextDto)
+  reviewerContext!: ReviewerContextDto;
+
+  @ApiProperty({ type: ReviewContentDto })
+  @ValidateNested()
+  @Type(() => ReviewContentDto)
+  reviewContent!: ReviewContentDto;
+
+  @ApiPropertyOptional({ enum: ReviewStatus, description: 'Defaults to submitted' })
   @IsOptional()
   @IsEnum(ReviewStatus)
   status?: ReviewStatus;
+
+  @ApiPropertyOptional({ description: 'If true, enforce moderation workflow' })
+  @IsOptional()
+  @IsBoolean()
+  moderationRequired?: boolean;
 }
 
 export class UpdateCareerReviewDto extends PartialType(CreateCareerReviewDto) {}
 
-export class CareerReviewResponseDto {
-  @ApiProperty({ description: 'Review ID' })
-  id!: string;
-
-  @ApiProperty({ description: 'User ID' })
-  userId!: string;
-
-  @ApiProperty({ description: 'Career ID' })
-  careerId!: string;
-
-  @ApiProperty({ enum: ReviewCategory, description: 'Review category' })
-  category!: ReviewCategory;
-
-  @ApiProperty({ description: 'Review title' })
-  title!: string;
-
-  @ApiProperty({ description: 'Review content' })
-  content!: string;
-
-  @ApiProperty({ description: 'Overall rating' })
-  overallRating!: number;
-
-  @ApiProperty({ enum: ReviewStatus, description: 'Review status' })
-  status!: ReviewStatus;
-
-  @ApiProperty({ description: 'Creation date' })
-  createdAt!: Date;
-
-  @ApiProperty({ description: 'Last update date' })
-  updatedAt!: Date;
-}

@@ -6,6 +6,8 @@ import { CreateCareerFitResultDto, UpdateCareerFitResultDto } from '../dto';
 import { AIService } from '../../../common/services/ai.service';
 import { AssessmentAnswerData, AIAnalysisResult } from '../../../common/interfaces/ai-analysis.interface';
 import { AssessmentAnswerService } from './assessment-answer.service';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 
 interface QuestionData {
   _id?: Types.ObjectId | string;
@@ -29,6 +31,7 @@ export class CareerFitResultService {
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
     private readonly aiService: AIService,
     private readonly assessmentAnswerService: AssessmentAnswerService,
+    private readonly aiQuotaService: AiQuotaService,
   ) { }
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
@@ -216,6 +219,8 @@ export class CareerFitResultService {
     try {
       this.logger.log(`Generating AI analysis for user ${userId}`);
 
+      await this.aiQuotaService.checkQuota(userId, AiFeature.CAREER_RECOMMENDATION);
+
       // Delete old results for this user before creating new ones
       const deleteResult = await this.careerFitResultModel.deleteMany({
         userId: new Types.ObjectId(userId)
@@ -227,11 +232,18 @@ export class CareerFitResultService {
         assessmentAnswers,
         availableCareers
       );
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CAREER_RECOMMENDATION, { requestCount: 1, tokensUsed: 0 });
+
+      const { limits } = await this.aiQuotaService.getPlanLimits(userId);
+      const maxPerRun = typeof limits.maxCareerRecommendationsPerRun === 'number'
+        ? limits.maxCareerRecommendationsPerRun
+        : undefined;
+      const recommendations = maxPerRun ? analysis.careerRecommendations.slice(0, maxPerRun) : analysis.careerRecommendations;
 
       // Convert AI recommendations to CareerFitResult documents
       const careerFitResults: CareerFitResult[] = [];
 
-      for (const recommendation of analysis.careerRecommendations) {
+      for (const recommendation of recommendations) {
         // Validate careerId - only convert if it's a valid ObjectId string
         let careerId = null;
         if (recommendation.careerId && Types.ObjectId.isValid(recommendation.careerId)) {
@@ -348,9 +360,12 @@ export class CareerFitResultService {
   /**
    * Get enhanced career insights using AI
    */
-  async getCareerInsight(careerTitle: string, personalityTraits: string[]): Promise<string> {
+  async getCareerInsight(userId: string, careerTitle: string, personalityTraits: string[]): Promise<string> {
     try {
-      return await this.aiService.generateCareerInsight(careerTitle, personalityTraits);
+      await this.aiQuotaService.checkQuota(userId, AiFeature.CHATBOT);
+      const res = await this.aiService.generateCareerInsight(careerTitle, personalityTraits);
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CHATBOT, { requestCount: 1, tokensUsed: 0 });
+      return res;
     } catch (error) {
       this.logger.error('Failed to get career insight:', error);
       return `${careerTitle} aligns well with your personality profile. Consider exploring this career path further.`;

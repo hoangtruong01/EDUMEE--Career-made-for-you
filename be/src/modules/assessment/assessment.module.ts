@@ -22,6 +22,7 @@ import {
 } from './services';
 import { AssessmentSessionService } from './services/assessment-session.service';
 import { AIService } from '../../common/services/ai.service';
+import { AiModule } from '../ai/ai.module';
 
 // Controllers
 import {
@@ -34,6 +35,7 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
 
 @Module({
   imports: [
+    AiModule,
     MongooseModule.forFeature([
       { name: AssessmentQuestion.name, schema: AssessmentQuestionSchema },
       { name: AssessmentAnswer.name, schema: AssessmentAnswerSchema },

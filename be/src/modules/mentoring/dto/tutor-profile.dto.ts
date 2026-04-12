@@ -9,10 +9,6 @@ import { TutorStatus, TutorLevel } from '../schemas/tutor-profile.schema';
 import { ExperienceLevel } from '../../careers/schemas/career.schema';
 
 export class CreateTutorProfileDto {
-  @ApiProperty({ description: 'User ID for this tutor profile' })
-  @IsString()
-  userId!: string;
-
   @ApiProperty({ description: 'Professional background information' })
   @IsObject()
   professionalBackground!: {

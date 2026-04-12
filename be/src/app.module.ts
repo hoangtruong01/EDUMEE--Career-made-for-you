@@ -19,6 +19,7 @@ import { LearningModule } from './modules/learning/learning.module';
 import { CommunityModule } from './modules/community/community.module';
 import { MentoringModule } from './modules/mentoring/mentoring.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { AiModule } from './modules/ai/ai.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -63,6 +64,7 @@ import { AppService } from './app.service';
     CommunityModule,
     MentoringModule,
     OnboardingModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,17 +1,63 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, FilterQuery } from 'mongoose';
-import { SessionReview, SessionReviewDocument } from '../schemas/session-review.schema';
+import { Model, FilterQuery, Types } from 'mongoose';
+import {
+  ReviewerType,
+  ReviewStatus,
+  SessionReview,
+  SessionReviewDocument,
+} from '../schemas/session-review.schema';
+import {
+  SessionStatus,
+  TutoringSession,
+  TutoringSessionDocument,
+} from '../schemas/tutoring-session.schema';
 
 @Injectable()
 export class SessionReviewService {
   constructor(
     @InjectModel(SessionReview.name)
     private sessionReviewModel: Model<SessionReviewDocument>,
+    @InjectModel(TutoringSession.name)
+    private tutoringSessionModel: Model<TutoringSessionDocument>,
   ) {}
 
-  async create(createDto: any): Promise<SessionReviewDocument> {
-    const review = new this.sessionReviewModel(createDto);
+  async createForReviewer(reviewerId: string, createDto: any): Promise<SessionReviewDocument> {
+    if (!Types.ObjectId.isValid(reviewerId)) throw new ForbiddenException('Missing user context');
+    if (!Types.ObjectId.isValid(createDto.tutoringSessionId)) throw new BadRequestException('Invalid tutoringSessionId');
+
+    const session = await this.tutoringSessionModel
+      .findById(new Types.ObjectId(createDto.tutoringSessionId))
+      .exec();
+    if (!session) throw new NotFoundException('Tutoring session not found');
+    if (session.status !== SessionStatus.COMPLETED) {
+      throw new BadRequestException('Review can only be created after session is completed');
+    }
+
+    const reviewerObjId = new Types.ObjectId(reviewerId);
+    const isMentee = session.menteeId.toString() === reviewerId;
+    const isMentor = session.mentorId.toString() === reviewerId;
+    if (!isMentee && !isMentor) throw new ForbiddenException('Not part of this tutoring session');
+
+    const existing = await this.sessionReviewModel
+      .findOne({ tutoringSessionId: session._id, reviewerId: reviewerObjId })
+      .exec();
+    if (existing) throw new ConflictException('Review already exists for this session');
+
+    const review = new this.sessionReviewModel({
+      ...createDto,
+      tutoringSessionId: session._id,
+      reviewerId: reviewerObjId,
+      reviewerType: isMentee ? ReviewerType.MENTEE : ReviewerType.MENTOR,
+      reviewedUserId: isMentee ? session.mentorId : session.menteeId,
+      status: ReviewStatus.SUBMITTED,
+    });
     return review.save();
   }
 
@@ -35,6 +81,7 @@ export class SessionReviewService {
   }
 
   async findOne(id: string): Promise<SessionReviewDocument> {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid review id');
     const review = await this.sessionReviewModel.findById(id).exec();
     if (!review) {
       throw new NotFoundException(`Session review with ID ${id} not found`);
@@ -43,20 +90,24 @@ export class SessionReviewService {
   }
 
   async findBySession(sessionId: string): Promise<SessionReviewDocument[]> {
-    return this.sessionReviewModel.find({ tutoringSessionId: sessionId }).exec();
+    if (!Types.ObjectId.isValid(sessionId)) throw new BadRequestException('Invalid sessionId');
+    return this.sessionReviewModel.find({ tutoringSessionId: new Types.ObjectId(sessionId) }).exec();
   }
 
   async findByReviewer(reviewerId: string): Promise<SessionReviewDocument[]> {
-    return this.sessionReviewModel.find({ reviewerId }).sort({ createdAt: -1 }).exec();
+    if (!Types.ObjectId.isValid(reviewerId)) throw new BadRequestException('Invalid reviewerId');
+    return this.sessionReviewModel.find({ reviewerId: new Types.ObjectId(reviewerId) }).sort({ createdAt: -1 }).exec();
   }
 
   async findByReviewee(revieweeId: string): Promise<SessionReviewDocument[]> {
-    return this.sessionReviewModel.find({ reviewedUserId: revieweeId }).sort({ createdAt: -1 }).exec();
+    if (!Types.ObjectId.isValid(revieweeId)) throw new BadRequestException('Invalid revieweeId');
+    return this.sessionReviewModel.find({ reviewedUserId: new Types.ObjectId(revieweeId) }).sort({ createdAt: -1 }).exec();
   }
 
   async getAverageRating(revieweeId: string): Promise<number> {
+    if (!Types.ObjectId.isValid(revieweeId)) throw new BadRequestException('Invalid revieweeId');
     const result = await this.sessionReviewModel.aggregate<{ averageRating: number }>([
-      { $match: { reviewedUserId: revieweeId } },
+      { $match: { reviewedUserId: new Types.ObjectId(revieweeId) } },
       { $group: { _id: null, averageRating: { $avg: '$overallRatings.overallSatisfaction' } } },
     ]);
 
