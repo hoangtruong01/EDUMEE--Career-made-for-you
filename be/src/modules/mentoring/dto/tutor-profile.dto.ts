@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
-  IsString,
   IsEnum,
   IsOptional,
   IsObject,
@@ -62,7 +61,7 @@ export class CreateTutorProfileDto {
   tutorLevel?: TutorLevel;
 }
 
-export class UpdateTutorProfileDto extends PartialType(CreateTutorProfileDto) {}
+export class UpdateTutorProfileDto extends PartialType(CreateTutorProfileDto) { }
 
 export class TutorProfileResponseDto {
   @ApiProperty({ description: 'Profile ID' })

@@ -18,7 +18,8 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums/user-role.enum';
-import { isAdmin } from '../../../common/auth';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 import { CreateBookingSessionDto } from '../dto/booking-session.dto';
 
 @ApiTags('booking-sessions')
@@ -26,13 +27,13 @@ import { CreateBookingSessionDto } from '../dto/booking-session.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('booking-sessions')
 export class BookingSessionController {
-  constructor(private readonly bookingSessionService: BookingSessionService) {}
+  constructor(private readonly bookingSessionService: BookingSessionService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new booking session' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Booking created successfully' })
-  create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: any) {
-    return this.bookingSessionService.createForMentee(user.userId, createDto as any);
+  create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
+    return this.bookingSessionService.createForMentee(getAuthUserId(user), createDto as unknown as { tutorProfileId: string; [key: string]: unknown });
   }
 
   @Get()
@@ -68,10 +69,11 @@ export class BookingSessionController {
   @Get('my')
   @ApiOperation({ summary: 'Get bookings for current user (mentee and mentor)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Bookings retrieved successfully' })
-  async findMy(@CurrentUser() user: any) {
+  async findMy(@CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
     const [asMentee, asMentor] = await Promise.all([
-      this.bookingSessionService.findByMentee(user.userId),
-      this.bookingSessionService.findByMentor(user.userId),
+      this.bookingSessionService.findByMentee(userId),
+      this.bookingSessionService.findByMentor(userId),
     ]);
     return { asMentee, asMentor };
   }
@@ -79,16 +81,16 @@ export class BookingSessionController {
   @Get('mentee/:menteeId')
   @ApiOperation({ summary: 'Get bookings by mentee' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Bookings retrieved successfully' })
-  findByMentee(@Param('menteeId') menteeId: string, @CurrentUser() user: any) {
-    if (!isAdmin(user) && menteeId !== user.userId) throw new ForbiddenException('Forbidden');
+  findByMentee(@Param('menteeId') menteeId: string, @CurrentUser() user: AuthUserLike) {
+    if (!isAdmin(user) && menteeId !== getAuthUserId(user)) throw new ForbiddenException('Forbidden');
     return this.bookingSessionService.findByMentee(menteeId);
   }
 
   @Get('mentor/:mentorId')
   @ApiOperation({ summary: 'Get bookings by mentor' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Bookings retrieved successfully' })
-  findByMentor(@Param('mentorId') mentorId: string, @CurrentUser() user: any) {
-    if (!isAdmin(user) && mentorId !== user.userId) throw new ForbiddenException('Forbidden');
+  findByMentor(@Param('mentorId') mentorId: string, @CurrentUser() user: AuthUserLike) {
+    if (!isAdmin(user) && mentorId !== getAuthUserId(user)) throw new ForbiddenException('Forbidden');
     return this.bookingSessionService.findByMentor(mentorId);
   }
 
@@ -96,10 +98,11 @@ export class BookingSessionController {
   @ApiOperation({ summary: 'Get a booking session by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Booking not found' })
-  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
+  async findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
     const booking = await this.bookingSessionService.findOne(id);
     if (isAdmin(user)) return booking;
-    const ok = booking.menteeId.toString() === user.userId || booking.mentorId.toString() === user.userId;
+    const ok = booking.menteeId.toString() === userId || booking.mentorId.toString() === userId;
     if (!ok) throw new ForbiddenException('Forbidden');
     return booking;
   }
@@ -110,9 +113,9 @@ export class BookingSessionController {
   confirmBooking(
     @Param('id') id: string,
     @Body() body: { confirmedDateTime: string },
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthUserLike,
   ) {
-    return this.bookingSessionService.confirmBooking(id, user, new Date(body.confirmedDateTime));
+    return this.bookingSessionService.confirmBooking(id, { userId: getAuthUserId(user), role: user.role }, new Date(body.confirmedDateTime));
   }
 
   @Post(':id/cancel')
@@ -121,19 +124,19 @@ export class BookingSessionController {
   cancelBooking(
     @Param('id') id: string,
     @Body() body: { reason?: string },
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthUserLike,
   ) {
-    return this.bookingSessionService.cancelBooking(id, user, body.reason);
+    return this.bookingSessionService.cancelBooking(id, { userId: getAuthUserId(user), role: user.role }, body.reason);
   }
 
   @Post(':id/reschedule')
   @ApiOperation({ summary: 'Reschedule a booking session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking rescheduled successfully' })
-  rescheduleBooking(@Param('id') id: string, @Body() body: { newSchedule: unknown }, @CurrentUser() user: any) {
+  rescheduleBooking(@Param('id') id: string, @Body() body: { newSchedule: unknown }, @CurrentUser() user: AuthUserLike) {
     return this.bookingSessionService.rescheduleBooking(
       id,
       body.newSchedule as Parameters<BookingSessionService['rescheduleBooking']>[1],
-      user,
+      { userId: getAuthUserId(user), role: user.role },
     );
   }
 
@@ -152,10 +155,11 @@ export class BookingSessionController {
   @ApiOperation({ summary: 'Delete a booking session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Booking not found' })
-  async remove(@Param('id') id: string, @CurrentUser() user: any) {
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
     const booking = await this.bookingSessionService.findOne(id);
     if (!isAdmin(user)) {
-      const ok = booking.menteeId.toString() === user.userId || booking.mentorId.toString() === user.userId;
+      const ok = booking.menteeId.toString() === userId || booking.mentorId.toString() === userId;
       if (!ok) throw new ForbiddenException('Forbidden');
     }
     return this.bookingSessionService.remove(id);

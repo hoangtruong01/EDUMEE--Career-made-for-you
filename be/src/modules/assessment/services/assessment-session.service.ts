@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, HttpException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssessmentSession, AssessmentSessionDocument } from '../schemas/assessment-sesions.schema';
@@ -22,9 +22,9 @@ export class AssessmentSessionService {
         // Quota per month (AiUsageLog-based) for assessment attempts
         try {
             await this.aiQuotaService.checkQuota(String(userId), AiFeature.ASSESSMENT);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // Standardize quota to 429
-            if (e?.status === HttpStatus.TOO_MANY_REQUESTS) throw e;
+            if (e instanceof HttpException && e.getStatus() === 429) throw e;
             if (e instanceof HttpException) throw e;
             throw e;
         }

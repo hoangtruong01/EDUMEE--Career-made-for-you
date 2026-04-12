@@ -133,6 +133,8 @@ export class SimulationTaskController {
   @Post(':id/duplicate')
   @ApiOperation({ summary: 'Duplicate a task' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Task duplicated successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   duplicateTask(@Param('id') id: string, @Body() modifications?: any) {
     return this.simulationTaskService.duplicateTask(
       id,
@@ -153,6 +155,8 @@ export class SimulationTaskController {
   @Put(':id/statistics')
   @ApiOperation({ summary: 'Update task statistics' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Statistics updated successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   updateStatistics(@Param('id') id: string, @Body() submissionResult: any) {
     return this.simulationTaskService.updateTaskStatistics(id, submissionResult);
   }

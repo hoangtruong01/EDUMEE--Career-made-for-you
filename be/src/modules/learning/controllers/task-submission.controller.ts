@@ -21,7 +21,8 @@ import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums/user-role.enum';
-import { isAdmin } from '../../../common/auth';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 
 @ApiTags('task-submissions')
 @ApiBearerAuth('JWT-auth')
@@ -31,19 +32,20 @@ export class TaskSubmissionController {
   constructor(
     private readonly taskSubmissionService: TaskSubmissionService,
     private readonly aiQuotaService: AiQuotaService,
-  ) {}
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new task submission' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Submission created successfully' })
-  async create(@Body() createDto: CreateTaskSubmissionDto, @CurrentUser() user: any) {
-    const { plan } = await this.aiQuotaService.getPlanLimits(user.userId);
+  async create(@Body() createDto: CreateTaskSubmissionDto, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
     if (plan.features?.jobSimulation === false) {
       throw new ForbiddenException('Job simulation is not available in your plan');
     }
-    await this.aiQuotaService.checkQuota(user.userId, AiFeature.SIMULATION);
-    const res = await this.taskSubmissionService.create({ ...createDto, userId: user.userId } as any);
-    await this.aiQuotaService.consumeQuota(user.userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
+    await this.aiQuotaService.checkQuota(userId, AiFeature.SIMULATION);
+    const res = await this.taskSubmissionService.create({ ...createDto, userId });
+    await this.aiQuotaService.consumeQuota(userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
     return res;
   }
 
@@ -126,18 +128,19 @@ export class TaskSubmissionController {
   @Post(':id/submit')
   @ApiOperation({ summary: 'Submit for evaluation' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Submission sent for evaluation' })
-  async submitForEvaluation(@Param('id') id: string, @CurrentUser() user: any) {
-    const { plan } = await this.aiQuotaService.getPlanLimits(user.userId);
+  async submitForEvaluation(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
     if (plan.features?.jobSimulation === false) {
       throw new ForbiddenException('Job simulation is not available in your plan');
     }
-    await this.aiQuotaService.checkQuota(user.userId, AiFeature.SIMULATION);
+    await this.aiQuotaService.checkQuota(userId, AiFeature.SIMULATION);
     const submission = await this.taskSubmissionService.findOne(id);
-    if (!isAdmin(user) && (submission as any).userId.toString() !== user.userId) {
+    if (!isAdmin(user) && String((submission as { userId?: unknown }).userId) !== userId) {
       throw new ForbiddenException('Forbidden');
     }
     const res = await this.taskSubmissionService.submitForEvaluation(id);
-    await this.aiQuotaService.consumeQuota(user.userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
+    await this.aiQuotaService.consumeQuota(userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
     return res;
   }
 
@@ -174,8 +177,27 @@ export class TaskSubmissionController {
   @Post(':id/retry')
   @ApiOperation({ summary: 'Create a retry attempt' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Retry attempt created successfully' })
-  createRetryAttempt(@Param('id') id: string, @Body() newSubmissionData: CreateTaskSubmissionDto) {
-    return this.taskSubmissionService.createRetryAttempt(id, newSubmissionData);
+  async createRetryAttempt(
+    @Param('id') id: string,
+    @Body() newSubmissionData: CreateTaskSubmissionDto,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
+    if (plan.features?.jobSimulation === false) {
+      throw new ForbiddenException('Job simulation is not available in your plan');
+    }
+
+    await this.aiQuotaService.checkQuota(userId, AiFeature.SIMULATION);
+
+    const original = await this.taskSubmissionService.findOne(id);
+    if (!isAdmin(user) && String((original as { userId?: unknown }).userId) !== userId) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    const res = await this.taskSubmissionService.createRetryAttempt(id, { ...newSubmissionData, userId });
+    await this.aiQuotaService.consumeQuota(userId, AiFeature.SIMULATION, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Put(':id')

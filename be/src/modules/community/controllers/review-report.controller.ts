@@ -15,6 +15,8 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums/user-role.enum';
+import { getAuthUserId } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 import { CreateReviewReportDto } from '../dto';
 import { ReviewReportService } from '../services/review-report.service';
 import { ReportStatus } from '../schemas/review-interactions.schema';
@@ -24,13 +26,13 @@ import { ReportStatus } from '../schemas/review-interactions.schema';
 @UseGuards(JwtAuthGuard)
 @Controller('review-reports')
 export class ReviewReportController {
-  constructor(private readonly reviewReportService: ReviewReportService) {}
+  constructor(private readonly reviewReportService: ReviewReportService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a report for a review' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Report created successfully' })
-  create(@Body() dto: CreateReviewReportDto, @CurrentUser() user: any) {
-    return this.reviewReportService.createForUser(user.userId, dto as any);
+  create(@Body() dto: CreateReviewReportDto, @CurrentUser() user: AuthUserLike) {
+    return this.reviewReportService.createForUser(getAuthUserId(user), dto as unknown as { reviewId: string; [key: string]: unknown });
   }
 
   @Get()
@@ -77,4 +79,3 @@ export class ReviewReportController {
     return this.reviewReportService.updateStatus(id, body.status, body.resolution);
   }
 }
-

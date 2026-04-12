@@ -28,12 +28,17 @@ const ONBOARDING_STEPS_ORDER: OnboardingStep[] = [
   OnboardingStep.COMPLETION,
 ];
 
+function hasMongoDuplicateKeyCode(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return 'code' in error && (error as { code?: unknown }).code === 11000;
+}
+
 @Injectable()
 export class OnboardingSessionService {
   constructor(
     @InjectModel(OnboardingSession.name)
     private onboardingSessionModel: Model<OnboardingSessionDocument>,
-  ) {}
+  ) { }
 
   async createForUser(userId: string, createDto: Record<string, unknown>): Promise<OnboardingSessionDocument> {
     if (!Types.ObjectId.isValid(userId)) {
@@ -63,8 +68,8 @@ export class OnboardingSessionService {
 
     try {
       return await session.save();
-    } catch (e: any) {
-      if (e && e.code === 11000) {
+    } catch (e: unknown) {
+      if (hasMongoDuplicateKeyCode(e)) {
         throw new ConflictException('Onboarding session already exists');
       }
       throw e;
@@ -137,7 +142,7 @@ export class OnboardingSessionService {
 
     const stepProgress = session.stepProgress || [];
     const stepIndex = stepProgress.findIndex(
-      (stepItem) => stepItem.stepId === (step as OnboardingStep),
+      (stepItem) => stepItem.stepId === (step),
     );
 
     if (stepIndex < 0) throw new BadRequestException('Invalid step');

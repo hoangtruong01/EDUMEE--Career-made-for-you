@@ -22,6 +22,10 @@ interface Career {
   industry?: string;
 }
 
+interface AnswerWithSessionId {
+  sessionId?: Types.ObjectId | string;
+}
+
 @Injectable()
 export class CareerFitResultService {
   private readonly logger = new Logger(CareerFitResultService.name);
@@ -321,8 +325,8 @@ export class CareerFitResultService {
       let inferredSessionId: string | undefined;
       try {
         const counts: Record<string, number> = {};
-        for (const a of userAnswers) {
-          const sid = (a as any).sessionId?.toString();
+        for (const a of userAnswers as AnswerWithSessionId[]) {
+          const sid = a.sessionId?.toString();
           if (sid) counts[sid] = (counts[sid] || 0) + 1;
         }
         const entries = Object.entries(counts);
@@ -330,7 +334,7 @@ export class CareerFitResultService {
           entries.sort(([, a], [, b]) => b - a);
           inferredSessionId = entries[0][0];
         }
-      } catch (e) {
+      } catch {
         inferredSessionId = undefined;
       }
 

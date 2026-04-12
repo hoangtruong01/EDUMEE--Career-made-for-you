@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
+import { AiPlan, AiPlanDocument, PlanName } from '../schema/ai-plan.schema';
 import { AiFeature, AiUsageLog, AiUsageLogDocument } from '../schema/ai-usage-logs.schema';
 import {
   SubscriptionStatus,
@@ -29,6 +29,15 @@ const FEATURE_TO_LIMIT_KEY: Partial<Record<AiFeature, LimitKey>> = {
   [AiFeature.CAREER_RECOMMENDATION]: 'careerRecommendationRunsPerMonth',
   [AiFeature.CAREER_COMPARISON]: 'careerComparisonsPerMonth',
   [AiFeature.PERSONALIZED_ROADMAP]: 'personalizedRoadmapsPerMonth',
+};
+
+const FEATURE_TO_FLAG_KEY: Partial<Record<AiFeature, keyof AiPlan['features']>> = {
+  [AiFeature.CAREER_RECOMMENDATION]: 'careerRecommendation',
+  [AiFeature.CAREER_COMPARISON]: 'careerComparison',
+  [AiFeature.PERSONALIZED_ROADMAP]: 'personalizedRoadmap',
+  [AiFeature.SIMULATION]: 'jobSimulation',
+  [AiFeature.MENTOR_BOOKING]: 'mentorBooking',
+  [AiFeature.CHATBOT]: 'aiChatbot',
 };
 
 @Injectable()
@@ -55,7 +64,7 @@ export class AiQuotaService {
     const active = await this.getActivePlanForUser(userId);
     if (active) return active;
     // Fallback to FREE plan if exists.
-    return this.aiPlanModel.findOne({ name: 'Free' }).exec();
+    return this.aiPlanModel.findOne({ name: PlanName.FREE }).exec();
   }
 
   async checkQuota(userId: string, feature: AiFeature, now = new Date()): Promise<void> {
@@ -120,27 +129,15 @@ export class AiQuotaService {
   }
 
   private assertFeatureEnabled(plan: AiPlan, feature: AiFeature): void {
-    // Feature flags in AiPlan.features are boolean-ish; enforce when present.
-    const flags = plan.features || {};
+    // Assessment attempts are always allowed; the quota (limits) controls it.
+    if (feature === AiFeature.ASSESSMENT) return;
 
-    const enabled =
-      feature === AiFeature.CAREER_RECOMMENDATION
-        ? flags.careerRecommendation
-        : feature === AiFeature.CAREER_COMPARISON
-          ? flags.careerComparison
-          : feature === AiFeature.PERSONALIZED_ROADMAP
-            ? flags.personalizedRoadmap
-            : feature === AiFeature.SIMULATION
-              ? flags.jobSimulation
-              : feature === AiFeature.MENTOR_BOOKING
-                ? flags.mentorBooking
-                : feature === AiFeature.CHATBOT
-                  ? flags.aiChatbot
-                  : feature === AiFeature.ASSESSMENT
-                    ? true
-                    : true;
+    // For gated features, require an explicit `true` flag. Missing/undefined means disabled.
+    const flagKey = FEATURE_TO_FLAG_KEY[feature];
+    if (!flagKey) return;
 
-    if (enabled === false) {
+    const enabled = plan.features?.[flagKey];
+    if (enabled !== true) {
       throw new ForbiddenException('AI feature is not available in your plan');
     }
   }
@@ -172,8 +169,8 @@ export class AiQuotaService {
     const used = usage?.requestCount || 0;
 
     const unlimited = typeof limit !== 'number';
-    const remaining = unlimited ? undefined : Math.max(0, (limit as number) - used);
-    return { feature, month, year, limit: unlimited ? undefined : (limit as number), used, remaining, unlimited };
+    const remaining = unlimited ? undefined : Math.max(0, (limit) - used);
+    return { feature, month, year, limit: unlimited ? undefined : (limit), used, remaining, unlimited };
   }
 
   async getPlanLimits(userId: string): Promise<{ plan: AiPlanDocument; limits: AiPlan['limits'] }> {

@@ -13,7 +13,13 @@ import {
   BookingStatus,
 } from '../schemas/booking-session.schema';
 import { TutorProfile, TutorProfileDocument, TutorStatus } from '../schemas/tutor-profile.schema';
-import { isAdmin } from '../../../common/auth';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
+
+interface CreateBookingInput {
+  tutorProfileId: string;
+  [key: string]: unknown;
+}
 
 @Injectable()
 export class BookingSessionService {
@@ -22,9 +28,9 @@ export class BookingSessionService {
     private bookingSessionModel: Model<BookingSessionDocument>,
     @InjectModel(TutorProfile.name)
     private tutorProfileModel: Model<TutorProfileDocument>,
-  ) {}
+  ) { }
 
-  async createForMentee(menteeId: string, createDto: any): Promise<BookingSessionDocument> {
+  async createForMentee(menteeId: string, createDto: CreateBookingInput): Promise<BookingSessionDocument> {
     if (!Types.ObjectId.isValid(menteeId)) throw new BadRequestException('Invalid menteeId');
     if (!Types.ObjectId.isValid(createDto.tutorProfileId)) throw new BadRequestException('Invalid tutorProfileId');
 
@@ -88,18 +94,18 @@ export class BookingSessionService {
 
   async confirmBooking(
     id: string,
-    actor: { userId: string; role?: string },
+    actor: AuthUserLike,
     confirmedDateTime: Date,
   ): Promise<BookingSessionDocument> {
     const booking = await this.findOne(id);
-    const actorId = actor.userId;
-    if (!Types.ObjectId.isValid(actorId)) throw new ForbiddenException('Missing user context');
+    const actorId = getAuthUserId(actor);
+    if (!actorId || !Types.ObjectId.isValid(actorId)) throw new ForbiddenException('Missing user context');
 
     const isMentor = booking.mentorId.toString() === actorId;
-    if (!isMentor && !isAdmin(actor as any)) throw new ForbiddenException('Forbidden');
+    if (!isMentor && !isAdmin(actor)) throw new ForbiddenException('Forbidden');
 
     // overlap check for mentor at confirmed time
-    await this.assertNoOverlap(booking.mentorId.toString(), confirmedDateTime, booking.schedulingDetails.duration, booking._id.toString());
+    await this.assertNoOverlap(booking.mentorId.toString(), confirmedDateTime, booking.schedulingDetails.duration, id);
 
     return this.update(id, {
       status: BookingStatus.CONFIRMED,
@@ -109,16 +115,16 @@ export class BookingSessionService {
 
   async cancelBooking(
     id: string,
-    actor: { userId: string; role?: string },
+    actor: AuthUserLike,
     reason?: string,
   ): Promise<BookingSessionDocument> {
     const booking = await this.findOne(id);
-    const actorId = actor.userId;
-    if (!Types.ObjectId.isValid(actorId)) throw new ForbiddenException('Missing user context');
+    const actorId = getAuthUserId(actor);
+    if (!actorId || !Types.ObjectId.isValid(actorId)) throw new ForbiddenException('Missing user context');
 
     const isMentee = booking.menteeId.toString() === actorId;
     const isMentor = booking.mentorId.toString() === actorId;
-    if (!isMentee && !isMentor && !isAdmin(actor as any)) throw new ForbiddenException('Forbidden');
+    if (!isMentee && !isMentor && !isAdmin(actor)) throw new ForbiddenException('Forbidden');
 
     const status = isMentor ? BookingStatus.CANCELLED_BY_MENTOR : BookingStatus.CANCELLED_BY_MENTEE;
     return this.update(id, { status, ...(reason ? { 'cancellationDetails.reason': reason } : {}) });
@@ -127,22 +133,26 @@ export class BookingSessionService {
   async rescheduleBooking(
     id: string,
     newSchedule: BookingSession['schedulingDetails'],
-    actor?: { userId: string; role?: string },
+    actor?: AuthUserLike,
   ): Promise<BookingSessionDocument> {
     const booking = await this.findOne(id);
     if (actor) {
-      const actorId = actor.userId;
+      const actorId = getAuthUserId(actor);
       const isMentee = booking.menteeId.toString() === actorId;
       const isMentor = booking.mentorId.toString() === actorId;
-      if (!isMentee && !isMentor && !isAdmin(actor as any)) throw new ForbiddenException('Forbidden');
+      if (!isMentee && !isMentor && !isAdmin(actor)) throw new ForbiddenException('Forbidden');
     }
 
     if (newSchedule?.confirmedDateTime) {
+      const duration = newSchedule.duration;
+      if (typeof duration !== 'number') {
+        throw new BadRequestException('Invalid duration');
+      }
       await this.assertNoOverlap(
         booking.mentorId.toString(),
         newSchedule.confirmedDateTime,
-        newSchedule.duration,
-        booking._id.toString(),
+        duration,
+        id,
       );
     }
     return this.update(id, {
@@ -185,7 +195,7 @@ export class BookingSessionService {
     }
     const end = new Date(startMs + durationMinutes * 60_000);
 
-    const query: any = {
+    const query: Record<string, unknown> = {
       mentorId: new Types.ObjectId(mentorId),
       status: BookingStatus.CONFIRMED,
       'schedulingDetails.confirmedDateTime': { $ne: null },

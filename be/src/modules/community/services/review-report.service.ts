@@ -7,14 +7,19 @@ import {
   ReportStatus,
 } from '../schemas/review-interactions.schema';
 
+interface CreateReviewReportInput {
+  reviewId: string;
+  [key: string]: unknown;
+}
+
 @Injectable()
 export class ReviewReportService {
   constructor(
     @InjectModel(ReviewReport.name)
     private readonly reviewReportModel: Model<ReviewReportDocument>,
-  ) {}
+  ) { }
 
-  async createForUser(userId: string, dto: any): Promise<ReviewReportDocument> {
+  async createForUser(userId: string, dto: CreateReviewReportInput): Promise<ReviewReportDocument> {
     if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
     if (!Types.ObjectId.isValid(dto.reviewId)) throw new BadRequestException('Invalid reviewId');
 

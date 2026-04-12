@@ -19,6 +19,11 @@ import {
   TutoringSessionDocument,
 } from '../schemas/tutoring-session.schema';
 
+interface CreateSessionReviewInput {
+  tutoringSessionId: string;
+  [key: string]: unknown;
+}
+
 @Injectable()
 export class SessionReviewService {
   constructor(
@@ -26,9 +31,9 @@ export class SessionReviewService {
     private sessionReviewModel: Model<SessionReviewDocument>,
     @InjectModel(TutoringSession.name)
     private tutoringSessionModel: Model<TutoringSessionDocument>,
-  ) {}
+  ) { }
 
-  async createForReviewer(reviewerId: string, createDto: any): Promise<SessionReviewDocument> {
+  async createForReviewer(reviewerId: string, createDto: CreateSessionReviewInput): Promise<SessionReviewDocument> {
     if (!Types.ObjectId.isValid(reviewerId)) throw new ForbiddenException('Missing user context');
     if (!Types.ObjectId.isValid(createDto.tutoringSessionId)) throw new BadRequestException('Invalid tutoringSessionId');
 

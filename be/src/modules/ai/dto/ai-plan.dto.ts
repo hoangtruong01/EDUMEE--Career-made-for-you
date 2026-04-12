@@ -1,19 +1,19 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, Min } from 'class-validator';
 import { PlanName } from '../schema/ai-plan.schema';
 
 export class AiPlanLimitsDto {
-  @ApiPropertyOptional() @IsOptional() @IsNumber() assessmentsPerMonth?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() chatMessagesPerMonth?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() simulationsPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) assessmentsPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) chatMessagesPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) simulationsPerMonth?: number;
 
-  @ApiPropertyOptional() @IsOptional() @IsNumber() careerRecommendationRunsPerMonth?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() maxCareerRecommendationsPerRun?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) careerRecommendationRunsPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) maxCareerRecommendationsPerRun?: number;
 
-  @ApiPropertyOptional() @IsOptional() @IsNumber() careerComparisonsPerMonth?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() maxCareersPerComparison?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) careerComparisonsPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) maxCareersPerComparison?: number;
 
-  @ApiPropertyOptional() @IsOptional() @IsNumber() personalizedRoadmapsPerMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) personalizedRoadmapsPerMonth?: number;
 }
 
 export class AiPlanFeaturesDto {
@@ -33,6 +33,7 @@ export class CreateAiPlanDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumber()
+  @Min(0)
   price?: number;
 
   @ApiPropertyOptional({ type: AiPlanLimitsDto })
@@ -47,4 +48,3 @@ export class CreateAiPlanDto {
 }
 
 export class UpdateAiPlanDto extends PartialType(CreateAiPlanDto) {}
-

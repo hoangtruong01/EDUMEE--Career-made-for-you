@@ -5,6 +5,8 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
+import { getAuthUserId } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 import { UpsertAiSubscriptionDto } from '../dto';
 import { AiSubscriptionService } from '../services/ai-subscription.service';
 import { AiQuotaService } from '../services/ai-quota.service';
@@ -18,7 +20,7 @@ export class AiSubscriptionController {
   constructor(
     private readonly aiSubscriptionService: AiSubscriptionService,
     private readonly aiQuotaService: AiQuotaService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -45,8 +47,9 @@ export class AiSubscriptionController {
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user plan + remaining quota (monthly)' })
-  async me(@CurrentUser() user: any) {
-    const { plan } = await this.aiQuotaService.getPlanLimits(user.userId);
+  async me(@CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
     const featuresToShow: AiFeature[] = [
       AiFeature.ASSESSMENT,
       AiFeature.CAREER_RECOMMENDATION,
@@ -58,7 +61,7 @@ export class AiSubscriptionController {
     const quotas = await Promise.all(
       featuresToShow.map(async (f) => {
         try {
-          return await this.aiQuotaService.getRemainingQuota(user.userId, f);
+          return await this.aiQuotaService.getRemainingQuota(userId, f);
         } catch {
           return { feature: f, month: new Date().getMonth() + 1, year: new Date().getFullYear(), used: 0, unlimited: false, remaining: 0 };
         }
@@ -67,4 +70,3 @@ export class AiSubscriptionController {
     return { plan, quotas };
   }
 }
-

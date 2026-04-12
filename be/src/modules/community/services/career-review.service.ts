@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,12 +10,25 @@ import { CareerReview, CareerReviewDocument, ReviewStatus } from '../schemas/car
 import { createHash } from 'crypto';
 import { Types } from 'mongoose';
 
+interface CreateCareerReviewInput {
+  careerId: string;
+  moderationRequired?: boolean;
+  status?: ReviewStatus;
+  sensitiveContent?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+function hasMongoDuplicateKeyCode(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return 'code' in error && (error as { code?: unknown }).code === 11000;
+}
+
 @Injectable()
 export class CareerReviewService {
   constructor(
     @InjectModel(CareerReview.name)
     private careerReviewModel: Model<CareerReviewDocument>,
-  ) {}
+  ) { }
 
   buildAnonymousId(userId: string, salt: string): string {
     return createHash('sha256')
@@ -25,15 +37,15 @@ export class CareerReviewService {
       .slice(0, 32);
   }
 
-  async createForUser(userId: string, salt: string, createDto: any): Promise<CareerReviewDocument> {
+  async createForUser(userId: string, salt: string, createDto: CreateCareerReviewInput): Promise<CareerReviewDocument> {
     if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
     if (!Types.ObjectId.isValid(createDto.careerId)) throw new BadRequestException('Invalid careerId');
 
     const anonymousId = this.buildAnonymousId(userId, salt);
 
-    const moderationRequired = Boolean(createDto?.moderationRequired);
+    const moderationRequired = Boolean(createDto.moderationRequired);
     const status: ReviewStatus =
-      moderationRequired ? ReviewStatus.SUBMITTED : (createDto?.status ?? ReviewStatus.SUBMITTED);
+      moderationRequired ? ReviewStatus.SUBMITTED : (createDto.status ?? ReviewStatus.SUBMITTED);
 
     const review = new this.careerReviewModel({
       ...createDto,
@@ -41,15 +53,15 @@ export class CareerReviewService {
       careerId: new Types.ObjectId(createDto.careerId),
       status,
       sensitiveContent: {
-        ...(createDto.sensitiveContent || {}),
+        ...(createDto.sensitiveContent ?? {}),
         moderationRequired,
       },
     });
 
     try {
       return await review.save();
-    } catch (e: any) {
-      if (e && e.code === 11000) throw new ConflictException('Duplicate review');
+    } catch (e: unknown) {
+      if (hasMongoDuplicateKeyCode(e)) throw new ConflictException('Duplicate review');
       throw e;
     }
   }

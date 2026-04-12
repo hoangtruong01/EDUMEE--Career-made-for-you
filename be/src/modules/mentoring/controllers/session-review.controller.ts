@@ -18,20 +18,24 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums/user-role.enum';
-import { isAdmin } from '../../../common/auth';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 
 @ApiTags('session-reviews')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('session-reviews')
 export class SessionReviewController {
-  constructor(private readonly sessionReviewService: SessionReviewService) {}
+  constructor(private readonly sessionReviewService: SessionReviewService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new session review' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Review created successfully' })
-  create(@Body() createDto: any, @CurrentUser() user: any) {
-    return this.sessionReviewService.createForReviewer(user.userId, createDto);
+  create(
+    @Body() createDto: { tutoringSessionId: string } & Record<string, unknown>,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.sessionReviewService.createForReviewer(getAuthUserId(user), createDto);
   }
 
   @Get()
@@ -65,8 +69,8 @@ export class SessionReviewController {
   @Get('reviewer/:reviewerId')
   @ApiOperation({ summary: 'Get reviews by reviewer' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Reviews retrieved successfully' })
-  findByReviewer(@Param('reviewerId') reviewerId: string, @CurrentUser() user: any) {
-    if (!isAdmin(user) && reviewerId !== user.userId) throw new ForbiddenException('Forbidden');
+  findByReviewer(@Param('reviewerId') reviewerId: string, @CurrentUser() user: AuthUserLike) {
+    if (!isAdmin(user) && reviewerId !== getAuthUserId(user)) throw new ForbiddenException('Forbidden');
     return this.sessionReviewService.findByReviewer(reviewerId);
   }
 
@@ -90,10 +94,11 @@ export class SessionReviewController {
   @ApiOperation({ summary: 'Get a session review by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
+  async findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
     const review = await this.sessionReviewService.findOne(id);
     if (isAdmin(user)) return review;
-    const ok = review.reviewerId.toString() === user.userId || review.reviewedUserId.toString() === user.userId;
+    const ok = review.reviewerId.toString() === userId || review.reviewedUserId.toString() === userId;
     if (!ok) throw new ForbiddenException('Forbidden');
     return review;
   }
@@ -102,19 +107,19 @@ export class SessionReviewController {
   @ApiOperation({ summary: 'Update a session review' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  async update(@Param('id') id: string, @Body() updateDto: Record<string, unknown>, @CurrentUser() user: any) {
+  async update(@Param('id') id: string, @Body() updateDto: Record<string, unknown>, @CurrentUser() user: AuthUserLike) {
     const review = await this.sessionReviewService.findOne(id);
-    if (!isAdmin(user) && review.reviewerId.toString() !== user.userId) throw new ForbiddenException('Forbidden');
-    return this.sessionReviewService.update(id, updateDto as any);
+    if (!isAdmin(user) && review.reviewerId.toString() !== getAuthUserId(user)) throw new ForbiddenException('Forbidden');
+    return this.sessionReviewService.update(id, updateDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a session review' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  async remove(@Param('id') id: string, @CurrentUser() user: any) {
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     const review = await this.sessionReviewService.findOne(id);
-    if (!isAdmin(user) && review.reviewerId.toString() !== user.userId) throw new ForbiddenException('Forbidden');
+    if (!isAdmin(user) && review.reviewerId.toString() !== getAuthUserId(user)) throw new ForbiddenException('Forbidden');
     return this.sessionReviewService.remove(id);
   }
 }

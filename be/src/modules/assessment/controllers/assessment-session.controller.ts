@@ -23,12 +23,8 @@ import { AssessmentSessionService } from '../services/assessment-session.service
 import { AssessmentSession } from '../schemas/assessment-sesions.schema';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-
-interface CurrentUserPayload {
-    userId: string;
-    email?: string;
-    role?: string;
-}
+import { getAuthUserId } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 
 @ApiTags('Assessment Sessions')
 @ApiBearerAuth('JWT-auth')
@@ -41,8 +37,8 @@ export class AssessmentSessionController {
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Start a new assessment session for current user' })
     @ApiResponse({ status: 201, description: 'Session created' })
-    async create(@CurrentUser() user: CurrentUserPayload): Promise<AssessmentSession> {
-        return this.sessionService.createSession(user.userId);
+    async create(@CurrentUser() user: AuthUserLike): Promise<AssessmentSession> {
+        return this.sessionService.createSession(getAuthUserId(user));
     }
 
     @Get()
@@ -50,12 +46,12 @@ export class AssessmentSessionController {
     @ApiQuery({ name: 'status', required: false, type: String })
     @ApiResponse({ status: 200, description: 'Sessions list' })
     async list(
-        @CurrentUser() user: CurrentUserPayload,
+        @CurrentUser() user: AuthUserLike,
         @Query('status') status?: string,
     ) {
-        const filter = {} as any;
+        const filter: Record<string, string> = {};
         if (status) filter.status = status;
-        return this.sessionService.listByUser(user.userId, filter);
+        return this.sessionService.listByUser(getAuthUserId(user), filter);
     }
 
     @Get(':id')
@@ -70,8 +66,8 @@ export class AssessmentSessionController {
     @ApiOperation({ summary: 'Update session' })
     @ApiParam({ name: 'id', description: 'Session ID' })
     @ApiResponse({ status: 200, description: 'Session updated' })
-    async update(@Param('id') id: string, @Body() patch: Partial<any>) {
-        return this.sessionService.updateSession(id, patch);
+    async update(@Param('id') id: string, @Body() patch: Record<string, unknown>) {
+        return this.sessionService.updateSession(id, patch as Partial<AssessmentSession>);
     }
 
     @Post(':id/finish')

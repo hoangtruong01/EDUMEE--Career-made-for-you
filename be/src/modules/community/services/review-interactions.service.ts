@@ -8,14 +8,19 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, FilterQuery, Types } from 'mongoose';
 import { ReviewVote, ReviewVoteDocument, VoteType } from '../schemas/review-interactions.schema';
 
+function hasMongoDuplicateKeyCode(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return 'code' in error && (error as { code?: unknown }).code === 11000;
+}
+
 @Injectable()
 export class ReviewInteractionsService {
   constructor(
     @InjectModel(ReviewVote.name)
     private reviewVoteModel: Model<ReviewVoteDocument>,
-  ) {}
+  ) { }
 
-  async create(createDto: any): Promise<ReviewVoteDocument> {
+  async create(createDto: Partial<ReviewVote>): Promise<ReviewVoteDocument> {
     const vote = new this.reviewVoteModel(createDto);
     return vote.save();
   }
@@ -65,17 +70,19 @@ export class ReviewInteractionsService {
     const voterObjId = new Types.ObjectId(voterId);
 
     const existingVote = await this.reviewVoteModel.findOne({ reviewId: reviewObjId, voterId: voterObjId }).exec();
-    
+
     if (existingVote) {
       existingVote.voteType = voteType;
-      if (voteContext) existingVote.voteContext = voteContext as any;
+      if (voteContext) {
+        existingVote.set('voteContext', voteContext);
+      }
       return existingVote.save();
     }
-    
+
     try {
       return await this.create({ reviewId: reviewObjId, voterId: voterObjId, voteType, voteContext });
-    } catch (e: any) {
-      if (e && e.code === 11000) throw new ConflictException('Already voted on this review');
+    } catch (e: unknown) {
+      if (hasMongoDuplicateKeyCode(e)) throw new ConflictException('Already voted on this review');
       throw e;
     }
   }
