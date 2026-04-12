@@ -11,7 +11,7 @@ export class TutorProfileService {
   constructor(
     @InjectModel(TutorProfile.name)
     private tutorProfileModel: Model<TutorProfileDocument>,
-  ) {}
+  ) { }
 
   async create(createDto: CreateTutorProfileInput): Promise<TutorProfileDocument> {
     const profile = new this.tutorProfileModel(createDto);
