@@ -23,8 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi">
-      <body className={`${plusJakartaSans.variable} antialiased`}>
+    <html lang="vi" suppressHydrationWarning>
+      <body suppressHydrationWarning className={`${plusJakartaSans.variable} antialiased`}>
         <AppProviders>
           {children}
           <Toaster />

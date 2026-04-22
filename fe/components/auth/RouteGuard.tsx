@@ -14,24 +14,29 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
   const pathname = usePathname();
   const router = useRouter();
 
+  const isDemoUserUnlocked =
+    typeof window !== 'undefined' && window.localStorage.getItem('demo_user_unlocked') === '1';
+
+  const canAccessUserDemo = !requiredRole && isDemoUserUnlocked;
+
   const hasRoleAccess = !requiredRole || role === requiredRole;
-  const isAuthorized = isAuthenticated && hasRoleAccess;
+  const isAuthorized = (isAuthenticated && hasRoleAccess) || canAccessUserDemo;
 
   useEffect(() => {
     if (!isHydrated) {
       return;
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !canAccessUserDemo) {
       const redirectTo = encodeURIComponent(pathname || '/dashboard');
       router.replace(`/login?redirect=${redirectTo}`);
       return;
     }
 
-    if (!hasRoleAccess) {
+    if (!hasRoleAccess && !canAccessUserDemo) {
       router.replace('/unauthorized');
     }
-  }, [hasRoleAccess, isAuthenticated, isHydrated, pathname, router]);
+  }, [canAccessUserDemo, hasRoleAccess, isAuthenticated, isHydrated, pathname, router]);
 
   if (!isHydrated || !isAuthorized) {
     return (

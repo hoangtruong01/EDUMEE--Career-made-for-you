@@ -192,7 +192,10 @@ const PersonalityTest = () => {
       <Analyzing
         onDone={() => {
           markHasAssessmentResult();
-          router.push('/assessment-result');
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('demo_user_unlocked', '1');
+          }
+          router.push('/profile');
         }}
       />
     );
