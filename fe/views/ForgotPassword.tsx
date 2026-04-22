@@ -1,49 +1,63 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { motion } from "framer-motion";
-import { Sparkles, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useAuth } from '@/context/auth-context';
+import { ApiError } from '@/lib/api-client';
+import { motion } from 'framer-motion';
+import { ArrowLeft, CheckCircle2, Mail, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
 
 const ForgotPassword = () => {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const { forgotPassword } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
+      await forgotPassword(email);
       setSent(true);
-    }, 1000);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage('Không thể gửi yêu cầu lúc này. Vui lòng thử lại.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-card">
+    <div className="bg-gradient-card flex min-h-screen items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
         <div className="glass-card rounded-2xl p-8">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-hero flex items-center justify-center mx-auto mb-4">
+          <div className="mb-8 text-center">
+            <div className="bg-gradient-hero mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl">
               {sent ? (
-                <CheckCircle2 className="w-7 h-7 text-primary-foreground" />
+                <CheckCircle2 className="text-primary-foreground h-7 w-7" />
               ) : (
-                <Sparkles className="w-7 h-7 text-primary-foreground" />
+                <Sparkles className="text-primary-foreground h-7 w-7" />
               )}
             </div>
-            <h1 className="text-2xl font-bold font-display">
-              {sent ? "Kiểm tra email!" : "Quên mật khẩu?"}
+            <h1 className="font-display text-2xl font-bold">
+              {sent ? 'Kiểm tra email!' : 'Quên mật khẩu?'}
             </h1>
-            <p className="text-muted-foreground text-sm mt-1">
+            <p className="text-muted-foreground mt-1 text-sm">
               {sent
                 ? `Chúng tôi đã gửi link đặt lại mật khẩu đến ${email}`
-                : "Nhập email để nhận link đặt lại mật khẩu"}
+                : 'Nhập email để nhận link đặt lại mật khẩu'}
             </p>
           </div>
 
@@ -52,7 +66,7 @@ const ForgotPassword = () => {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Email</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Mail className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                   <Input
                     type="email"
                     placeholder="email@example.com"
@@ -65,8 +79,10 @@ const ForgotPassword = () => {
               </div>
 
               <Button variant="hero" className="w-full" disabled={loading}>
-                {loading ? "Đang gửi..." : "Gửi link đặt lại"}
+                {loading ? 'Đang gửi...' : 'Gửi link đặt lại'}
               </Button>
+
+              {errorMessage && <p className="text-destructive text-sm">{errorMessage}</p>}
             </form>
           ) : (
             <Button variant="hero" className="w-full" onClick={() => setSent(false)}>
@@ -75,8 +91,11 @@ const ForgotPassword = () => {
           )}
 
           <div className="mt-6 text-center">
-            <Link href="/login" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
-              <ArrowLeft className="w-3 h-3" /> Quay lại đăng nhập
+            <Link
+              href="/login"
+              className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
+            >
+              <ArrowLeft className="h-3 w-3" /> Quay lại đăng nhập
             </Link>
           </div>
         </div>

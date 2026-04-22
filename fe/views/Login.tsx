@@ -1,29 +1,43 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/context/auth-context';
+import { ApiError } from '@/lib/api-client';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
     setLoading(true);
-    // TODO: integrate with auth backend
-    setTimeout(() => {
+
+    try {
+      const result = await login({ email, password });
+      const nextPath = result.redirectTo?.startsWith('/') ? result.redirectTo : '/dashboard';
+      router.push(nextPath);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage('Không thể đăng nhập lúc này. Vui lòng thử lại.');
+      }
+    } finally {
       setLoading(false);
-      router.push('/onboarding');
-    }, 1000);
+    }
   };
 
   return (
@@ -90,6 +104,8 @@ const Login = () => {
               {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               {!loading && <ArrowRight className="h-4 w-4" />}
             </Button>
+
+            {errorMessage && <p className="text-destructive text-sm">{errorMessage}</p>}
           </form>
 
           <div className="text-muted-foreground mt-6 text-center text-sm">

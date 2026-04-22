@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useAssessment } from '@/context/assessment-context';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Sparkles, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -168,6 +169,7 @@ const PersonalityTest = () => {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const router = useRouter();
+  const { markHasAssessmentResult } = useAssessment();
 
   const progress = ((step + 1) / personalityQuestions.length) * 100;
   const currentQ = personalityQuestions[step];
@@ -189,7 +191,7 @@ const PersonalityTest = () => {
     return (
       <Analyzing
         onDone={() => {
-          localStorage.setItem('hasAssessmentResult', 'true');
+          markHasAssessmentResult();
           router.push('/assessment-result');
         }}
       />

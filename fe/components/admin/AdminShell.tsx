@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/auth-context';
 import { cn } from '@/lib/utils';
 import {
   BarChart3,
@@ -12,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const menuItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,13 +24,17 @@ const menuItems = [
   { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ];
 
-const footerItems = [
-  { href: '/', label: 'Về trang chủ', icon: Home },
-  { href: '/login', label: 'Đăng xuất', icon: LogOut },
-];
+const footerItems = [{ href: '/', label: 'Về trang chủ', icon: Home }];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f3fb] text-slate-900">
@@ -77,6 +82,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <span>{item.label}</span>
               </Link>
             ))}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="group flex h-10 w-full items-center gap-2 rounded-xl px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Đăng xuất</span>
+            </button>
           </div>
         </aside>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAssessment } from '@/context/assessment-context';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
@@ -45,6 +46,7 @@ const getThemeSnapshot = () => {
 const Navbar = () => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { hasAssessmentResult } = useAssessment();
 
   const darkMode = useSyncExternalStore(themeSubscribe, getThemeSnapshot, () => false);
 
@@ -61,16 +63,7 @@ const Navbar = () => {
     window.dispatchEvent(new StorageEvent('storage'));
   }, [darkMode]);
 
-  const hasResult = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener('storage', cb);
-      return () => window.removeEventListener('storage', cb);
-    },
-    () => localStorage.getItem('hasAssessmentResult') === 'true',
-    () => false,
-  );
-
-  const navItems = hasResult
+  const navItems = hasAssessmentResult
     ? [...baseNavItems, { href: '/assessment-result', label: 'Kết quả', icon: ClipboardCheck }]
     : baseNavItems;
 

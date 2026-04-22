@@ -1,3 +1,4 @@
+import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
@@ -24,8 +25,10 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <body className={`${plusJakartaSans.variable} antialiased`}>
-        {children}
-        <Toaster />
+        <AppProviders>
+          {children}
+          <Toaster />
+        </AppProviders>
       </body>
     </html>
   );
