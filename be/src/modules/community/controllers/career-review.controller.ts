@@ -9,12 +9,20 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { Types } from 'mongoose';
 import { CareerReviewService } from '../services/career-review.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CreateCareerReviewDto, UpdateCareerReviewDto } from '../dto';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
+import { ReviewStatus } from '../schemas/career-review.schema';
+import { ConfigService } from '@nestjs/config';
 
 
 @ApiTags('career-reviews')
@@ -22,13 +30,21 @@ import { CreateCareerReviewDto, UpdateCareerReviewDto } from '../dto';
 @UseGuards(JwtAuthGuard)
 @Controller('career-reviews')
 export class CareerReviewController {
-  constructor(private readonly careerReviewService: CareerReviewService) {}
+  constructor(
+    private readonly careerReviewService: CareerReviewService,
+    private readonly configService: ConfigService,
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new career review' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Review created successfully' })
-  create(@Body() createDto: CreateCareerReviewDto) {
-    return this.careerReviewService.create(createDto);
+  create(@Body() createDto: CreateCareerReviewDto, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const salt =
+      this.configService.get<string>('app.anonymousSalt') ||
+      this.configService.get<string>('ANON_SALT') ||
+      'default_anon_salt';
+    return this.careerReviewService.createForUser(userId, salt, createDto);
   }
 
   @Get()
@@ -37,17 +53,23 @@ export class CareerReviewController {
   findAll(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
-    @Query('userId') userId?: string,
     @Query('careerId') careerId?: string,
-    @Query('category') category?: string,
+    @Query('reviewCategory') reviewCategory?: string,
     @Query('status') status?: string,
+    @CurrentUser() user?: AuthUserLike,
   ) {
-    const filters = {
-      ...(userId ? { userId } : {}),
+    const admin = isAdmin(user);
+    const filters: Record<string, unknown> = {
       ...(careerId ? { careerId } : {}),
-      ...(category ? { category } : {}),
-      ...(status ? { status } : {}),
-    } as Parameters<CareerReviewService['findAll']>[2];
+      ...(reviewCategory ? { reviewCategory } : {}),
+    };
+
+    if (admin) {
+      if (status) filters.status = status;
+    } else {
+      // Public listing defaults to published only.
+      filters.status = ReviewStatus.PUBLISHED;
+    }
 
     return this.careerReviewService.findAll(page, limit, filters);
   }
@@ -59,11 +81,17 @@ export class CareerReviewController {
     return this.careerReviewService.getStatistics(careerId);
   }
 
-  @Get('user/:userId')
-  @ApiOperation({ summary: 'Get reviews by user' })
+  @Get('my')
+  @ApiOperation({ summary: 'Get current user reviews (by anonymousId)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Reviews retrieved successfully' })
-  findByUser(@Param('userId') userId: string) {
-    return this.careerReviewService.findByUser(userId);
+  findMyReviews(@CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const salt =
+      this.configService.get<string>('app.anonymousSalt') ||
+      this.configService.get<string>('ANON_SALT') ||
+      'default_anon_salt';
+    const anonymousId = this.careerReviewService.buildAnonymousId(userId, salt);
+    return this.careerReviewService.findByAnonymousId(anonymousId);
   }
 
   @Get('career/:careerId')
@@ -79,33 +107,60 @@ export class CareerReviewController {
   @Get('category/:category')
   @ApiOperation({ summary: 'Get reviews by category' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Reviews retrieved successfully' })
-  findByCategory(@Param('category') category: string) {
-    return this.careerReviewService.findByCategory(category);
+  findByCategory(@Param('category') category: string, @Query('published') published?: boolean) {
+    return this.careerReviewService.findByCategory(category, published !== false);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a career review by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  findOne(@Param('id') id: string) {
-    return this.careerReviewService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const review = await this.careerReviewService.findOne(id);
+    if (review.status === ReviewStatus.PUBLISHED || isAdmin(user)) return review;
+
+    const salt =
+      this.configService.get<string>('app.anonymousSalt') ||
+      this.configService.get<string>('ANON_SALT') ||
+      'default_anon_salt';
+    const myAnonymousId = this.careerReviewService.buildAnonymousId(getAuthUserId(user), salt);
+    if (review.anonymousId !== myAnonymousId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    return review;
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update a career review' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  update(@Param('id') id: string, @Body() updateDto: UpdateCareerReviewDto) {
-    const updateData = {
-      ...updateDto,
-      ...(updateDto.careerId ? { careerId: new Types.ObjectId(updateDto.careerId) } : {}),
-    } as Partial<any>;
-    return this.careerReviewService.update(id, updateData);
+  async update(@Param('id') id: string, @Body() updateDto: UpdateCareerReviewDto, @CurrentUser() user: AuthUserLike) {
+    const review = await this.careerReviewService.findOne(id);
+
+    if (!isAdmin(user)) {
+      const salt =
+        this.configService.get<string>('app.anonymousSalt') ||
+        this.configService.get<string>('ANON_SALT') ||
+        'default_anon_salt';
+      const myAnonymousId = this.careerReviewService.buildAnonymousId(getAuthUserId(user), salt);
+      if (review.anonymousId !== myAnonymousId) throw new ForbiddenException('Forbidden');
+      if (review.status !== ReviewStatus.DRAFT && review.status !== ReviewStatus.SUBMITTED) {
+        throw new ForbiddenException('Cannot update after moderation/publish');
+      }
+      // Non-admin cannot set status directly.
+      const rest: Partial<UpdateCareerReviewDto> = { ...updateDto };
+      delete (rest as Record<string, unknown>).status;
+      return this.careerReviewService.update(id, rest);
+    }
+
+    return this.careerReviewService.update(id, updateDto);
   }
 
   @Put(':id/status')
   @ApiOperation({ summary: 'Update review status' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Status updated successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   updateStatus(@Param('id') id: string, @Body() body: { status: string }) {
     return this.careerReviewService.updateStatus(id, body.status);
   }
@@ -114,7 +169,19 @@ export class CareerReviewController {
   @ApiOperation({ summary: 'Delete a career review' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Review deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Review not found' })
-  remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const review = await this.careerReviewService.findOne(id);
+    if (isAdmin(user)) return this.careerReviewService.remove(id);
+
+    const salt =
+      this.configService.get<string>('app.anonymousSalt') ||
+      this.configService.get<string>('ANON_SALT') ||
+      'default_anon_salt';
+    const myAnonymousId = this.careerReviewService.buildAnonymousId(getAuthUserId(user), salt);
+    if (review.anonymousId !== myAnonymousId) throw new ForbiddenException('Forbidden');
+    if (review.status !== ReviewStatus.DRAFT && review.status !== ReviewStatus.SUBMITTED) {
+      throw new ForbiddenException('Cannot delete after moderation/publish');
+    }
     return this.careerReviewService.remove(id);
   }
 }

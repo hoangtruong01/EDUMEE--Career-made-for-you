@@ -8,17 +8,9 @@ import {
 import { BookingStatus, SessionType } from '../schemas/booking-session.schema';
 
 export class CreateBookingSessionDto {
-  @ApiProperty({ description: 'Mentee user ID' })
-  @IsString()
-  menteeId!: string;
-
   @ApiProperty({ description: 'Tutor profile ID' })
   @IsString()
   tutorProfileId!: string;
-
-  @ApiProperty({ description: 'Mentor user ID' })
-  @IsString()
-  mentorId!: string;
 
   @ApiProperty({ enum: SessionType, description: 'Type of session' })
   @IsEnum(SessionType)

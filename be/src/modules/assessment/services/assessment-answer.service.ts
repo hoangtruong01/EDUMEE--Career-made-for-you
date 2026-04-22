@@ -3,20 +3,62 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssessmentAnswer, AssessmentAnswerDocument } from '../schemas/assessment-answer.schema';
 import { CreateAssessmentAnswerDto, UpdateAssessmentAnswerDto } from '../dto';
+import { AssessmentQuestion, AssessmentQuestionDocument } from '../schemas/assessment-question.schema';
+import { AssessmentSession, AssessmentSessionDocument } from '../schemas/assessment-sesions.schema';
+import { SessionStatus } from '../enums/assessment.enum';
 
 @Injectable()
 export class AssessmentAnswerService {
   constructor(
     @InjectModel(AssessmentAnswer.name)
     private readonly assessmentAnswerModel: Model<AssessmentAnswerDocument>,
-  ) {}
+    @InjectModel(AssessmentQuestion.name)
+    private readonly assessmentQuestionModel: Model<AssessmentQuestionDocument>,
+    @InjectModel(AssessmentSession.name)
+    private readonly assessmentSessionModel: Model<AssessmentSessionDocument>,
+  ) { }
+
+  private async assertSessionOwnershipAndStatus(sessionId: string, userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(sessionId)) throw new BadRequestException('Invalid sessionId');
+    const session = await this.assessmentSessionModel.findById(sessionId).exec();
+    if (!session) throw new NotFoundException('Assessment session not found');
+    if (session.userId.toString() !== userId) throw new BadRequestException('Session does not belong to user');
+    if (session.status !== SessionStatus.IN_PROGRESS) {
+      throw new BadRequestException('Assessment session is not in progress');
+    }
+  }
+
+  private async assertQuestionActive(questionId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(questionId)) throw new BadRequestException('Invalid questionId');
+    const q = await this.assessmentQuestionModel.findById(questionId).exec();
+    if (!q) throw new NotFoundException('Assessment question not found');
+    if (q.isActive === false) throw new BadRequestException('Question is not active');
+  }
+
+  private assertAnswerFormat(answer: string): void {
+    if (!['A', 'B', 'C', 'D'].includes(answer)) {
+      throw new BadRequestException('Invalid answer format');
+    }
+  }
 
   async create(createDto: CreateAssessmentAnswerDto): Promise<AssessmentAnswer> {
     try {
+      if (!createDto.sessionId) {
+        throw new BadRequestException('sessionId is required');
+      }
+      if (!Types.ObjectId.isValid(String(createDto.sessionId))) {
+        throw new BadRequestException('Invalid sessionId');
+      }
+
+      await this.assertSessionOwnershipAndStatus(String(createDto.sessionId), String(createDto.userId));
+      await this.assertQuestionActive(String(createDto.questionId));
+      this.assertAnswerFormat(String(createDto.answer));
+
       const answer = new this.assessmentAnswerModel({
         ...createDto,
         questionId: new Types.ObjectId(createDto.questionId),
         userId: new Types.ObjectId(createDto.userId),
+        sessionId: new Types.ObjectId(createDto.sessionId),
       });
       return answer.save();
     } catch (error) {
@@ -29,10 +71,22 @@ export class AssessmentAnswerService {
 
   // Trả lời câu hỏi (tạo mới hoặc cập nhật nếu đã trả lời)
   async answerQuestion(createDto: CreateAssessmentAnswerDto): Promise<AssessmentAnswer> {
+    if (!createDto.sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+    if (!Types.ObjectId.isValid(String(createDto.sessionId))) {
+      throw new BadRequestException('Invalid sessionId');
+    }
+
+    await this.assertSessionOwnershipAndStatus(String(createDto.sessionId), String(createDto.userId));
+    await this.assertQuestionActive(String(createDto.questionId));
+    this.assertAnswerFormat(String(createDto.answer));
+
     const existingAnswer = await this.assessmentAnswerModel
       .findOne({
         questionId: new Types.ObjectId(createDto.questionId),
         userId: new Types.ObjectId(createDto.userId),
+        sessionId: new Types.ObjectId(createDto.sessionId),
       })
       .exec();
 
@@ -56,6 +110,7 @@ export class AssessmentAnswerService {
         ...createDto,
         questionId: new Types.ObjectId(createDto.questionId),
         userId: new Types.ObjectId(createDto.userId),
+        sessionId: new Types.ObjectId(createDto.sessionId),
       });
       return answer.save();
     }
@@ -67,9 +122,9 @@ export class AssessmentAnswerService {
     filters: Partial<AssessmentAnswer> = {},
   ): Promise<{ data: AssessmentAnswer[]; total: number; page: number; limit: number }> {
     const skip = (page - 1) * limit;
-    
+
     const query = this.buildQuery(filters);
-    
+
     const [data, total] = await Promise.all([
       this.assessmentAnswerModel
         .find(query)
@@ -155,7 +210,7 @@ export class AssessmentAnswerService {
     }
 
     const result = await this.assessmentAnswerModel.findByIdAndDelete(id).exec();
-    
+
     if (!result) {
       throw new NotFoundException('Assessment answer not found');
     }
@@ -170,7 +225,7 @@ export class AssessmentAnswerService {
     const result = await this.assessmentAnswerModel.deleteMany({
       userId: new Types.ObjectId(userId),
     });
-    
+
     return result.deletedCount;
   }
 
@@ -181,18 +236,52 @@ export class AssessmentAnswerService {
 
     // Get userId from first answer (all answers should belong to same user)
     const userId = answers[0].userId;
-    
-    // Delete all old answers for this user first
-    const deletedCount = await this.deleteAllByUser(userId);
-    console.log(`Deleted ${deletedCount} old answers for user ${userId}`);
+    const sessionId = answers[0].sessionId;
+    if (!sessionId) throw new BadRequestException('sessionId is required for bulk create');
+    if (!Types.ObjectId.isValid(String(sessionId))) throw new BadRequestException('Invalid sessionId');
+
+    // Validate all belong to same session
+    const allSameSession = answers.every((a) => String(a.sessionId) === String(sessionId));
+    if (!allSameSession) throw new BadRequestException('All answers in bulk must belong to the same session');
+
+    await this.assertSessionOwnershipAndStatus(String(sessionId), String(userId));
+
+    // Validate all questions active + answer format
+    for (const a of answers) {
+      await this.assertQuestionActive(String(a.questionId));
+      this.assertAnswerFormat(String(a.answer));
+    }
+
+    // Upsert by (userId, questionId) to respect unique index.
+    // We intentionally do NOT wipe existing answers here; bulk acts as "submit these answers".
 
     const answersWithObjectIds = answers.map(answer => ({
       ...answer,
       questionId: new Types.ObjectId(answer.questionId),
       userId: new Types.ObjectId(answer.userId),
+      sessionId: new Types.ObjectId(answer.sessionId),
     }));
 
-    return this.assessmentAnswerModel.insertMany(answersWithObjectIds);
+    const results: AssessmentAnswer[] = [];
+    for (const a of answersWithObjectIds) {
+      const saved = await this.assessmentAnswerModel
+        .findOneAndUpdate(
+          { userId: a.userId, questionId: a.questionId },
+          {
+            $set: {
+              sessionId: a.sessionId,
+              answer: a.answer,
+              responseTime: a.responseTime,
+              answeredAt: new Date(),
+              metadata: a.metadata,
+            },
+          },
+          { upsert: true, new: true, runValidators: true },
+        )
+        .exec();
+      results.push(saved as unknown as AssessmentAnswer);
+    }
+    return results;
   }
 
   // Thống kê đơn giản cho user
@@ -256,6 +345,11 @@ export class AssessmentAnswerService {
     if (filters.userId) {
       const userId = typeof filters.userId === 'string' ? filters.userId : String(filters.userId);
       query.userId = new Types.ObjectId(userId);
+    }
+
+    if (filters.sessionId) {
+      const sessionId = typeof filters.sessionId === 'string' ? filters.sessionId : String(filters.sessionId);
+      query.sessionId = new Types.ObjectId(sessionId);
     }
 
     return query;

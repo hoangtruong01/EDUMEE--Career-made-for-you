@@ -1,18 +1,70 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, FilterQuery } from 'mongoose';
 import { CareerReview, CareerReviewDocument, ReviewStatus } from '../schemas/career-review.schema';
+import { createHash } from 'crypto';
+import { Types } from 'mongoose';
+import { CreateCareerReviewDto, UpdateCareerReviewDto } from '../dto';
+
+type CreateCareerReviewInput = CreateCareerReviewDto & {
+  sensitiveContent?: Record<string, unknown>;
+};
+
+type UpdateCareerReviewInput = Partial<UpdateCareerReviewDto> & {
+  careerId?: string | Types.ObjectId;
+};
+
+function hasMongoDuplicateKeyCode(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return 'code' in error && (error as { code?: unknown }).code === 11000;
+}
 
 @Injectable()
 export class CareerReviewService {
   constructor(
     @InjectModel(CareerReview.name)
     private careerReviewModel: Model<CareerReviewDocument>,
-  ) {}
+  ) { }
 
-  async create(createDto: any): Promise<CareerReviewDocument> {
-    const review = new this.careerReviewModel(createDto);
-    return review.save();
+  buildAnonymousId(userId: string, salt: string): string {
+    return createHash('sha256')
+      .update(`${salt}:${userId}`)
+      .digest('hex')
+      .slice(0, 32);
+  }
+
+  async createForUser(userId: string, salt: string, createDto: CreateCareerReviewInput): Promise<CareerReviewDocument> {
+    if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
+    if (!Types.ObjectId.isValid(createDto.careerId)) throw new BadRequestException('Invalid careerId');
+
+    const anonymousId = this.buildAnonymousId(userId, salt);
+
+    const moderationRequired = Boolean(createDto.moderationRequired);
+    const status: ReviewStatus =
+      moderationRequired ? ReviewStatus.SUBMITTED : (createDto.status ?? ReviewStatus.SUBMITTED);
+
+    const review = new this.careerReviewModel({
+      ...createDto,
+      anonymousId,
+      careerId: new Types.ObjectId(createDto.careerId),
+      status,
+      sensitiveContent: {
+        ...(createDto.sensitiveContent ?? {}),
+        moderationRequired,
+      },
+    });
+
+    try {
+      return await review.save();
+    } catch (e: unknown) {
+      if (hasMongoDuplicateKeyCode(e)) throw new ConflictException('Duplicate review');
+      throw e;
+    }
   }
 
   async findAll(
@@ -35,6 +87,7 @@ export class CareerReviewService {
   }
 
   async findOne(id: string): Promise<CareerReviewDocument> {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid review id');
     const review = await this.careerReviewModel.findById(id).exec();
     if (!review) {
       throw new NotFoundException(`Career review with ID ${id} not found`);
@@ -42,24 +95,41 @@ export class CareerReviewService {
     return review;
   }
 
-  async findByUser(userId: string): Promise<CareerReviewDocument[]> {
-    return this.careerReviewModel.find({ userId }).sort({ createdAt: -1 }).exec();
+  async findByAnonymousId(anonymousId: string): Promise<CareerReviewDocument[]> {
+    return this.careerReviewModel.find({ anonymousId }).sort({ createdAt: -1 }).exec();
   }
 
-  async findByCareer(careerId: string, published = true): Promise<CareerReviewDocument[]> {
+  async findByCareer(careerId: string, publishedOnly = true): Promise<CareerReviewDocument[]> {
+    if (!Types.ObjectId.isValid(careerId)) throw new BadRequestException('Invalid careerId');
     const filter = {
-      careerId,
-      ...(published ? { status: 'published' } : {}),
+      careerId: new Types.ObjectId(careerId),
+      ...(publishedOnly ? { status: ReviewStatus.PUBLISHED } : {}),
     } as FilterQuery<CareerReviewDocument>;
     return this.careerReviewModel.find(filter).sort({ createdAt: -1 }).exec();
   }
 
-  async findByCategory(category: string): Promise<CareerReviewDocument[]> {
-    return this.careerReviewModel.find({ category }).sort({ createdAt: -1 }).exec();
+  async findByCategory(category: string, publishedOnly = true): Promise<CareerReviewDocument[]> {
+    return this.careerReviewModel
+      .find({
+        reviewCategory: category,
+        ...(publishedOnly ? { status: ReviewStatus.PUBLISHED } : {}),
+      } as FilterQuery<CareerReviewDocument>)
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
-  async update(id: string, updateDto: Partial<CareerReview>): Promise<CareerReviewDocument> {
-    const review = await this.careerReviewModel.findByIdAndUpdate(id, updateDto, { new: true }).exec();
+  async update(id: string, updateDto: UpdateCareerReviewInput): Promise<CareerReviewDocument> {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid review id');
+    const updatePayload: Record<string, unknown> = { ...updateDto };
+    if (typeof updateDto.careerId === 'string') {
+      if (!Types.ObjectId.isValid(updateDto.careerId)) {
+        throw new BadRequestException('Invalid careerId');
+      }
+      updatePayload.careerId = new Types.ObjectId(updateDto.careerId);
+    }
+    const review = await this.careerReviewModel
+      .findByIdAndUpdate(id, updatePayload, { new: true, runValidators: true })
+      .exec();
     if (!review) {
       throw new NotFoundException(`Career review with ID ${id} not found`);
     }
@@ -71,6 +141,7 @@ export class CareerReviewService {
   }
 
   async remove(id: string): Promise<CareerReviewDocument> {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid review id');
     const review = await this.careerReviewModel.findByIdAndDelete(id).exec();
     if (!review) {
       throw new NotFoundException(`Career review with ID ${id} not found`);
@@ -79,9 +150,10 @@ export class CareerReviewService {
   }
 
   async getStatistics(careerId?: string): Promise<any> {
-    const matchStage: Record<string, string> = {};
+    const matchStage: Record<string, unknown> = {};
     if (careerId) {
-      matchStage.careerId = careerId;
+      if (!Types.ObjectId.isValid(careerId)) throw new BadRequestException('Invalid careerId');
+      matchStage.careerId = new Types.ObjectId(careerId);
     }
 
     const stats = await this.careerReviewModel.aggregate([
@@ -90,8 +162,8 @@ export class CareerReviewService {
         $group: {
           _id: '$careerId',
           totalReviews: { $sum: 1 },
-          averageRating: { $avg: '$overallRating' },
-          categoryBreakdown: { $push: '$category' },
+          averageRating: { $avg: '$reviewContent.overallRating' },
+          categoryBreakdown: { $push: '$reviewCategory' },
         },
       },
     ]);

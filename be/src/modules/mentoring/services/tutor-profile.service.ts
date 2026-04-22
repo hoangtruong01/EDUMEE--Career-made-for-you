@@ -2,15 +2,18 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, FilterQuery } from 'mongoose';
 import { TutorProfile, TutorProfileDocument, TutorStatus } from '../schemas/tutor-profile.schema';
+import { CreateTutorProfileDto, UpdateTutorProfileDto } from '../dto';
+
+type CreateTutorProfileInput = CreateTutorProfileDto & { userId?: string };
 
 @Injectable()
 export class TutorProfileService {
   constructor(
     @InjectModel(TutorProfile.name)
     private tutorProfileModel: Model<TutorProfileDocument>,
-  ) {}
+  ) { }
 
-  async create(createDto: any): Promise<TutorProfileDocument> {
+  async create(createDto: CreateTutorProfileInput): Promise<TutorProfileDocument> {
     const profile = new this.tutorProfileModel(createDto);
     return profile.save();
   }
@@ -50,7 +53,7 @@ export class TutorProfileService {
     return this.tutorProfileModel.find({ status: 'active' }).exec();
   }
 
-  async update(id: string, updateDto: Partial<TutorProfile>): Promise<TutorProfileDocument> {
+  async update(id: string, updateDto: Partial<UpdateTutorProfileDto>): Promise<TutorProfileDocument> {
     const profile = await this.tutorProfileModel.findByIdAndUpdate(id, updateDto, { new: true }).exec();
     if (!profile) {
       throw new NotFoundException(`Tutor profile with ID ${id} not found`);

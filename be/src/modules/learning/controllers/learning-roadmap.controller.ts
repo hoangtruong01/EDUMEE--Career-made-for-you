@@ -9,24 +9,41 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { LearningRoadmapService } from '../services/learning-roadmap.service';
 import { CreateLearningRoadmapDto, UpdateLearningRoadmapDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
+import { getAuthUserId } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
 
 @ApiTags('learning-roadmaps')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('learning-roadmaps')
 export class LearningRoadmapController {
-  constructor(private readonly learningRoadmapService: LearningRoadmapService) {}
+  constructor(
+    private readonly learningRoadmapService: LearningRoadmapService,
+    private readonly aiQuotaService: AiQuotaService,
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new learning roadmap' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Roadmap created successfully' })
-  create(@Body() createDto: CreateLearningRoadmapDto) {
-    return this.learningRoadmapService.create(createDto);
+  async create(@Body() createDto: CreateLearningRoadmapDto, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
+    if (plan.features?.personalizedRoadmap === false) {
+      throw new ForbiddenException('Personalized roadmap is not available in your plan');
+    }
+    await this.aiQuotaService.checkQuota(userId, AiFeature.PERSONALIZED_ROADMAP);
+    const res = await this.learningRoadmapService.create({ ...createDto, userId });
+    await this.aiQuotaService.consumeQuota(userId, AiFeature.PERSONALIZED_ROADMAP, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Get()
@@ -96,12 +113,12 @@ export class LearningRoadmapController {
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Roadmap cloned successfully' })
   cloneTemplate(
     @Param('templateId') templateId: string,
-    @Query('userId') userId: string,
+    @CurrentUser() user: AuthUserLike,
     @Body() customizations?: Record<string, unknown>,
   ) {
     return this.learningRoadmapService.cloneTemplate(
       templateId,
-      userId,
+      getAuthUserId(user),
       customizations as Parameters<LearningRoadmapService['cloneTemplate']>[2],
     );
   }
@@ -109,11 +126,17 @@ export class LearningRoadmapController {
   @Post(':id/generate-weekly-plan')
   @ApiOperation({ summary: 'Generate weekly plan for a roadmap' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Weekly plan generated successfully' })
-  generateWeeklyPlan(
+  async generateWeeklyPlan(
     @Param('id') id: string,
     @Query('weekNumber') weekNumber: number,
     @Query('availableHours') availableHours: number,
+    @CurrentUser() user: AuthUserLike,
   ) {
+    const userId = getAuthUserId(user);
+    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
+    if (plan.features?.personalizedRoadmap === false) {
+      throw new ForbiddenException('Personalized roadmap is not available in your plan');
+    }
     return this.learningRoadmapService.generateWeeklyPlan(id, weekNumber, availableHours);
   }
 

@@ -6,6 +6,8 @@ import { CreateCareerFitResultDto, UpdateCareerFitResultDto } from '../dto';
 import { AIService } from '../../../common/services/ai.service';
 import { AssessmentAnswerData, AIAnalysisResult } from '../../../common/interfaces/ai-analysis.interface';
 import { AssessmentAnswerService } from './assessment-answer.service';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 
 interface QuestionData {
   _id?: Types.ObjectId | string;
@@ -20,6 +22,10 @@ interface Career {
   industry?: string;
 }
 
+interface AnswerWithSessionId {
+  sessionId?: Types.ObjectId | string;
+}
+
 @Injectable()
 export class CareerFitResultService {
   private readonly logger = new Logger(CareerFitResultService.name);
@@ -29,7 +35,8 @@ export class CareerFitResultService {
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
     private readonly aiService: AIService,
     private readonly assessmentAnswerService: AssessmentAnswerService,
-  ) {}
+    private readonly aiQuotaService: AiQuotaService,
+  ) { }
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
     const result = new this.careerFitResultModel({
@@ -46,9 +53,9 @@ export class CareerFitResultService {
     filters: Partial<CareerFitResult> = {},
   ): Promise<{ data: CareerFitResult[]; total: number; page: number; limit: number }> {
     const skip = (page - 1) * limit;
-    
+
     const query = this.buildQuery(filters);
-    
+
     const [data, total] = await Promise.all([
       this.careerFitResultModel
         .find(query)
@@ -164,7 +171,7 @@ export class CareerFitResultService {
     }
 
     const result = await this.careerFitResultModel.findByIdAndDelete(id).exec();
-    
+
     if (!result) {
       throw new NotFoundException('Career fit result not found');
     }
@@ -210,27 +217,37 @@ export class CareerFitResultService {
   async generateAIAnalysis(
     userId: string,
     assessmentAnswers: AssessmentAnswerData[],
-    availableCareers: Career[] = []
+    availableCareers: Career[] = [],
+    assessmentSessionId?: string | Types.ObjectId,
   ): Promise<CareerFitResult[]> {
     try {
       this.logger.log(`Generating AI analysis for user ${userId}`);
-      
+
+      await this.aiQuotaService.checkQuota(userId, AiFeature.CAREER_RECOMMENDATION);
+
       // Delete old results for this user before creating new ones
-      const deleteResult = await this.careerFitResultModel.deleteMany({ 
-        userId: new Types.ObjectId(userId) 
+      const deleteResult = await this.careerFitResultModel.deleteMany({
+        userId: new Types.ObjectId(userId)
       });
       this.logger.log(`Deleted ${deleteResult.deletedCount} old career fit results for user ${userId}`);
-      
+
       // Get AI analysis
       const analysis: AIAnalysisResult = await this.aiService.analyzePersonalityAndCareers(
         assessmentAnswers,
         availableCareers
       );
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CAREER_RECOMMENDATION, { requestCount: 1, tokensUsed: 0 });
+
+      const { limits } = await this.aiQuotaService.getPlanLimits(userId);
+      const maxPerRun = typeof limits.maxCareerRecommendationsPerRun === 'number'
+        ? limits.maxCareerRecommendationsPerRun
+        : undefined;
+      const recommendations = maxPerRun ? analysis.careerRecommendations.slice(0, maxPerRun) : analysis.careerRecommendations;
 
       // Convert AI recommendations to CareerFitResult documents
       const careerFitResults: CareerFitResult[] = [];
 
-      for (const recommendation of analysis.careerRecommendations) {
+      for (const recommendation of recommendations) {
         // Validate careerId - only convert if it's a valid ObjectId string
         let careerId = null;
         if (recommendation.careerId && Types.ObjectId.isValid(recommendation.careerId)) {
@@ -242,31 +259,32 @@ export class CareerFitResultService {
           careerId,
           careerTitle: recommendation.careerTitle,
           overallFitScore: recommendation.fitScore,
-          
+
           // Personality match scores
           personalityMatch: {
             big5Score: recommendation.personalityMatch?.bigFiveAlignment,
             riasecScore: recommendation.personalityMatch?.riasecAlignment,
             overallPersonalityFit: recommendation.personalityMatch?.overallFit,
           },
-          
+
           // Dimension scores from AI analysis
           dimensionScores: {
             ...analysis.personalityAnalysis.bigFiveScores,
             ...analysis.personalityAnalysis.riasecScores,
           },
-          
+
           // Strengths and development areas
           strengths: recommendation.reasons,
           developmentAreas: recommendation.potentialChallenges,
           improvementSuggestions: recommendation.developmentSuggestions,
-          
+
           // AI insights
           aiExplanation: analysis.explanation,
           confidence: analysis.confidence,
-          
+
           // Personality profile
           personalityProfile: analysis.personalityAnalysis.personalityProfile,
+          assessmentSessionId: assessmentSessionId ? new Types.ObjectId(assessmentSessionId) : undefined,
         };
 
         // Save to database
@@ -277,7 +295,7 @@ export class CareerFitResultService {
 
       this.logger.log(`Generated ${careerFitResults.length} career recommendations for user ${userId}`);
       return careerFitResults;
-      
+
     } catch (error) {
       this.logger.error('Failed to generate AI analysis:', error);
       throw new BadRequestException('Failed to generate career analysis');
@@ -293,15 +311,32 @@ export class CareerFitResultService {
   ): Promise<CareerFitResult[]> {
     try {
       this.logger.log(`Fetching assessment answers for user ${userId}`);
-      
+
       // Fetch user's answers from database
       const userAnswers = await this.assessmentAnswerService.findByUser(userId);
-      
+
       if (!userAnswers || userAnswers.length === 0) {
         throw new BadRequestException('No assessment answers found for this user. Please complete the assessment first.');
       }
 
       this.logger.log(`Found ${userAnswers.length} answers for user ${userId}`);
+
+      // Infer sessionId from user's answers (choose the most frequent sessionId)
+      let inferredSessionId: string | undefined;
+      try {
+        const counts: Record<string, number> = {};
+        for (const a of userAnswers as AnswerWithSessionId[]) {
+          const sid = a.sessionId?.toString();
+          if (sid) counts[sid] = (counts[sid] || 0) + 1;
+        }
+        const entries = Object.entries(counts);
+        if (entries.length > 0) {
+          entries.sort(([, a], [, b]) => b - a);
+          inferredSessionId = entries[0][0];
+        }
+      } catch {
+        inferredSessionId = undefined;
+      }
 
       // Transform answers to AssessmentAnswerData format
       const assessmentAnswers: AssessmentAnswerData[] = userAnswers.map(answer => {
@@ -314,9 +349,9 @@ export class CareerFitResultService {
         };
       });
 
-      // Use the existing generateAIAnalysis method
-      return this.generateAIAnalysis(userId, assessmentAnswers, availableCareers);
-      
+      // Use the existing generateAIAnalysis method and pass inferred session id if any
+      return this.generateAIAnalysis(userId, assessmentAnswers, availableCareers, inferredSessionId);
+
     } catch (error) {
       this.logger.error('Failed to generate analysis from user answers:', error);
       if (error instanceof BadRequestException) {
@@ -329,9 +364,12 @@ export class CareerFitResultService {
   /**
    * Get enhanced career insights using AI
    */
-  async getCareerInsight(careerTitle: string, personalityTraits: string[]): Promise<string> {
+  async getCareerInsight(userId: string, careerTitle: string, personalityTraits: string[]): Promise<string> {
     try {
-      return await this.aiService.generateCareerInsight(careerTitle, personalityTraits);
+      await this.aiQuotaService.checkQuota(userId, AiFeature.CHATBOT);
+      const res = await this.aiService.generateCareerInsight(careerTitle, personalityTraits);
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CHATBOT, { requestCount: 1, tokensUsed: 0 });
+      return res;
     } catch (error) {
       this.logger.error('Failed to get career insight:', error);
       return `${careerTitle} aligns well with your personality profile. Consider exploring this career path further.`;
@@ -345,24 +383,24 @@ export class CareerFitResultService {
           _id: null,
           totalResults: { $sum: 1 },
           averageFitScore: { $avg: '$overallFitScore' },
-          highFitCount: { 
-            $sum: { 
-              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0] 
-            } 
+          highFitCount: {
+            $sum: {
+              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0]
+            }
           },
-          mediumFitCount: { 
-            $sum: { 
+          mediumFitCount: {
+            $sum: {
               $cond: [
-                { $and: [{ $gte: ['$overallFitScore', 60] }, { $lt: ['$overallFitScore', 80] }] }, 
-                1, 
+                { $and: [{ $gte: ['$overallFitScore', 60] }, { $lt: ['$overallFitScore', 80] }] },
+                1,
                 0
-              ] 
-            } 
+              ]
+            }
           },
-          lowFitCount: { 
-            $sum: { 
-              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0] 
-            } 
+          lowFitCount: {
+            $sum: {
+              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0]
+            }
           },
         }
       }
@@ -381,7 +419,7 @@ export class CareerFitResultService {
     if (results.length === 0) return {};
 
     const topResult = results[0];
-    
+
     return {
       topRecommendation: topResult.careerId,
       reasonsForRecommendation: topResult.strengths?.slice(0, 3) || [],

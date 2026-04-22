@@ -9,28 +9,42 @@ import {
   Query,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { OnboardingSessionService } from '../services/onboarding-session.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import { assertOwnerOrAdmin, getAuthUserId, isAdmin } from '../../../common/auth';
+import type { AuthUserLike } from '../../../common/auth';
+import { UpdateOnboardingSessionDto, CreateOnboardingSessionDto } from '../dto/onboarding-session.dto';
+import { OnboardingStatus, OnboardingStep } from '../schemas/onboarding-session.schema';
 
 @ApiTags('onboarding-sessions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('onboarding-sessions')
 export class OnboardingSessionController {
-  constructor(private readonly onboardingSessionService: OnboardingSessionService) {}
+  constructor(private readonly onboardingSessionService: OnboardingSessionService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new onboarding session' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Session created successfully' })
-  create(@Body() createDto: any) {
-    return this.onboardingSessionService.create(createDto);
+  create(
+    @Body() createDto: CreateOnboardingSessionDto,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.onboardingSessionService.createForUser(getAuthUserId(user), createDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all onboarding sessions' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Sessions retrieved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findAll(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -48,6 +62,8 @@ export class OnboardingSessionController {
   @Get('statistics')
   @ApiOperation({ summary: 'Get onboarding statistics' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Statistics retrieved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   getStatistics() {
     return this.onboardingSessionService.getStatistics();
   }
@@ -55,6 +71,8 @@ export class OnboardingSessionController {
   @Get('active')
   @ApiOperation({ summary: 'Get active onboarding sessions' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Active sessions retrieved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findActive() {
     return this.onboardingSessionService.findActive();
   }
@@ -62,14 +80,25 @@ export class OnboardingSessionController {
   @Get('completed')
   @ApiOperation({ summary: 'Get completed onboarding sessions' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Completed sessions retrieved successfully' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findCompleted() {
     return this.onboardingSessionService.findCompleted();
+  }
+
+  @Get('my')
+  @ApiOperation({ summary: 'Get current user onboarding session' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Session retrieved successfully' })
+  findMy(@CurrentUser() user: AuthUserLike) {
+    return this.onboardingSessionService.findByUser(getAuthUserId(user));
   }
 
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get onboarding session by user' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Session retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Session not found' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findByUser(@Param('userId') userId: string) {
     return this.onboardingSessionService.findByUser(userId);
   }
@@ -78,8 +107,10 @@ export class OnboardingSessionController {
   @ApiOperation({ summary: 'Get an onboarding session by ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Session retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Session not found' })
-  findOne(@Param('id') id: string) {
-    return this.onboardingSessionService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const session = await this.onboardingSessionService.findOne(id);
+    assertOwnerOrAdmin(session.userId.toString(), user);
+    return session;
   }
 
   @Put(':id/progress')
@@ -87,30 +118,58 @@ export class OnboardingSessionController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Progress updated successfully' })
   updateProgress(
     @Param('id') id: string,
-    @Body() body: { currentStep: string; progressData: Record<string, unknown> },
+    @Body() body: { stepId: OnboardingStep; stepData: Record<string, unknown> },
+    @CurrentUser() user: AuthUserLike,
   ) {
-    return this.onboardingSessionService.updateProgress(id, body.currentStep, body.progressData);
+    // ownership check
+    return this.onboardingSessionService.findOne(id).then((session) => {
+      assertOwnerOrAdmin(session.userId.toString(), user);
+      return this.onboardingSessionService.updateProgress(id, body.stepId, body.stepData);
+    });
   }
 
   @Put(':id/complete-step')
   @ApiOperation({ summary: 'Complete an onboarding step' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Step completed successfully' })
-  completeStep(@Param('id') id: string, @Body() body: { step: string; stepData: any }) {
-    return this.onboardingSessionService.completeStep(id, body.step, body.stepData);
+  completeStep(
+    @Param('id') id: string,
+    @Body() body: { step: OnboardingStep; stepData: Record<string, unknown> },
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.onboardingSessionService.findOne(id).then((session) => {
+      assertOwnerOrAdmin(session.userId.toString(), user);
+      return this.onboardingSessionService.completeStep(id, body.step, body.stepData);
+    });
   }
 
   @Put(':id/complete')
   @ApiOperation({ summary: 'Complete the onboarding process' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Onboarding completed successfully' })
-  completeOnboarding(@Param('id') id: string) {
-    return this.onboardingSessionService.completeOnboarding(id);
+  completeOnboarding(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    return this.onboardingSessionService.findOne(id).then((session) => {
+      assertOwnerOrAdmin(session.userId.toString(), user);
+      return this.onboardingSessionService.completeOnboarding(id);
+    });
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update an onboarding session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Session updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Session not found' })
-  update(@Param('id') id: string, @Body() updateDto: Record<string, unknown>) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateOnboardingSessionDto,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    const session = await this.onboardingSessionService.findOne(id);
+    assertOwnerOrAdmin(session.userId.toString(), user);
+    if (!isAdmin(user)) {
+      // Non-admin cannot set status/progress directly.
+      const rest: Partial<UpdateOnboardingSessionDto> = { ...updateDto };
+      delete (rest as Record<string, unknown>).status;
+      delete (rest as Record<string, unknown>).progressPercentage;
+      return this.onboardingSessionService.update(id, rest);
+    }
     return this.onboardingSessionService.update(id, updateDto);
   }
 
@@ -118,7 +177,13 @@ export class OnboardingSessionController {
   @ApiOperation({ summary: 'Delete an onboarding session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Session deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Session not found' })
-  remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    const session = await this.onboardingSessionService.findOne(id);
+    assertOwnerOrAdmin(session.userId.toString(), user);
+    // Non-admin: only allow delete if still in progress
+    if (!isAdmin(user) && session.status === OnboardingStatus.COMPLETED) {
+      throw new ForbiddenException('Cannot delete a completed onboarding session');
+    }
     return this.onboardingSessionService.remove(id);
   }
 }

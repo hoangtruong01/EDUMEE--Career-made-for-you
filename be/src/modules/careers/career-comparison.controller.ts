@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,6 +21,7 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { Types } from 'mongoose';
 
 import { CareerComparisonService } from './services/career-comparison.service';
 import {
@@ -30,11 +32,10 @@ import {
 import { CareerComparison } from './schemas/career-comparison.schema';
 import { JwtAuthGuard } from '../auth/guards';
 import { CurrentUser } from '../auth/decorators';
-
-interface AuthUser {
-  id: string;
-  [key: string]: any;
-}
+import { assertOwnerOrAdmin, getAuthUserId, isAdmin } from '../../common/auth';
+import type { AuthUserLike } from '../../common/auth';
+import { AiQuotaService } from '../ai/services/ai-quota.service';
+import { AiFeature } from '../ai/schema/ai-usage-logs.schema';
 
 @ApiTags('Career Comparisons')
 @Controller('career-comparisons')
@@ -43,7 +44,18 @@ interface AuthUser {
 export class CareerComparisonController {
   constructor(
     private readonly careerComparisonService: CareerComparisonService,
-  ) {}
+    private readonly aiQuotaService: AiQuotaService,
+  ) { }
+
+  private getCurrentUserId(user: AuthUserLike): string {
+    return getAuthUserId(user);
+  }
+
+  private getOwnerId(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (value instanceof Types.ObjectId) return value.toHexString();
+    return '';
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new career comparison' })
@@ -62,10 +74,22 @@ export class CareerComparisonController {
   })
   async create(
     @Body() createCareerComparisonDto: CreateCareerComparisonDto,
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUserLike,
   ): Promise<CareerComparison> {
+    const currentUserId = this.getCurrentUserId(user);
+    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
+    if (plan.features?.careerComparison === false) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
+    }
+    const max = limits.maxCareersPerComparison;
+    if (typeof max === 'number' && max > 0 && createCareerComparisonDto.careerIds?.length > max) {
+      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
+    }
+    if (typeof max === 'number' && max === 0) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
+    }
     // Ensure userId is set to current user
-    const dto = { ...createCareerComparisonDto, userId: user.id };
+    const dto = { ...createCareerComparisonDto, userId: currentUserId };
     return this.careerComparisonService.create(dto);
   }
 
@@ -104,6 +128,7 @@ export class CareerComparisonController {
     },
   })
   async findAll(
+    @CurrentUser() user: AuthUserLike,
     @Query('page', new ParseIntPipe({ optional: true })) page = 1,
     @Query('limit', new ParseIntPipe({ optional: true })) limit = 10,
     @Query('userId') userId?: string,
@@ -114,7 +139,12 @@ export class CareerComparisonController {
     limit: number;
   }> {
     const filters: Record<string, string> = {};
-    if (userId) filters.userId = userId;
+    if (userId) {
+      assertOwnerOrAdmin(userId, user);
+      filters.userId = userId;
+    } else if (!isAdmin(user)) {
+      filters.userId = getAuthUserId(user);
+    }
 
     return this.careerComparisonService.findAll(page, limit, filters);
   }
@@ -126,8 +156,9 @@ export class CareerComparisonController {
     description: 'User career comparisons retrieved successfully',
     type: [CareerComparisonResponseDto],
   })
-  async getMyComparisons(@CurrentUser() user: AuthUser): Promise<CareerComparison[]> {
-    return this.careerComparisonService.findByUser(user.id);
+  async getMyComparisons(@CurrentUser() user: AuthUserLike): Promise<CareerComparison[]> {
+    const currentUserId = this.getCurrentUserId(user);
+    return this.careerComparisonService.findByUser(currentUserId);
   }
 
   @Post('compare-careers')
@@ -152,18 +183,31 @@ export class CareerComparisonController {
   })
   async compareCareers(
     @Body() { careerIds }: { careerIds: string[] },
+    @CurrentUser() user: AuthUserLike,
   ): Promise<any> {
+    const currentUserId = this.getCurrentUserId(user);
     if (!careerIds || careerIds.length < 2) {
       throw new BadRequestException(
         'At least 2 career IDs are required for comparison',
       );
     }
 
-    if (careerIds.length > 5) {
-      throw new BadRequestException('Maximum 5 careers can be compared at once');
+    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
+    if (plan.features?.careerComparison === false) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
+    }
+    const max = limits.maxCareersPerComparison;
+    if (typeof max === 'number' && max > 0 && careerIds.length > max) {
+      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
+    }
+    if (typeof max === 'number' && max === 0) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
     }
 
-    return this.careerComparisonService.compareCareersSideBySide(careerIds);
+    await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
+    const res: Record<string, unknown> = await this.careerComparisonService.compareCareersSideBySide(careerIds) as Record<string, unknown>;
+    await this.aiQuotaService.consumeQuota(currentUserId, AiFeature.CAREER_COMPARISON, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Post('detailed-analysis')
@@ -193,20 +237,36 @@ export class CareerComparisonController {
       careerIds: string[];
       criteria?: any;
     },
-    @CurrentUser() user: AuthUser,
+    @CurrentUser() user: AuthUserLike,
   ): Promise<any> {
+    const currentUserId = this.getCurrentUserId(user);
     if (!careerIds || careerIds.length < 2) {
       throw new BadRequestException(
         'At least 2 career IDs are required for detailed analysis',
       );
     }
 
-    return this.careerComparisonService.generateDetailedComparison(
-      user.id,
+    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
+    if (plan.features?.careerComparison === false) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
+    }
+    const max = limits.maxCareersPerComparison;
+    if (typeof max === 'number' && max > 0 && careerIds.length > max) {
+      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
+    }
+    if (typeof max === 'number' && max === 0) {
+      throw new ForbiddenException('Career comparison is not available in your plan');
+    }
+
+    await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
+    const res: Record<string, unknown> = await this.careerComparisonService.generateDetailedComparison(
+      currentUserId,
       careerIds,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       criteria,
-    );
+    ) as Record<string, unknown>;
+    await this.aiQuotaService.consumeQuota(currentUserId, AiFeature.CAREER_COMPARISON, { requestCount: 1, tokensUsed: 0 });
+    return res;
   }
 
   @Get('statistics')
@@ -276,8 +336,10 @@ export class CareerComparisonController {
   async update(
     @Param('id') id: string,
     @Body() updateCareerComparisonDto: UpdateCareerComparisonDto,
+    @CurrentUser() user: AuthUserLike,
   ): Promise<CareerComparison> {
-    // Verify ownership or admin access could be added here
+    const existing = await this.careerComparisonService.findOne(id);
+    assertOwnerOrAdmin(this.getOwnerId((existing as { userId?: unknown }).userId), user);
     return this.careerComparisonService.update(id, updateCareerComparisonDto);
   }
 
@@ -303,8 +365,10 @@ export class CareerComparisonController {
   })
   async remove(
     @Param('id') id: string,
+    @CurrentUser() user: AuthUserLike,
   ): Promise<void> {
-    // Verify ownership or admin access could be added here
+    const existing = await this.careerComparisonService.findOne(id);
+    assertOwnerOrAdmin(this.getOwnerId((existing as { userId?: unknown }).userId), user);
     return this.careerComparisonService.remove(id);
   }
 }

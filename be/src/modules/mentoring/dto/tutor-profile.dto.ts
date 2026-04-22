@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
-  IsString,
   IsEnum,
   IsOptional,
   IsObject,
@@ -9,10 +8,6 @@ import { TutorStatus, TutorLevel } from '../schemas/tutor-profile.schema';
 import { ExperienceLevel } from '../../careers/schemas/career.schema';
 
 export class CreateTutorProfileDto {
-  @ApiProperty({ description: 'User ID for this tutor profile' })
-  @IsString()
-  userId!: string;
-
   @ApiProperty({ description: 'Professional background information' })
   @IsObject()
   professionalBackground!: {
@@ -66,7 +61,7 @@ export class CreateTutorProfileDto {
   tutorLevel?: TutorLevel;
 }
 
-export class UpdateTutorProfileDto extends PartialType(CreateTutorProfileDto) {}
+export class UpdateTutorProfileDto extends PartialType(CreateTutorProfileDto) { }
 
 export class TutorProfileResponseDto {
   @ApiProperty({ description: 'Profile ID' })
