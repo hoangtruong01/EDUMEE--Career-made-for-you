@@ -90,45 +90,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = useCallback(async (payload: LoginPayload) => {
-    const response = (await authService.login(payload)) as any;
-    const data = response.data || response;
+    const response = await authService.login(payload);
 
     authStorage.setSession({
-      accessToken: data.result.access_token,
-      refreshToken: data.result.refresh_token,
-      role: data.result.role,
+      accessToken: response.result.access_token,
+      refreshToken: response.result.refresh_token,
+      role: response.result.role,
     });
 
     setState({
-      accessToken: data.result.access_token,
-      refreshToken: data.result.refresh_token,
-      role: data.result.role,
+      accessToken: response.result.access_token,
+      refreshToken: response.result.refresh_token,
+      role: response.result.role,
       isAuthenticated: true,
       isHydrated: true,
     });
 
-    return { redirectTo: data.redirectTo };
+    return { redirectTo: response.redirectTo };
   }, []);
 
   const adminLogin = useCallback(async (payload: LoginPayload) => {
-    const response = (await authService.adminLogin(payload)) as any;
-    const data = response.data || response;
+    const response = await authService.adminLogin(payload);
 
     authStorage.setSession({
-      accessToken: data.result.access_token,
-      refreshToken: data.result.refresh_token,
-      role: data.result.role,
+      accessToken: response.result.access_token,
+      refreshToken: response.result.refresh_token,
+      role: response.result.role,
     });
 
     setState({
-      accessToken: data.result.access_token,
-      refreshToken: data.result.refresh_token,
-      role: data.result.role,
+      accessToken: response.result.access_token,
+      refreshToken: response.result.refresh_token,
+      role: response.result.role,
       isAuthenticated: true,
       isHydrated: true,
     });
 
-    return { redirectTo: data.redirectTo };
+    return { redirectTo: response.redirectTo };
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {

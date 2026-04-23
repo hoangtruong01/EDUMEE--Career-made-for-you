@@ -84,7 +84,7 @@ export default function AdminContentPage() {
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState('Sẵn sàng quản lý ngân hàng câu hỏi');
 
-  const loadQuestions = async () => {
+  const loadQuestions = useCallback(async () => {
     if (!accessToken) {
       setLoading(false);
       return;
@@ -100,11 +100,11 @@ export default function AdminContentPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accessToken]);
 
   useEffect(() => {
     void loadQuestions();
-  }, [accessToken]);
+  }, [loadQuestions]);
 
   const visibleItems = useMemo(() => {
     return questions.filter((item) => {

@@ -70,7 +70,7 @@ const PersonalityTest = () => {
         }
         setQuestions(fetchedQuestions);
 
-        let session = await assessmentService.startSession(accessToken).catch(async () => {
+        const session = await assessmentService.startSession(accessToken).catch(async () => {
           const sessions = await assessmentService.listSessions(accessToken);
           return sessions.find((s) => s.status === 'in_progress') || sessions[0];
         });

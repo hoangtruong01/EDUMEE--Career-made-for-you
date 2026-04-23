@@ -10,6 +10,12 @@ export interface ApiErrorBody {
   statusCode?: number;
 }
 
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  timestamp: string;
+}
+
 export class ApiError extends Error {
   statusCode: number;
   payload?: ApiErrorBody;
@@ -65,7 +71,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const payload = (await parseResponseBody(response)) as ApiErrorBody | T | null;
+  const payload = (await parseResponseBody(response)) as ApiErrorBody | ApiResponse<T> | T | null;
 
   if (!response.ok) {
     const parsedPayload = (payload || undefined) as ApiErrorBody | undefined;
@@ -74,6 +80,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       response.status,
       parsedPayload,
     );
+  }
+
+  // Handle wrapped response
+  if (payload && typeof payload === 'object' && 'success' in payload && 'data' in payload) {
+    return (payload as ApiResponse<T>).data;
   }
 
   return (payload ?? ({} as T)) as T;
