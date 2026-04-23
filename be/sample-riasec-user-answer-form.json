@@ -1,0 +1,20 @@
+{
+  "userId": "USER_001",
+  "sessionId": "SESSION_001",
+  "assessmentType": "RIASEC",
+  "submittedAt": "2026-04-23T10:00:00.000Z",
+  "answers": [
+    { "questionId": "R001", "value": 4 },
+    { "questionId": "I001", "value": 5 },
+    { "questionId": "A001", "value": 3 },
+    { "questionId": "S001", "value": 2 },
+    { "questionId": "E001", "value": 4 },
+    { "questionId": "C001", "value": 3 }
+  ],
+  "context": {
+    "educationLevel": "university",
+    "yearsOfExperience": 0,
+    "preferredWorkStyle": "hybrid",
+    "targetLocation": "HCMC"
+  }
+}

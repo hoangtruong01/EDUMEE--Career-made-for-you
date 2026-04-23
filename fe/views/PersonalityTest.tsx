@@ -3,121 +3,13 @@
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAssessment } from '@/context/assessment-context';
+import { useAuth } from '@/context/auth-context';
+import { type AssessmentQuestion, assessmentService } from '@/lib/assessment.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Sparkles, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-
-const personalityQuestions = [
-  {
-    id: 1,
-    category: 'Tính cách',
-    question: 'Khi gặp vấn đề mới, bạn thường:',
-    options: [
-      'Phân tích logic từng bước',
-      'Tìm giải pháp sáng tạo',
-      'Hỏi ý kiến người khác',
-      'Thử nghiệm ngay lập tức',
-    ],
-  },
-  {
-    id: 2,
-    category: 'Tính cách',
-    question: 'Trong nhóm, bạn thường đảm nhận vai trò:',
-    options: ['Người dẫn dắt', 'Người lên ý tưởng', 'Người hòa giải', 'Người thực thi'],
-  },
-  {
-    id: 3,
-    category: 'Tính cách',
-    question: 'Bạn cảm thấy thoải mái nhất khi:',
-    options: [
-      'Làm việc một mình, tập trung',
-      'Brainstorm cùng nhóm',
-      'Hướng dẫn người khác',
-      'Giải quyết vấn đề kỹ thuật',
-    ],
-  },
-  {
-    id: 4,
-    category: 'Kỹ năng',
-    question: 'Bạn tự tin nhất ở kỹ năng nào?',
-    options: [
-      'Tư duy phân tích',
-      'Giao tiếp & thuyết trình',
-      'Sáng tạo & thiết kế',
-      'Quản lý & tổ chức',
-    ],
-  },
-  {
-    id: 5,
-    category: 'Kỹ năng',
-    question: 'Bạn có kinh nghiệm với lĩnh vực nào?',
-    options: [
-      'Lập trình / Công nghệ',
-      'Marketing / Kinh doanh',
-      'Thiết kế / Nghệ thuật',
-      'Nghiên cứu / Khoa học',
-    ],
-  },
-  {
-    id: 6,
-    category: 'Kỹ năng',
-    question: 'Bạn học tốt nhất bằng cách nào?',
-    options: [
-      'Đọc tài liệu & nghiên cứu',
-      'Thực hành dự án thực tế',
-      'Xem video & nghe giảng',
-      'Thảo luận & trao đổi',
-    ],
-  },
-  {
-    id: 7,
-    category: 'Giá trị',
-    question: 'Điều gì thúc đẩy bạn trong công việc?',
-    options: [
-      'Thành tựu & phát triển bản thân',
-      'Thu nhập & ổn định tài chính',
-      'Tác động xã hội & ý nghĩa',
-      'Tự do & linh hoạt',
-    ],
-  },
-  {
-    id: 8,
-    category: 'Giá trị',
-    question: 'Môi trường làm việc lý tưởng của bạn:',
-    options: [
-      'Startup năng động',
-      'Tập đoàn lớn ổn định',
-      'Freelance / Remote',
-      'Tổ chức phi lợi nhuận',
-    ],
-  },
-  {
-    id: 9,
-    category: 'Xu hướng',
-    question: 'Bạn quan tâm đến xu hướng nào?',
-    options: [
-      'AI & Machine Learning',
-      'Blockchain & Web3',
-      'Green Tech & Bền vững',
-      'Healthcare & Biotech',
-    ],
-  },
-  {
-    id: 10,
-    category: 'Xu hướng',
-    question: 'Bạn sẵn sàng đầu tư bao lâu để học kỹ năng mới?',
-    options: [
-      '1-3 tháng (học nhanh)',
-      '3-6 tháng (trung bình)',
-      '6-12 tháng (chuyên sâu)',
-      '1-2 năm (chuyên gia)',
-    ],
-  },
-];
-
-const Analyzing = ({ onDone }: { onDone: () => void }) => {
-  const [progress, setProgress] = useState(0);
+const Analyzing = ({ progress = 0 }: { progress?: number }) => {
   const messages = [
     'Đang phân tích tính cách của bạn...',
     'Đánh giá kỹ năng và thế mạnh...',
@@ -126,20 +18,6 @@ const Analyzing = ({ onDone }: { onDone: () => void }) => {
     'Hoàn tất! 🎉',
   ];
   const msgIndex = Math.min(Math.floor(progress / 25), messages.length - 1);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          clearInterval(timer);
-          setTimeout(onDone, 500);
-          return 100;
-        }
-        return p + 2;
-      });
-    }, 80);
-    return () => clearInterval(timer);
-  }, [onDone]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
@@ -165,39 +43,136 @@ const Analyzing = ({ onDone }: { onDone: () => void }) => {
 };
 
 const PersonalityTest = () => {
+  const { accessToken, isHydrated, isAuthenticated } = useAuth();
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
+  const [sessionId, setSessionId] = useState<string>('');
+  const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingProgress, setAnalyzingProgress] = useState(0);
   const router = useRouter();
   const { markHasAssessmentResult } = useAssessment();
 
-  const progress = ((step + 1) / personalityQuestions.length) * 100;
-  const currentQ = personalityQuestions[step];
-  const isLast = step === personalityQuestions.length - 1;
+  useEffect(() => {
+    const initialize = async () => {
+      if (!isHydrated || !isAuthenticated || !accessToken) {
+        return;
+      }
 
-  const selectAnswer = (option: string) => {
-    setAnswers({ ...answers, [currentQ.id]: option });
+      setIsLoading(true);
+      setErrorMessage('');
+      try {
+        const fetchedQuestions = await assessmentService.getQuestions(accessToken);
+        if (!fetchedQuestions.length) {
+          throw new Error('Chưa có bộ câu hỏi. Vui lòng seed dữ liệu câu hỏi trước.');
+        }
+        setQuestions(fetchedQuestions);
+
+        let session = await assessmentService.startSession(accessToken).catch(async () => {
+          const sessions = await assessmentService.listSessions(accessToken);
+          return sessions.find((s) => s.status === 'in_progress') || sessions[0];
+        });
+
+        const resolvedSessionId = session?.id || session?._id;
+        if (!resolvedSessionId) {
+          throw new Error('Không tạo được phiên làm bài.');
+        }
+        setSessionId(resolvedSessionId);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Không thể tải bài test.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void initialize();
+  }, [accessToken, isAuthenticated, isHydrated]);
+
+  const progress = questions.length > 0 ? ((step + 1) / questions.length) * 100 : 0;
+  const currentQ = questions[step];
+  const isLast = step === questions.length - 1;
+
+  const getQuestionId = (q: AssessmentQuestion): string => q.id || q._id || '';
+
+  const selectAnswer = (option: 'A' | 'B' | 'C' | 'D') => {
+    const qId = getQuestionId(currentQ);
+    setAnswers((prev) => ({ ...prev, [qId]: option }));
+  };
+
+  const submitAssessment = async () => {
+    if (!accessToken || !sessionId) {
+      setErrorMessage('Thiếu thông tin phiên làm bài.');
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalyzingProgress(15);
+    setErrorMessage('');
+
+    try {
+      const payload = questions.map((q) => {
+        const qId = getQuestionId(q);
+        const answer = answers[qId];
+        return {
+          sessionId,
+          questionId: qId,
+          answer,
+        };
+      });
+
+      setAnalyzingProgress(35);
+      await assessmentService.submitBulkAnswers(accessToken, payload);
+
+      setAnalyzingProgress(55);
+      await assessmentService.finishSession(accessToken, sessionId);
+
+      setAnalyzingProgress(75);
+      await assessmentService.generateMyAnalysis(accessToken);
+
+      setAnalyzingProgress(95);
+      const results = await assessmentService.getMyResults(accessToken);
+      if (!results.length) {
+        throw new Error('AI chua tra ket qua. Vui long thu lai.');
+      }
+
+      setAnalyzingProgress(100);
+      markHasAssessmentResult();
+      router.push('/assessment-result');
+    } catch (error) {
+      setAnalyzing(false);
+      setErrorMessage(error instanceof Error ? error.message : 'Khong the phan tich ket qua.');
+    }
   };
 
   const next = () => {
     if (isLast) {
-      setAnalyzing(true);
-    } else {
-      setStep(step + 1);
+      void submitAssessment();
+      return;
     }
+    setStep((prev) => prev + 1);
   };
 
   if (analyzing) {
+    return <Analyzing progress={analyzingProgress} />;
+  }
+
+  if (isLoading) {
     return (
-      <Analyzing
-        onDone={() => {
-          markHasAssessmentResult();
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('demo_user_unlocked', '1');
-          }
-          router.push('/profile');
-        }}
-      />
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground text-sm">Dang tai bo cau hoi...</p>
+      </div>
+    );
+  }
+
+  if (!questions.length) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-destructive text-sm">
+          {errorMessage || 'Khong co cau hoi de hien thi.'}
+        </p>
+      </div>
     );
   }
 
@@ -240,20 +215,23 @@ const PersonalityTest = () => {
               <div className="mb-10 text-center">
                 <div className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm">
                   <Sparkles className="h-3 w-3" />
-                  {currentQ.category} · Câu {step + 1}
+                  RIASEC · Cau {step + 1}
                 </div>
-                <h2 className="font-display text-2xl font-bold md:text-3xl">{currentQ.question}</h2>
+                <h2 className="font-display text-2xl font-bold md:text-3xl">
+                  {currentQ.questionText}
+                </h2>
               </div>
 
               <div className="grid gap-3">
                 {currentQ.options.map((option) => {
-                  const selected = answers[currentQ.id] === option;
+                  const qId = getQuestionId(currentQ);
+                  const selected = answers[qId] === option.value;
                   return (
                     <motion.button
-                      key={option}
+                      key={option.value}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => selectAnswer(option)}
+                      onClick={() => selectAnswer(option.value)}
                       className={`flex w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-all ${
                         selected
                           ? 'border-primary bg-primary/5 shadow-soft'
@@ -261,19 +239,23 @@ const PersonalityTest = () => {
                       }`}
                     >
                       <div
-                        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
                           selected ? 'border-primary bg-primary' : 'border-muted-foreground/30'
                         }`}
                       >
                         {selected && <CheckCircle2 className="text-primary-foreground h-4 w-4" />}
                       </div>
-                      <span className="font-medium">{option}</span>
+                      <span className="font-medium">
+                        {option.value}. {option.label}
+                      </span>
                     </motion.button>
                   );
                 })}
               </div>
             </motion.div>
           </AnimatePresence>
+
+          {errorMessage && <p className="text-destructive mt-4 text-sm">{errorMessage}</p>}
 
           <div className="mt-8 flex justify-between">
             <Button
@@ -288,7 +270,7 @@ const PersonalityTest = () => {
               variant="hero"
               size="lg"
               onClick={next}
-              disabled={!answers[currentQ.id]}
+              disabled={!answers[getQuestionId(currentQ)]}
               className="gap-2"
             >
               {isLast ? (

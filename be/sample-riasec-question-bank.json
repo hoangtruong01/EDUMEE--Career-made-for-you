@@ -1,0 +1,55 @@
+{
+  "assessmentType": "RIASEC",
+  "version": "v1.0",
+  "language": "vi",
+  "questions": [
+    {
+      "id": "R001",
+      "text": "Ban thich lap rap hoac sua chua thiet bi ky thuat",
+      "dimension": "R",
+      "reverseScored": false,
+      "weight": 1.0
+    },
+    {
+      "id": "I001",
+      "text": "Ban thich phan tich du lieu de tim quy luat",
+      "dimension": "I",
+      "reverseScored": false,
+      "weight": 1.0
+    },
+    {
+      "id": "A001",
+      "text": "Ban thich sang tac noi dung hoac thiet ke",
+      "dimension": "A",
+      "reverseScored": false,
+      "weight": 1.0
+    },
+    {
+      "id": "S001",
+      "text": "Ban thich huong dan va ho tro nguoi khac",
+      "dimension": "S",
+      "reverseScored": false,
+      "weight": 1.0
+    },
+    {
+      "id": "E001",
+      "text": "Ban thich thuyet phuc va dan dat nhom",
+      "dimension": "E",
+      "reverseScored": false,
+      "weight": 1.0
+    },
+    {
+      "id": "C001",
+      "text": "Ban thich sap xep du lieu va lam viec theo quy trinh",
+      "dimension": "C",
+      "reverseScored": false,
+      "weight": 1.0
+    }
+  ],
+  "scoringRules": {
+    "scaleMin": 1,
+    "scaleMax": 5,
+    "normalizeTo100": true,
+    "dimensions": ["R", "I", "A", "S", "E", "C"]
+  }
+}
