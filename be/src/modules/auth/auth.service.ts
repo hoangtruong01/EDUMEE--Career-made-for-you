@@ -88,7 +88,12 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     }
 
-    // 2. So sánh mật khẩu bằng Bcrypt của đồng đội
+    // 2. Chặn admin đăng nhập qua trang login thường
+    if (user.role === UserRole.ADMIN) {
+      throw new UnauthorizedException('Tài khoản không hợp lệ cho đăng nhập thường');
+    }
+
+    // 3. So sánh mật khẩu bằng Bcrypt của đồng đội
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -129,6 +134,66 @@ export class AuthService {
       message: 'Đăng nhập thành công',
       result: { access_token, refresh_token, role: user.role },
       redirectTo: this.getRedirectPathByRole(user.role),
+    };
+  }
+
+  // =========================================================================
+  // 2b. ADMIN LOGIN LOGIC - Chỉ cho admin đăng nhập
+  // =========================================================================
+  async adminLogin(loginDto: LoginDto) {
+    const { email, password } = loginDto;
+
+    const user = await this.userModel.findOne({ email }).exec();
+
+    if (!user) {
+      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+
+    // Chỉ cho phép admin đăng nhập
+    if (user.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('Tài khoản không có quyền truy cập quản trị');
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+
+    const payload: JwtPayload = {
+      user_id: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      verify: user.verify,
+    };
+
+    const [access_token, refresh_token] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('jwt.accessTokenSecret'),
+        expiresIn: this.configService.get<string>(
+          'jwt.accessTokenExpireIn',
+        ) as SignOptions['expiresIn'],
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('jwt.secret'),
+        expiresIn: this.configService.get<string>('jwt.expiresIn') as SignOptions['expiresIn'],
+      }),
+    ]);
+
+    const rawDecoded: unknown = this.jwtService.decode(refresh_token);
+    const decodedRefreshToken = rawDecoded as DecodedToken;
+
+    await this.refreshTokenModel.create({
+      token: refresh_token,
+      user_id: user._id,
+      iat: new Date(decodedRefreshToken.iat * 1000),
+      exp: new Date(decodedRefreshToken.exp * 1000),
+      user_role: user.role,
+    });
+
+    return {
+      message: 'Đăng nhập quản trị thành công',
+      result: { access_token, refresh_token, role: user.role },
+      redirectTo: '/admin/dashboard',
     };
   }
 

@@ -18,6 +18,7 @@ interface LoginResult {
 
 interface AuthContextValue extends AuthState {
   login: (payload: LoginPayload) => Promise<LoginResult>;
+  adminLogin: (payload: LoginPayload) => Promise<LoginResult>;
   register: (payload: RegisterPayload) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   verifyForgotPasswordToken: (token: string) => Promise<void>;
@@ -89,23 +90,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = useCallback(async (payload: LoginPayload) => {
-    const response = await authService.login(payload);
+    const response = (await authService.login(payload)) as any;
+    const data = response.data || response;
 
     authStorage.setSession({
-      accessToken: response.result.access_token,
-      refreshToken: response.result.refresh_token,
-      role: response.result.role,
+      accessToken: data.result.access_token,
+      refreshToken: data.result.refresh_token,
+      role: data.result.role,
     });
 
     setState({
-      accessToken: response.result.access_token,
-      refreshToken: response.result.refresh_token,
-      role: response.result.role,
+      accessToken: data.result.access_token,
+      refreshToken: data.result.refresh_token,
+      role: data.result.role,
       isAuthenticated: true,
       isHydrated: true,
     });
 
-    return { redirectTo: response.redirectTo };
+    return { redirectTo: data.redirectTo };
+  }, []);
+
+  const adminLogin = useCallback(async (payload: LoginPayload) => {
+    const response = (await authService.adminLogin(payload)) as any;
+    const data = response.data || response;
+
+    authStorage.setSession({
+      accessToken: data.result.access_token,
+      refreshToken: data.result.refresh_token,
+      role: data.result.role,
+    });
+
+    setState({
+      accessToken: data.result.access_token,
+      refreshToken: data.result.refresh_token,
+      role: data.result.role,
+      isAuthenticated: true,
+      isHydrated: true,
+    });
+
+    return { redirectTo: data.redirectTo };
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
@@ -147,13 +170,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       login,
+      adminLogin,
       register,
       forgotPassword,
       verifyForgotPasswordToken,
       resetPassword,
       logout,
     }),
-    [state, login, register, forgotPassword, verifyForgotPasswordToken, resetPassword, logout],
+    [state, login, adminLogin, register, forgotPassword, verifyForgotPasswordToken, resetPassword, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

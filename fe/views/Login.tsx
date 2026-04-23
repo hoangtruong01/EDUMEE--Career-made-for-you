@@ -9,7 +9,7 @@ import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -19,6 +19,30 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
   const { login } = useAuth();
+
+  // Đếm click logo để chuyển sang trang admin login
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogoClick = useCallback(() => {
+    clickCountRef.current += 1;
+
+    // Reset timer mỗi lần click
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    if (clickCountRef.current >= 5) {
+      clickCountRef.current = 0;
+      router.push('/admin-login');
+      return;
+    }
+
+    // Reset sau 3 giây nếu không đủ 5 lần
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 3000);
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,10 +72,20 @@ const Login = () => {
         className="w-full max-w-md"
       >
         <div className="glass-card rounded-2xl p-8">
-          {/* Logo */}
+          {/* Logo - Ấn 5 lần để chuyển sang admin login */}
           <div className="mb-8 text-center">
             <div className="mb-4 flex justify-center">
-              <Image src="/edumee-logo-icon.svg" alt="Edumee logo" width={56} height={52} />
+              <div
+                onClick={handleLogoClick}
+                className="cursor-pointer select-none"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleLogoClick();
+                }}
+              >
+                <Image src="/edumee-logo-icon.svg" alt="Edumee logo" width={56} height={52} />
+              </div>
             </div>
             <h1 className="font-display text-2xl font-bold">Chào mừng trở lại!</h1>
             <p className="text-muted-foreground mt-1 text-sm">Đăng nhập để tiếp tục hành trình</p>

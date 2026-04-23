@@ -42,6 +42,14 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  // 2b. Đăng nhập Admin (riêng biệt)
+  @ApiOperation({ summary: 'Đăng nhập dành riêng cho Admin' })
+  @HttpCode(HttpStatus.OK)
+  @Post('admin-login')
+  async adminLogin(@Body() loginDto: LoginDto) {
+    return this.authService.adminLogin(loginDto);
+  }
+
   // 3. Đăng xuất
   @ApiOperation({ summary: 'Đăng xuất khỏi hệ thống (Yêu cầu Access Token)' })
   @ApiBearerAuth('JWT-auth') // Báo cho Swagger hiện ổ khóa gắn Token

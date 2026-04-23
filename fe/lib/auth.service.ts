@@ -35,6 +35,10 @@ export const authService = {
     return apiClient.post<LoginResponse>('/auth/login', payload);
   },
 
+  adminLogin(payload: LoginPayload) {
+    return apiClient.post<LoginResponse>('/auth/admin-login', payload);
+  },
+
   register(payload: RegisterPayload) {
     return apiClient.post<BasicMessageResponse>('/auth/register', payload);
   },
