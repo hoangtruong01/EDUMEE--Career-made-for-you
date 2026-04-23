@@ -46,7 +46,7 @@ export class AssessmentQuestionSeedService implements OnModuleInit {
 
     try {
       fileContent = await fs.readFile(seedFile, 'utf-8');
-    } catch (error) {
+    } catch {
       this.logger.warn('Question seed file not found, skip seeding.');
       return;
     }
@@ -54,7 +54,7 @@ export class AssessmentQuestionSeedService implements OnModuleInit {
     let seedQuestions: SeedQuestion[] = [];
     try {
       seedQuestions = JSON.parse(fileContent) as SeedQuestion[];
-    } catch (error) {
+    } catch {
       this.logger.error('Invalid JSON in personality-assessment-questions.json.');
       return;
     }
