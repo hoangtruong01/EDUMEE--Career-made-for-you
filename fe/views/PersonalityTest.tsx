@@ -196,7 +196,7 @@ const PersonalityTest = () => {
             />
           </div>
           <span className="text-muted-foreground text-sm font-medium">
-            {step + 1}/{personalityQuestions.length}
+            {step + 1}/{questions.length}
           </span>
         </div>
       </div>

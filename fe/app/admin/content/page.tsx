@@ -8,7 +8,7 @@ import {
   type QuestionPayload,
 } from '@/lib/admin-question.service';
 import { Pencil, Plus, Save, Search, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const dimensionOptions = [
   { value: 'realistic', label: 'Realistic' },
