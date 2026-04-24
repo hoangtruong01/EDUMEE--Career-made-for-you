@@ -79,10 +79,11 @@ export class AuthService {
   // 2. LOGIN LOGIC
   // =========================================================================
   async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
+    const normalizedEmail = loginDto.email.trim().toLowerCase();
+    const password = loginDto.password;
 
     // 1. Chỉ tìm user bằng email
-    const user = await this.userModel.findOne({ email }).exec();
+    const user = await this.userModel.findOne({ email: normalizedEmail }).exec();
 
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -141,9 +142,10 @@ export class AuthService {
   // 2b. ADMIN LOGIN LOGIC - Chỉ cho admin đăng nhập
   // =========================================================================
   async adminLogin(loginDto: LoginDto) {
-    const { email, password } = loginDto;
+    const normalizedEmail = loginDto.email.trim().toLowerCase();
+    const password = loginDto.password;
 
-    const user = await this.userModel.findOne({ email }).exec();
+    const user = await this.userModel.findOne({ email: normalizedEmail }).exec();
 
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -337,18 +339,32 @@ export class AuthService {
   // =======================================================================
   // 9. GIAO TIẾP VỚI GOOGLE OAUTH
   // =======================================================================
+  getGoogleAuthorizationUrl(): string {
+    const query = new URLSearchParams({
+      client_id: this.configService.get<string>('GOOGLE_CLIENT_ID') || '',
+      redirect_uri: this.configService.get<string>('GOOGLE_CALLBACK_URL') || '',
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'consent',
+      include_granted_scopes: 'true',
+    });
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?${query.toString()}`;
+  }
+
   private async getOAuthGoogleToken(code: string): Promise<GoogleTokenResponse> {
-    const body = {
+    const body = new URLSearchParams({
       code,
       client_id: this.configService.get<string>('GOOGLE_CLIENT_ID') || '',
       client_secret: this.configService.get<string>('GOOGLE_CLIENT_SECRET') || '',
       redirect_uri: this.configService.get<string>('GOOGLE_CALLBACK_URL') || '',
       grant_type: 'authorization_code',
-    };
+    });
 
     const response = await axios.post<GoogleTokenResponse>(
       'https://oauth2.googleapis.com/token',
-      body,
+      body.toString(),
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       },
@@ -359,10 +375,13 @@ export class AuthService {
 
   private async getGoogleUserInfo(access_token: string, id_token: string): Promise<GoogleProfile> {
     const response = await axios.get<GoogleProfile>(
-      'https://www.googleapis.com/oauth2/v3/tokeninfo',
+      'https://www.googleapis.com/oauth2/v3/userinfo',
       {
-        params: { access_token, alt: 'json' },
-        headers: { Authorization: `Bearer ${id_token}` },
+        params: { alt: 'json' },
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          ...(id_token ? { 'X-ID-Token': id_token } : {}),
+        },
       },
     );
     return response.data;
@@ -374,12 +393,13 @@ export class AuthService {
   async googleLogin(code: string) {
     const { access_token: gg_token, id_token } = await this.getOAuthGoogleToken(code);
     const userInfo = await this.getGoogleUserInfo(gg_token, id_token);
+    const normalizedEmail = userInfo.email.trim().toLowerCase();
 
     if (!userInfo.email_verified) {
       throw new BadRequestException('Email Google này chưa được xác minh!');
     }
 
-    let user = await this.userModel.findOne({ email: userInfo.email });
+    let user = await this.userModel.findOne({ email: normalizedEmail });
     let isNewUser = 0;
 
     if (user && user.verify !== UserVerifyStatus.Verified) {
@@ -394,7 +414,7 @@ export class AuthService {
       user = await this.userModel.create({
         _id: userId,
         name: userInfo.name || 'Người dùng Google',
-        email: userInfo.email,
+        email: normalizedEmail,
         password: hashedPassword, // Đã thay đổi
         gender: 'Other',
         date_of_birth: new Date(),
@@ -439,7 +459,7 @@ export class AuthService {
       user_role: user.role,
     });
 
-    return { access_token, refresh_token, new_user: isNewUser };
+    return { access_token, refresh_token, role: user.role, new_user: isNewUser };
   }
 
   // =======================================================================
@@ -514,13 +534,9 @@ export class AuthService {
   private getRedirectPathByRole(role: UserRole): string {
     switch (role) {
       case UserRole.ADMIN:
-        return '/dashboard/admin';
-      case UserRole.MENTOR:
-        return '/dashboard/mentor';
-      case UserRole.EMPLOYER:
-        return '/dashboard/employer';
+        return '/admin/dashboard';
       default:
-        return '/home';
+        return '/dashboard';
     }
   }
 }

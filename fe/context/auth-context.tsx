@@ -16,9 +16,16 @@ interface LoginResult {
   redirectTo?: string;
 }
 
+interface OAuthLoginPayload {
+  accessToken: string;
+  refreshToken: string;
+  role: UserRole;
+}
+
 interface AuthContextValue extends AuthState {
   login: (payload: LoginPayload) => Promise<LoginResult>;
   adminLogin: (payload: LoginPayload) => Promise<LoginResult>;
+  completeOAuthLogin: (payload: OAuthLoginPayload) => void;
   register: (payload: RegisterPayload) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   verifyForgotPasswordToken: (token: string) => Promise<void>;
@@ -129,6 +136,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { redirectTo: response.redirectTo };
   }, []);
 
+  const completeOAuthLogin = useCallback((payload: OAuthLoginPayload) => {
+    authStorage.setSession(payload);
+
+    setState({
+      accessToken: payload.accessToken,
+      refreshToken: payload.refreshToken,
+      role: payload.role,
+      isAuthenticated: true,
+      isHydrated: true,
+    });
+  }, []);
+
   const register = useCallback(async (payload: RegisterPayload) => {
     await authService.register(payload);
   }, []);
@@ -169,13 +188,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...state,
       login,
       adminLogin,
+      completeOAuthLogin,
       register,
       forgotPassword,
       verifyForgotPasswordToken,
       resetPassword,
       logout,
     }),
-    [state, login, adminLogin, register, forgotPassword, verifyForgotPasswordToken, resetPassword, logout],
+    [
+      state,
+      login,
+      adminLogin,
+      completeOAuthLogin,
+      register,
+      forgotPassword,
+      verifyForgotPasswordToken,
+      resetPassword,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

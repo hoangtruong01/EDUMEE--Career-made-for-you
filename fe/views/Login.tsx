@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
+import { authService } from '@/lib/auth.service';
 import { motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Image from 'next/image';
@@ -62,6 +63,10 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = authService.getGoogleLoginUrl();
   };
 
   return (
@@ -137,6 +142,29 @@ const Login = () => {
             <Button variant="hero" className="w-full gap-2" disabled={loading}>
               {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               {!loading && <ArrowRight className="h-4 w-4" />}
+            </Button>
+
+            <div className="relative py-1">
+              <div className="bg-border absolute top-1/2 left-0 h-px w-full -translate-y-1/2" />
+              <span className="bg-background text-muted-foreground relative mx-auto block w-fit px-2 text-xs">
+                hoặc
+              </span>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+            >
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.6-5.5 3.6-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3 14.5 2.2 12 2.2 6.6 2.2 2.2 6.6 2.2 12s4.4 9.8 9.8 9.8c5.6 0 9.3-3.9 9.3-9.4 0-.6-.1-1.1-.2-1.6H12z"
+                />
+              </svg>
+              Tiếp tục với Google
             </Button>
 
             {errorMessage && <p className="text-destructive text-sm">{errorMessage}</p>}

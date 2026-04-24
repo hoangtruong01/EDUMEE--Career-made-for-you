@@ -30,6 +30,11 @@ export interface BasicMessageResponse {
   message: string;
 }
 
+const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') || DEFAULT_API_BASE_URL;
+
 export const authService = {
   login(payload: LoginPayload) {
     return apiClient.post<LoginResponse>('/auth/login', payload);
@@ -68,5 +73,9 @@ export const authService = {
       },
       accessToken,
     );
+  },
+
+  getGoogleLoginUrl() {
+    return `${API_BASE_URL}/auth/google`;
   },
 };
