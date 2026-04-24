@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
 
 export class BulkAnswerDto {
 
@@ -14,11 +14,10 @@ export class BulkAnswerDto {
   questionId!: string;
 
 
-  @ApiProperty({ example: 'A' })
+  @ApiProperty({ example: '1' })
   @IsNotEmpty()
   @IsString()
-  @IsIn(['A', 'B', 'C', 'D'])
-  answer!: string; // Trắc nghiệm ABCD
+  answer!: string; // Điểm số (1-5) hoặc ABCD
 
 
   @ApiProperty({ example: 1500 })

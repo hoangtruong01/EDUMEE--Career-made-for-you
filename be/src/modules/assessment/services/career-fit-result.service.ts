@@ -13,6 +13,7 @@ interface QuestionData {
   _id?: Types.ObjectId | string;
   questionText?: string;
   dimension?: string;
+  options?: { value: string; label: string }[];
 }
 
 interface Career {
@@ -346,6 +347,7 @@ export class CareerFitResultService {
           answer: answer.answer,
           questionText: question?.questionText ?? '',
           dimension: question?.dimension ?? '',
+          options: question?.options ?? [],
         };
       });
 

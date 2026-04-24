@@ -50,5 +50,6 @@ export interface AssessmentAnswerData {
   questionText?: string;
   dimension?: string; // Big5 or RIASEC dimension
   answer: any;
+  options?: { value: string; label: string }[];
   responseTime?: number;
 }

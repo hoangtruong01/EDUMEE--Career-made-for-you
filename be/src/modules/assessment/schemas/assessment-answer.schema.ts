@@ -28,8 +28,8 @@ export class AssessmentAnswer {
   @Prop({ type: Types.ObjectId, ref: 'AssessmentSession' })
   sessionId?: Types.ObjectId;
 
-  // Câu trả lời ABCD
-  @Prop({ required: true, enum: ['A', 'B', 'C', 'D'] })
+  // Câu trả lời (điểm số hoặc ABCD)
+  @Prop({ required: true })
   answer!: string;
 
   // Thời gian trả lời (milliseconds)
@@ -53,6 +53,7 @@ export class AssessmentAnswer {
 export const AssessmentAnswerSchema = SchemaFactory.createForClass(AssessmentAnswer);
 
 // Indexes for performance
-AssessmentAnswerSchema.index({ userId: 1, questionId: 1 }, { unique: true }); // User chỉ có thể trả lời 1 lần cho mỗi câu hỏi
+// User chỉ có thể trả lời 1 lần cho mỗi câu hỏi TRONG MỘT PHIÊN (session)
+AssessmentAnswerSchema.index({ userId: 1, questionId: 1, sessionId: 1 }, { unique: true }); 
 AssessmentAnswerSchema.index({ answeredAt: -1 });
 AssessmentAnswerSchema.index({ questionId: 1 });

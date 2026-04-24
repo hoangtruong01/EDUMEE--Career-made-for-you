@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, HttpException } from '@nestjs/common';
+import { Injectable, NotFoundException, HttpException, Logger, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssessmentSession, AssessmentSessionDocument } from '../schemas/assessment-sesions.schema';
@@ -8,49 +8,66 @@ import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 
 @Injectable()
 export class AssessmentSessionService {
+    private readonly logger = new Logger(AssessmentSessionService.name);
     constructor(
         @InjectModel(AssessmentSession.name)
         private sessionModel: Model<AssessmentSessionDocument>,
         private readonly aiQuotaService: AiQuotaService,
     ) { }
 
-    // Create a new session for a user. Prevent multiple active sessions.
+    // Create a new session for a user. Reuse existing in_progress session if one exists.
     async createSession(userId: string | Types.ObjectId): Promise<AssessmentSession> {
-        const existing = await this.sessionModel.findOne({ userId, status: SessionStatus.IN_PROGRESS }).exec();
-        if (existing) throw new BadRequestException('An active session already exists for this user');
-
-        // Quota per month (AiUsageLog-based) for assessment attempts
+        const userIdStr = String(userId);
         try {
-            await this.aiQuotaService.checkQuota(String(userId), AiFeature.ASSESSMENT);
-        } catch (e: unknown) {
-            // Standardize quota to 429
-            if (e instanceof HttpException && e.getStatus() === 429) throw e;
-            if (e instanceof HttpException) throw e;
-            throw e;
+            this.logger.log(`Creating session for user ${userIdStr}`);
+            const existing = await this.sessionModel.findOne({ userId: new Types.ObjectId(userIdStr), status: SessionStatus.IN_PROGRESS }).exec();
+            if (existing) {
+                this.logger.warn(`User ${userIdStr} already has an active session: ${String(existing._id)} - reusing it`);
+                return existing as AssessmentSession;
+            }
+
+            // Quota per month (AiUsageLog-based) for assessment attempts
+            try {
+                await this.aiQuotaService.checkQuota(userIdStr, AiFeature.ASSESSMENT);
+                this.logger.log(`Quota check passed for user ${userIdStr}`);
+            } catch (e: unknown) {
+                const err = e as HttpException & { message: string; stack?: string };
+                this.logger.error(`Quota check failed for user ${userIdStr}: ${err.message}`, err.stack);
+                // Standardize quota to 429
+                if (e instanceof HttpException && e.getStatus() === 429) throw e;
+                if (e instanceof HttpException) throw e;
+                throw new HttpException(err.message || 'Quota check failed', HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            // Determine attemptNumber based on prior sessions in the same billing period (month)
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            const previousCount = await this.sessionModel.countDocuments({
+                userId: new Types.ObjectId(userIdStr),
+                createdAt: { $gte: startOfMonth },
+            }).exec();
+
+            // Default attemptNumber is previousCount + 1
+            const attemptNumber = previousCount + 1;
+
+            const session = new this.sessionModel({
+                userId: new Types.ObjectId(userIdStr),
+                status: SessionStatus.IN_PROGRESS,
+                startedAt: new Date(),
+                attemptNumber,
+            });
+
+            const saved = await session.save();
+            this.logger.log(`Session saved: ${String(saved._id)}`);
+            await this.aiQuotaService.consumeQuota(userIdStr, AiFeature.ASSESSMENT, { requestCount: 1, tokensUsed: 0 });
+            this.logger.log(`Quota consumed for user ${userIdStr}`);
+            return saved;
+        } catch (err: unknown) {
+            const error = err as Error;
+            this.logger.error(`FATAL ERROR in createSession: ${error.message}`, error.stack);
+            throw err;
         }
-
-        // Determine attemptNumber based on prior sessions in the same billing period (month)
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-        const previousCount = await this.sessionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            createdAt: { $gte: startOfMonth },
-        }).exec();
-
-        // Default attemptNumber is previousCount + 1
-        const attemptNumber = previousCount + 1;
-
-        const session = new this.sessionModel({
-            userId: new Types.ObjectId(userId),
-            status: SessionStatus.IN_PROGRESS,
-            startedAt: new Date(),
-            attemptNumber,
-        });
-
-        const saved = await session.save();
-        await this.aiQuotaService.consumeQuota(String(userId), AiFeature.ASSESSMENT, { requestCount: 1, tokensUsed: 0 });
-        return saved;
     }
 
     async getById(id: string | Types.ObjectId): Promise<AssessmentSession> {

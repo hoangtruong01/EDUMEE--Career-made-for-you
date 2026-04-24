@@ -25,12 +25,15 @@ export class AIService {
   private readonly logger = new Logger(AIService.name);
   private readonly apiKey: string;
   private readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-  private readonly model = 'models/gemini-2.5-flash';
+  private readonly model = 'models/gemini-flash-latest';
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get<string>('app.geminiApiKey') || 
                   this.configService.get<string>('GEMINI_API_KEY') || 
-                  'AIzaSyApFDUurQHtjFoytIhUIMr0OPbX3WhvC4c';
+                  '';
+    if (!this.apiKey) {
+      this.logger.warn('GEMINI_API_KEY is not configured! AI features will not work.');
+    }
   }
 
   async analyzePersonalityAndCareers(
@@ -43,14 +46,18 @@ export class AIService {
       return this.parseAnalysisResponse(response);
     } catch (error) {
       this.logger.error('Failed to analyze personality and careers:', error);
-      throw new Error('AI analysis failed');
+      this.logger.warn('Using fallback analysis due to AI failure');
+      return this.createFallbackAnalysis();
     }
   }
 
   private buildAnalysisPrompt(answers: AssessmentAnswerData[], careers: Career[]): string {
-    const answersText = answers.map(a => 
-      `Question: ${a.questionText}\nDimension: ${a.dimension}\nAnswer: ${JSON.stringify(a.answer)}`
-    ).join('\n\n');
+    const answersText = answers.map(a => {
+      const optionsDesc = a.options && a.options.length > 0 
+        ? `\nOptions:\n${a.options.map(o => `  ${o.value}: ${o.label}`).join('\n')}`
+        : '';
+      return `Question: ${a.questionText}${optionsDesc}\nDimension: ${a.dimension}\nUser's Answer: ${JSON.stringify(a.answer)}`;
+    }).join('\n\n');
 
     const careersText = careers.length > 0 
       ? careers.map(c => `- ${c.title}: ${c.description || 'No description'}`).join('\n')
@@ -59,7 +66,7 @@ export class AIService {
     return `
 You are an expert career counselor and psychologist. Analyze the following personality assessment results and provide career recommendations.
 
-ASSESSMENT ANSWERS:
+ASSESSMENT ANSWERS (RIASEC format, score 1-5 where 1=Strongly Disagree, 5=Strongly Agree):
 ${answersText}
 
 AVAILABLE CAREERS:
@@ -87,38 +94,38 @@ Please provide a comprehensive analysis in the following JSON format:
       "dominantTraits": ["trait1", "trait2"],
       "strengthAreas": ["strength1", "strength2"],
       "developmentAreas": ["area1", "area2"],
-      "workStyle": "description of preferred work style",
-      "communication": "communication preference description", 
-      "leadership": "leadership style description"
+      "workStyle": "mô tả phong cách làm việc ưa thích",
+      "communication": "mô tả sở thích giao tiếp", 
+      "leadership": "mô tả phong cách lãnh đạo"
     }
   },
   "careerRecommendations": [
     {
       "careerId": "unique_id_or_null",
-      "careerTitle": "Career Title",
+      "careerTitle": "Tên nghề nghiệp",
       "fitScore": <0-100>,
       "personalityMatch": {
         "bigFiveAlignment": <0-100>,
         "riasecAlignment": <0-100>,
         "overallFit": <0-100>
       },
-      "reasons": ["reason1", "reason2"],
-      "potentialChallenges": ["challenge1", "challenge2"],
-      "developmentSuggestions": ["suggestion1", "suggestion2"]
+      "reasons": ["lý do 1", "lý do 2"],
+      "potentialChallenges": ["thách thức 1", "thách thức 2"],
+      "developmentSuggestions": ["gợi ý phát triển 1", "gợi ý phát triển 2"]
     }
   ],
-  "explanation": "Overall analysis explanation and insights",
+  "explanation": "Giải thích tổng quát về kết quả phân tích và lời khuyên nghề nghiệp",
   "confidence": <0-100>
 }
 
 Requirements:
-1. Analyze personality dimensions based on assessment answers
-2. Calculate realistic scores (0-100) for Big Five and RIASEC
-3. Recommend 3-5 most suitable careers
-4. Provide specific, actionable insights
-5. Be accurate and evidence-based
-6. Return valid JSON only (no additional text)
-7. ALL text content (traits, strengths, reasons, suggestions, explanations, etc.) MUST be written in Vietnamese language
+1. Analyze personality dimensions based on assessment answers (Scale 1-5).
+2. Calculate realistic scores (0-100) for Big Five and RIASEC. For RIASEC, map each dimension from its corresponding answer.
+3. Recommend 3-5 most suitable careers.
+4. Provide specific, actionable insights.
+5. Be accurate and evidence-based.
+6. Return valid JSON only (no additional text, no markdown code blocks).
+7. ALL text content (traits, strengths, reasons, suggestions, explanations, etc.) MUST be written in Vietnamese language.
 `;
   }
 

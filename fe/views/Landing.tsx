@@ -242,7 +242,7 @@ const Landing = () => {
                 Đăng nhập
               </Button>
             </Link>
-            <Link href="/onboarding">
+            <Link href="/personality-test">
               <Button
                 variant="hero"
                 size="sm"
@@ -291,7 +291,7 @@ const Landing = () => {
               </p>
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <Link href="/onboarding">
+                <Link href="/personality-test">
                   <Button
                     variant="hero"
                     size="lg"
@@ -577,7 +577,7 @@ const Landing = () => {
                   </div>
 
                   {/* Explore button */}
-                  <Link href="/onboarding">
+                  <Link href="/personality-test">
                     <Button
                       variant="outline"
                       size="sm"
@@ -671,7 +671,7 @@ const Landing = () => {
               <p className="text-primary-foreground/80 mx-auto mb-8 max-w-xl text-lg">
                 Làm bài test AI 5 phút và nhận gợi ý nghề nghiệp được cá nhân hóa riêng cho bạn.
               </p>
-              <Link href="/onboarding">
+              <Link href="/personality-test">
                 <Button
                   size="lg"
                   className="shimmer-btn gap-2 rounded-full bg-white px-10 py-6 text-base font-bold text-gray-900 shadow-xl hover:bg-white/90"

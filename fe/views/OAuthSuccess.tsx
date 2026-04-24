@@ -34,11 +34,13 @@ export default function OAuthSuccessView() {
 
   useEffect(() => {
     if (error) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErrorMessage('Đăng nhập Google thất bại. Vui lòng thử lại.');
       return;
     }
 
     if (!accessToken || !refreshToken) {
+       
       setErrorMessage('Thiếu dữ liệu đăng nhập từ Google. Vui lòng thử lại.');
       return;
     }
