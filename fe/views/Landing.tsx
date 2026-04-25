@@ -2,7 +2,8 @@
 
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
+
 import {
   ArrowRight,
   Award,
@@ -42,20 +43,23 @@ const getLandingTheme = () =>
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 /* ─── Animation Variants ─── */
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 40 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: 'easeOut' } },
 };
 
-const stagger = {
+
+const stagger: Variants = {
   hidden: {},
   show: { transition: { staggerChildren: 0.1 } },
 };
 
-const scaleIn = {
+
+const scaleIn: Variants = {
   hidden: { opacity: 0, scale: 0.85 },
   show: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: 'backOut' } },
 };
+
 
 /* ─── Typing Hook ─── */
 function useTyping(words: string[], speed = 80, pause = 1800) {
