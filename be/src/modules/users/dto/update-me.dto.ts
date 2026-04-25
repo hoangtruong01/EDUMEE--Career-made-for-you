@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, ValidateNested } from 'class-validator';
+
 
 class AddressDto {
   @IsOptional() @IsString() street?: string;
@@ -23,5 +24,10 @@ export class UpdateMeDto {
   @ValidateNested()
   @Type(() => AddressDto)
   address?: AddressDto;
+  
+  @IsOptional()
+  @IsBoolean()
+  onboarding_completed?: boolean;
+
 }
 

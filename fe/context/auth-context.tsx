@@ -69,10 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return {
         accessToken: '',
         refreshToken: '',
-        role: '',
+        role: '' as UserRole,
         isAuthenticated: false,
         isHydrated: false,
+        onboardingCompleted: false,
       };
+
     }
 
     const accessToken = authStorage.getAccessToken();
