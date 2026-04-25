@@ -301,3 +301,204 @@ h6 {
   opacity: 0.15;
   pointer-events: none;
 }
+
+/* ── Aurora background ── */
+@utility aurora-bg {
+  position: relative;
+  overflow: hidden;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 30%, hsl(205 90% 55% / 0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 80% 70%, hsl(260 60% 65% / 0.15) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 50% 10%, hsl(25 95% 60% / 0.1) 0%, transparent 50%);
+    animation: aurora-shift 8s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+}
+
+@keyframes aurora-shift {
+  0%   { transform: scale(1) translateY(0); opacity: 0.8; }
+  50%  { transform: scale(1.05) translateY(-12px); opacity: 1; }
+  100% { transform: scale(1) translateY(4px); opacity: 0.85; }
+}
+
+/* ── Typing cursor ── */
+@utility typing-cursor {
+  &::after {
+    content: '|';
+    animation: blink 1s step-end infinite;
+    color: hsl(var(--primary));
+    margin-left: 2px;
+    font-weight: 300;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* ── Gradient orb ── */
+@utility gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  animation: orb-float 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0) translateX(0) scale(1); }
+  33%       { transform: translateY(-20px) translateX(10px) scale(1.05); }
+  66%       { transform: translateY(10px) translateX(-15px) scale(0.95); }
+}
+
+/* ── Scroll marquee ── */
+@utility marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 25s linear infinite;
+  gap: 1.5rem;
+  &:hover { animation-play-state: paused; }
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── Glow pulse ring ── */
+@utility glow-ring {
+  box-shadow:
+    0 0 0 0 hsl(var(--primary) / 0.4);
+  animation: glow-pulse 2.5s ease-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }
+  70%  { box-shadow: 0 0 0 14px hsl(var(--primary) / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+/* ── Bento card hover ── */
+@utility bento-card {
+  background: hsl(var(--card) / 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 1.5rem;
+  transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+  &:hover {
+    transform: translateY(-6px) scale(1.01);
+    box-shadow: 0 20px 50px -12px hsl(205 90% 55% / 0.3);
+    border-color: hsl(var(--primary) / 0.4);
+  }
+}
+
+/* ── Number count-up highlight ── */
+@utility stat-number {
+  background: var(--gradient-hero);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Tag pill ── */
+@utility tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.2);
+}
+
+/* ── Neon underline ── */
+@utility neon-underline {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0; bottom: -3px;
+    width: 100%; height: 2px;
+    background: var(--gradient-hero);
+    border-radius: 2px;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+  &:hover::after { transform: scaleX(1); }
+}
+
+/* ── Hero text gradient animate ── */
+@utility text-gradient-animate {
+  background: linear-gradient(270deg, hsl(205 90% 55%), hsl(260 60% 65%), hsl(25 95% 60%), hsl(205 90% 55%));
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-flow 5s ease infinite;
+}
+
+/* ── Border Beam Animation ── */
+@keyframes border-beam {
+  0% { offset-distance: 0%; }
+  100% { offset-distance: 100%; }
+}
+
+@utility border-beam {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  &::before {
+    content: '';
+    position: absolute;
+    aspect-ratio: 1;
+    width: 200px;
+    background: linear-gradient(to right, transparent, hsl(var(--primary)), transparent);
+    offset-path: rect(0 auto auto 0 round 1.5rem);
+    animation: border-beam 4s linear infinite;
+  }
+}
+
+/* ── Noise Texture ── */
+@utility noise-bg {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3%3Ffilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  }
+}
+
+@utility bento-card-v2 {
+  background: hsl(var(--card) / 0.4);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: 2rem;
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+  overflow: hidden;
+  &:hover {
+    background: hsl(var(--card) / 0.6);
+    border-color: hsl(var(--primary) / 0.3);
+    transform: translateY(-8px) scale(1.01);
+    box-shadow: 
+      0 20px 40px -15px hsl(var(--primary) / 0.2),
+      0 0 0 1px hsl(var(--primary) / 0.1);
+  }
+}
