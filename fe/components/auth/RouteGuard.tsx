@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/auth-context';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface RouteGuardProps {
   children: React.ReactNode;
@@ -10,9 +10,15 @@ interface RouteGuardProps {
 }
 
 export default function RouteGuard({ children, requiredRole }: RouteGuardProps) {
+  const [mounted, setMounted] = useState(false);
   const { isAuthenticated, isHydrated, role } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const isDemoUserUnlocked =
     typeof window !== 'undefined' && window.localStorage.getItem('demo_user_unlocked') === '1';
@@ -38,7 +44,7 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
     }
   }, [canAccessUserDemo, hasRoleAccess, isAuthenticated, isHydrated, pathname, router]);
 
-  if (!isHydrated || !isAuthorized) {
+  if (!mounted || !isHydrated || !isAuthorized) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground text-sm">Đang kiểm tra quyền truy cập...</p>

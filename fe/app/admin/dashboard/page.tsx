@@ -10,62 +10,23 @@ import {
   MessageSquareText,
   Plus,
   TrendingUp,
-  Users,
+  Users as UsersIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { adminService, DashboardStats } from '@/lib/admin.service';
+import { authStorage } from '@/lib/auth-storage';
 
-const stats = [
-  {
-    title: 'Tổng người dùng',
-    value: '12,453',
-    delta: '+12.5%',
-    icon: Users,
-    iconClassName: 'bg-violet-500',
-  },
-  {
-    title: 'Bài test hoàn thành',
-    value: '8,742',
-    delta: '+8.2%',
-    icon: CircleUserRound,
-    iconClassName: 'bg-emerald-500',
-  },
-  {
-    title: 'Nghề nghiệp',
-    value: '284',
-    delta: '+5',
-    icon: FileText,
-    iconClassName: 'bg-sky-500',
-  },
-  {
-    title: 'Lượt tư vấn',
-    value: '1,632',
-    delta: '-3.1%',
-    icon: MessageSquareText,
-    iconClassName: 'bg-orange-500',
-    deltaType: 'down' as const,
-  },
-];
-
-const activities = [
-  { title: 'Người dùng mới đăng ký', user: 'Nguyen Van A', time: '2 phút trước', type: 'users' },
-  { title: 'Hoàn thành bài test', user: 'Tran Thi B', time: '15 phút trước', type: 'test' },
-  { title: 'Đặt lịch mentor', user: 'Le Van C', time: '1 giờ trước', type: 'mentor' },
-  { title: 'Người dùng mới đăng ký', user: 'Pham Thi D', time: '2 giờ trước', type: 'users' },
-  { title: 'Hoàn thành bài test', user: 'Hoang Van E', time: '3 giờ trước', type: 'test' },
-] as const;
-
-const popularCareers = [
-  { name: 'Frontend Developer', views: '3,248', matches: '892 khớp', delta: '+15.3%' },
-  { name: 'Data Analyst', views: '2,871', matches: '756 khớp', delta: '+12.8%' },
-  { name: 'UI/UX Designer', views: '2,634', matches: '687 khớp', delta: '-2.4%' },
-  { name: 'Backend Developer', views: '2,453', matches: '621 khớp', delta: '+8.9%' },
-  { name: 'Product Manager', views: '2,198', matches: '534 khớp', delta: '+6.2%' },
-];
+const iconMap = {
+  users: UsersIcon,
+  test: CircleUserRound,
+  careers: FileText,
+  mentor: MessageSquareText,
+};
 
 const quickActions = [
   {
     label: 'Duyệt tài khoản',
-    icon: Users,
+    icon: UsersIcon,
     color: 'bg-violet-500',
     hint: 'Đã mở danh sách tài khoản chờ duyệt',
   },
@@ -90,16 +51,35 @@ const quickActions = [
 ];
 
 export default function AdminDashboardPage() {
+  const [data, setData] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activityFilter, setActivityFilter] = useState<'all' | 'users' | 'test' | 'mentor'>('all');
   const [actionMessage, setActionMessage] = useState<string>('Sẵn sàng cho thao tác quản trị');
 
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const token = authStorage.getAccessToken();
+        const res = await adminService.getDashboardStats(token);
+        setData(res);
+      } catch (error) {
+        console.error('Failed to fetch dashboard stats:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
   const filteredActivities = useMemo(() => {
+    if (!data) return [];
     if (activityFilter === 'all') {
-      return activities;
+      return data.recentActivities;
     }
 
-    return activities.filter((item) => item.type === activityFilter);
-  }, [activityFilter]);
+    return data.recentActivities.filter((item) => item.type === activityFilter);
+  }, [activityFilter, data]);
 
   const activityFilters = [
     { value: 'all' as const, label: 'Tất cả' },
@@ -107,6 +87,10 @@ export default function AdminDashboardPage() {
     { value: 'test' as const, label: 'Bài test' },
     { value: 'mentor' as const, label: 'Mentor' },
   ];
+
+  if (isLoading) {
+    return <div className="flex h-96 items-center justify-center">Đang tải dữ liệu...</div>;
+  }
 
   return (
     <div className="max-w-6xl">
@@ -116,14 +100,23 @@ export default function AdminDashboardPage() {
         right={
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
             <Clock3 className="h-4 w-4" />
-            Cập nhật: 5 phút trước
+            Cập nhật: Vừa xong
           </div>
         }
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <AdminStatCard key={item.title} {...item} />
+        {data?.stats.map((item) => (
+          <AdminStatCard 
+            key={item.title} 
+            {...item} 
+            icon={iconMap[item.iconType as keyof typeof iconMap] || UsersIcon}
+            iconClassName={
+              item.iconType === 'users' ? 'bg-violet-500' :
+              item.iconType === 'test' ? 'bg-emerald-500' :
+              item.iconType === 'careers' ? 'bg-sky-500' : 'bg-orange-500'
+            }
+          />
         ))}
       </div>
 
@@ -148,18 +141,20 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="space-y-4">
-            {filteredActivities.map((item) => (
-              <div key={`${item.title}-${item.user}`} className="flex items-center justify-between">
+            {filteredActivities.map((item, idx) => (
+              <div key={`${item.title}-${item.user}-${idx}`} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-600">
-                    <Users className="h-4 w-4" />
+                    {item.type === 'test' ? <CircleUserRound className="h-4 w-4" /> : <UsersIcon className="h-4 w-4" />}
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{item.title}</p>
                     <p className="text-xs text-slate-500">{item.user}</p>
                   </div>
                 </div>
-                <span className="text-xs text-slate-400">{item.time}</span>
+                <span className="text-xs text-slate-400">
+                  {new Date(item.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
             ))}
           </div>
@@ -167,7 +162,7 @@ export default function AdminDashboardPage() {
 
         <AdminPanel title="Nghề phổ biến" className="px-5 py-4">
           <div className="space-y-3">
-            {popularCareers.map((item, index) => (
+            {data?.popularCareers.map((item, index) => (
               <div key={item.name} className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
