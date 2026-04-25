@@ -2,6 +2,8 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/context/auth-context';
+import { ApiError } from '@/lib/api-client';
 import { motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import Image from 'next/image';
@@ -26,18 +28,48 @@ const Register = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [gender, setGender] = useState('male');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
+  const { register } = useAuth();
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
+
+    if (password !== confirmPassword) {
+      setErrorMessage('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+
+    try {
+      await register({
+        name,
+        email,
+        password,
+        confirmPassword,
+        gender,
+        date_of_birth: dateOfBirth,
+        phone_number: phoneNumber || undefined,
+      });
+      router.push('/login');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage('Không thể tạo tài khoản lúc này. Vui lòng thử lại.');
+      }
+    } finally {
       setLoading(false);
-      router.push('/onboarding');
-    }, 1000);
+    }
   };
 
   return (
@@ -128,10 +160,60 @@ const Register = () => {
               )}
             </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Xác nhận mật khẩu</label>
+              <Input
+                type="password"
+                placeholder="Nhập lại mật khẩu"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Giới tính</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  required
+                >
+                  <option value="male">Nam</option>
+                  <option value="female">Nữ</option>
+                  <option value="other">Khác</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Ngày sinh</label>
+                <Input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Số điện thoại (tùy chọn)</label>
+              <Input
+                type="tel"
+                placeholder="09xxxxxxxx"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+            </div>
+
             <Button variant="hero" className="w-full gap-2" disabled={loading}>
               {loading ? 'Đang tạo tài khoản...' : 'Đăng ký'}
               {!loading && <ArrowRight className="h-4 w-4" />}
             </Button>
+
+            {errorMessage && <p className="text-destructive text-sm">{errorMessage}</p>}
           </form>
 
           <div className="text-muted-foreground mt-6 text-center text-sm">

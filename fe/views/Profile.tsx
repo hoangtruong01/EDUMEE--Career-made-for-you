@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useAuth } from '@/context/auth-context';
 import { motion } from 'framer-motion';
 import {
   Award,
@@ -26,6 +27,7 @@ import { useEffect, useState } from 'react';
 
 const Profile = () => {
   const router = useRouter();
+  const { logout } = useAuth();
 
   const { setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -46,11 +48,8 @@ const Profile = () => {
     setCurrentTheme(savedTheme);
   }, []);
 
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-    }
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
   };
 

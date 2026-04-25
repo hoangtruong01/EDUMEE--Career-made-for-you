@@ -13,18 +13,13 @@ import {
   ShieldCheck,
   UserCog,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { adminService, AdminUser } from '@/lib/admin.service';
+import { authStorage } from '@/lib/auth-storage';
 
 /* ── data ─────────────────────────────────────── */
 
 type Plan = 'Free' | 'Plus' | 'Pro';
-
-const userStats = [
-  { label: 'Tổng người dùng', value: '12,453', color: 'bg-indigo-100 text-indigo-600' },
-  { label: 'Đang hoạt động', value: '9,842', color: 'bg-emerald-100 text-emerald-600' },
-  { label: 'Mentor', value: '156', color: 'bg-violet-100 text-violet-600' },
-  { label: 'Người dùng mới (tuần)', value: '234', color: 'bg-sky-100 text-sky-600' },
-];
 
 const planBadge: Record<Plan, string> = {
   Free: 'bg-slate-100 text-slate-600',
@@ -32,73 +27,12 @@ const planBadge: Record<Plan, string> = {
   Pro: 'bg-violet-100 text-violet-700',
 };
 
-const initialUsers = [
-  {
-    id: 'u-1',
-    name: 'Nguyen Van An',
-    email: 'nguyenvanan@gmail.com',
-    role: 'Sinh viên',
-    plan: 'Free' as Plan,
-    status: 'Hoạt động',
-    joined: '15/01/2026',
-    tests: 3,
-  },
-  {
-    id: 'u-2',
-    name: 'Tran Thi Bich',
-    email: 'tranbich@gmail.com',
-    role: 'Sinh viên',
-    plan: 'Plus' as Plan,
-    status: 'Hoạt động',
-    joined: '12/01/2026',
-    tests: 5,
-  },
-  {
-    id: 'u-3',
-    name: 'Le Van Cuong',
-    email: 'lecuong@gmail.com',
-    role: 'Mentor',
-    plan: 'Pro' as Plan,
-    status: 'Hoạt động',
-    joined: '08/01/2026',
-    tests: 2,
-  },
-  {
-    id: 'u-4',
-    name: 'Pham Thi Dung',
-    email: 'phamdung@gmail.com',
-    role: 'Sinh viên',
-    plan: 'Free' as Plan,
-    status: 'Bị khóa',
-    joined: '20/12/2025',
-    tests: 1,
-  },
-  {
-    id: 'u-5',
-    name: 'Hoang Van Em',
-    email: 'hoangem@gmail.com',
-    role: 'Sinh viên',
-    plan: 'Plus' as Plan,
-    status: 'Hoạt động',
-    joined: '05/01/2026',
-    tests: 4,
-  },
-  {
-    id: 'u-6',
-    name: 'Vu Thi Fiona',
-    email: 'vufiona@gmail.com',
-    role: 'Admin',
-    plan: 'Pro' as Plan,
-    status: 'Hoạt động',
-    joined: '01/12/2025',
-    tests: 0,
-  },
-];
-
 /* ── component ────────────────────────────────── */
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState(initialUsers);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'Tất cả' | 'Sinh viên' | 'Mentor' | 'Admin'>(
     'Tất cả',
@@ -107,9 +41,39 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<'Tất cả' | 'Hoạt động' | 'Bị khóa'>('Tất cả');
   const [currentPage, setCurrentPage] = useState(1);
   const [message, setMessage] = useState('');
-  const [detailUser, setDetailUser] = useState<(typeof initialUsers)[0] | null>(null);
+  const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
 
-  const pageSize = 5;
+  const pageSize = 10;
+
+  const fetchUsers = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const token = authStorage.getAccessToken();
+      const res = await adminService.getAllUsers(token, currentPage, pageSize);
+      // Map role from API to Vietnamese label if needed, but assuming API handles it or FE labels match
+      const mappedUsers = res.users.map(u => ({
+        ...u,
+        role: u.role === 'admin' ? 'Admin' : u.role === 'mentor' ? 'Mentor' : 'Sinh viên'
+      })) as AdminUser[];
+      setUsers(mappedUsers);
+      setTotal(res.total);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const userStats = useMemo(() => [
+    { label: 'Tổng người dùng', value: total.toLocaleString(), color: 'bg-indigo-100 text-indigo-600' },
+    { label: 'Đang hoạt động', value: users.filter(u => u.status === 'Hoạt động').length.toLocaleString(), color: 'bg-emerald-100 text-emerald-600' },
+    { label: 'Mentor', value: users.filter(u => u.role === 'Mentor').length.toLocaleString(), color: 'bg-violet-100 text-violet-600' },
+    { label: 'Người dùng mới (trang này)', value: users.length.toLocaleString(), color: 'bg-sky-100 text-sky-600' },
+  ], [total, users]);
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -123,35 +87,43 @@ export default function AdminUsersPage() {
     });
   }, [users, search, roleFilter, planFilter, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
-  const paginatedUsers = filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const paginatedUsers = filteredUsers; // Backend already paginates, but we can filter locally too
 
   /* ── admin actions ── */
 
-  const handleToggleStatus = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id ? { ...u, status: u.status === 'Hoạt động' ? 'Bị khóa' : 'Hoạt động' } : u,
-      ),
-    );
-    const user = users.find((u) => u.id === id);
-    if (user) {
-      const next = user.status === 'Hoạt động' ? 'khóa' : 'mở khóa';
-      flash(`Đã ${next} tài khoản ${user.name}`);
+  const handleToggleStatus = async (id: string) => {
+    try {
+      const token = authStorage.getAccessToken();
+      const user = users.find(u => u.id === id);
+      if (!user) return;
+      const nextStatus = user.status === 'Hoạt động' ? 'Bị khóa' : 'Hoạt động';
+      await adminService.updateUserStatus(token, id, nextStatus);
+      flash(`Đã ${nextStatus === 'Bị khóa' ? 'khóa' : 'mở khóa'} tài khoản ${user.name}`);
+      fetchUsers();
+    } catch {
+      flash('Lỗi khi cập nhật trạng thái');
     }
   };
 
-  const handleChangeRole = (id: string) => {
-    const cycle = ['Sinh viên', 'Mentor', 'Admin'];
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id !== id) return u;
-        const idx = cycle.indexOf(u.role);
-        const next = cycle[(idx + 1) % cycle.length];
-        return { ...u, role: next };
-      }),
-    );
-    flash('Đã cập nhật vai trò');
+  const handleChangeRole = async (id: string) => {
+    try {
+      const token = authStorage.getAccessToken();
+      const user = users.find(u => u.id === id);
+      if (!user) return;
+
+      const cycle = ['Sinh viên', 'Mentor', 'Admin'];
+      const roleMap = { 'Sinh viên': 'user', 'Mentor': 'mentor', 'Admin': 'admin' };
+      const idx = cycle.indexOf(user.role);
+      const nextRoleLabel = cycle[(idx + 1) % cycle.length];
+      const nextRoleValue = roleMap[nextRoleLabel as keyof typeof roleMap];
+
+      await adminService.updateUserRole(token, id, nextRoleValue);
+      flash(`Đã cập nhật vai trò của ${user.name} thành ${nextRoleLabel}`);
+      fetchUsers();
+    } catch {
+      flash('Lỗi khi cập nhật vai trò');
+    }
   };
 
   const handleExport = () => {
@@ -175,6 +147,10 @@ export default function AdminUsersPage() {
   function flash(msg: string) {
     setMessage(msg);
     setTimeout(() => setMessage(''), 3000);
+  }
+
+  if (isLoading && users.length === 0) {
+    return <div className="flex h-96 items-center justify-center">Đang tải danh sách người dùng...</div>;
   }
 
   /* ── render ── */
@@ -323,7 +299,9 @@ export default function AdminUsersPage() {
                       {u.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{u.joined}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {new Date(u.joined).toLocaleDateString('vi-VN')}
+                  </td>
                   <td className="px-4 py-3 font-semibold text-slate-700">{u.tests}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1 text-slate-500">
@@ -487,7 +465,9 @@ export default function AdminUsersPage() {
                   </span>
                 </DetailRow>
                 <DetailRow label="Ngày tham gia" icon={Eye}>
-                  <span className="text-sm text-slate-700">{detailUser.joined}</span>
+                  <span className="text-sm text-slate-700">
+                    {new Date(detailUser.joined).toLocaleDateString('vi-VN')}
+                  </span>
                 </DetailRow>
                 <DetailRow label="Bài test đã làm" icon={Eye}>
                   <span className="text-sm font-semibold text-slate-700">{detailUser.tests}</span>

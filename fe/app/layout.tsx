@@ -1,3 +1,4 @@
+import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
@@ -22,10 +23,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi">
-      <body className={`${plusJakartaSans.variable} antialiased`}>
-        {children}
-        <Toaster />
+    <html lang="vi" suppressHydrationWarning>
+      <body suppressHydrationWarning className={`${plusJakartaSans.variable} antialiased`}>
+        <AppProviders>
+          {children}
+          <Toaster />
+        </AppProviders>
       </body>
     </html>
   );

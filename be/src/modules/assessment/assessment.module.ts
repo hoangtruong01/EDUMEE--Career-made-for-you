@@ -2,34 +2,34 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
 // Schemas
+import { AiPlan, AiPlanSchema } from '../ai/schema/ai-plan.schema';
+import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-subscriptions';
 import {
-  AssessmentQuestion,
-  AssessmentQuestionSchema,
   AssessmentAnswer,
   AssessmentAnswerSchema,
+  AssessmentQuestion,
+  AssessmentQuestionSchema,
   CareerFitResult,
   CareerFitResultSchema,
 } from './schemas';
 import { AssessmentSession, AssessmentSessionSchema } from './schemas/assessment-sesions.schema';
-import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-subscriptions';
-import { AiPlan, AiPlanSchema } from '../ai/schema/ai-plan.schema';
 
 // Services
-import {
-  AssessmentQuestionService,
-  AssessmentAnswerService,
-  CareerFitResultService,
-} from './services';
-import { AssessmentSessionService } from './services/assessment-session.service';
 import { AIService } from '../../common/services/ai.service';
 import { AiModule } from '../ai/ai.module';
+import {
+  AssessmentAnswerService,
+  AssessmentQuestionService,
+  CareerFitResultService,
+} from './services';
+import { AssessmentQuestionSeedService } from './services/assessment-question-seed.service';
+import { AssessmentSessionService } from './services/assessment-session.service';
 
 // Controllers
 import {
-  AssessmentQuestionController,
   AssessmentAnswerController,
+  AssessmentQuestionController,
   CareerFitResultController,
-  // session controller added below
 } from './controllers';
 import { AssessmentSessionController } from './controllers/assessment-session.controller';
 
@@ -53,6 +53,7 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
   ],
   providers: [
     AssessmentQuestionService,
+    AssessmentQuestionSeedService,
     AssessmentAnswerService,
     CareerFitResultService,
     AssessmentSessionService,
@@ -65,4 +66,4 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
     AssessmentSessionService,
   ],
 })
-export class AssessmentModule { }
+export class AssessmentModule {}

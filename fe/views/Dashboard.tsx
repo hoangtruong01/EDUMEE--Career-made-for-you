@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAssessment } from '@/context/assessment-context';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
@@ -21,7 +22,6 @@ import {
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSyncExternalStore } from 'react';
 
 const headerStats = [
   {
@@ -157,14 +157,7 @@ const WelcomeState = () => (
 );
 
 const Dashboard = () => {
-  const hasResult = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener('storage', cb);
-      return () => window.removeEventListener('storage', cb);
-    },
-    () => localStorage.getItem('hasAssessmentResult') === 'true',
-    () => false,
-  );
+  const { hasAssessmentResult: hasResult } = useAssessment();
 
   return (
     <div className="min-h-screen pb-20">

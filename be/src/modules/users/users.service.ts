@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
@@ -16,6 +16,8 @@ import { User, UserDocument } from './schemas/user.schema';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     //Thuận
@@ -75,13 +77,14 @@ export class UsersService {
   //! 3. ĐĂNG KÝ (REGISTER)
   // =======================================================================
   async register(payload: RegisterDto) {
-    const { email, password, confirmPassword, Address, date_of_birth, ...rest } = payload;
+    const { password, confirmPassword, Address, date_of_birth, ...rest } = payload;
+    const normalizedEmail = payload.email.trim().toLowerCase();
 
     if (password !== confirmPassword) {
       throw new BadRequestException('Password and Confirm Password do not match');
     }
 
-    const isExist = await this.checkEmailExist(email);
+    const isExist = await this.checkEmailExist(normalizedEmail);
     if (isExist) {
       throw new BadRequestException(USERS_MESSAGES.EMAIL_ALREADY_EXISTS);
     }
@@ -95,7 +98,7 @@ export class UsersService {
     await this.userModel.create({
       ...rest,
       _id: user_id,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
       Address: Address || {},
       email_verify_token,
@@ -105,7 +108,22 @@ export class UsersService {
       date_of_birth: new Date(date_of_birth),
     });
 
-    await this.MailService.sendVerificationEmail(email, payload.name, email_verify_token);
+    try {
+      await this.MailService.sendVerificationEmail(
+        normalizedEmail,
+        payload.name,
+        email_verify_token,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Register succeeded but verification email failed for ${normalizedEmail}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return {
+        message: 'Register Successfully (email verification is temporarily unavailable)',
+      };
+    }
 
     return { message: 'Register Successfully' };
   }

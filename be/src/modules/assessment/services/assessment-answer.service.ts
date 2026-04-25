@@ -169,7 +169,7 @@ export class AssessmentAnswerService {
 
     return this.assessmentAnswerModel
       .find(query)
-      .populate('questionId', 'questionText dimension orderIndex')
+      .populate('questionId', 'questionText dimension orderIndex options')
       .sort({ 'questionId.orderIndex': 1, createdAt: 1 })
       .exec();
   }
@@ -246,10 +246,10 @@ export class AssessmentAnswerService {
 
     await this.assertSessionOwnershipAndStatus(String(sessionId), String(userId));
 
-    // Validate all questions active + answer format
+    // Validate all questions are active
     for (const a of answers) {
       await this.assertQuestionActive(String(a.questionId));
-      this.assertAnswerFormat(String(a.answer));
+      // Note: answer format validation is handled by DTO validation
     }
 
     // Upsert by (userId, questionId) to respect unique index.

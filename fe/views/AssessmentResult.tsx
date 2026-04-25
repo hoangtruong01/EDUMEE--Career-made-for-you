@@ -1,12 +1,14 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
+import { assessmentService } from '@/lib/assessment.service';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Download, RotateCcw, Share2, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   Bar,
   BarChart,
@@ -32,7 +34,7 @@ const getIsDark = () =>
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 /* ─── Data ─── */
-const topCareers = [
+const fallbackTopCareers = [
   {
     rank: 1,
     icon: '💻',
@@ -109,6 +111,9 @@ const fadeUp = {
 const AssessmentResult = () => {
   const router = useRouter();
   const { toast } = useToast();
+  const { accessToken } = useAuth();
+  const [topCareers, setTopCareers] = useState(fallbackTopCareers);
+  const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
   const tickColor = isDark ? 'hsl(var(--muted-foreground))' : '#6b7280';
@@ -119,6 +124,70 @@ const AssessmentResult = () => {
     color: 'hsl(var(--foreground))',
     fontSize: 12,
   };
+
+  useEffect(() => {
+    const loadResults = async () => {
+      if (!accessToken) {
+        setIsLoadingResult(false);
+        return;
+      }
+
+      try {
+        const results = await assessmentService.getMyResults(accessToken);
+        if (!Array.isArray(results) || results.length === 0) {
+          setIsLoadingResult(false);
+          return;
+        }
+
+        const palette = [
+          {
+            gradient: 'from-violet-500 to-purple-600',
+            btnClass: 'bg-violet-600 hover:bg-violet-700',
+            barColor: '#7c3aed',
+          },
+          {
+            gradient: 'from-pink-500 to-rose-500',
+            btnClass: 'bg-pink-500 hover:bg-pink-600',
+            barColor: '#ec4899',
+          },
+          {
+            gradient: 'from-blue-500 to-cyan-400',
+            btnClass: 'bg-blue-500 hover:bg-blue-600',
+            barColor: '#3b82f6',
+          },
+        ];
+
+        const mapped = results.slice(0, 3).map((item, idx) => {
+          const style = palette[idx] || palette[0];
+          return {
+            rank: idx + 1,
+            icon: idx === 0 ? '💻' : idx === 1 ? '🤖' : '📊',
+            title: item.careerTitle || `Nghe nghiep #${idx + 1}`,
+            match: Number(item.overallFitScore || 0),
+            salary: 'Cap nhat theo du lieu thi truong',
+            growth: 'Cap nhat theo du lieu thi truong',
+            skills: (item.strengths || []).slice(0, 3),
+            insight:
+              item.aiExplanation ||
+              'AI danh gia nghe nay co do phu hop cao dua tren cau tra loi RIASEC cua ban.',
+            gradient: style.gradient,
+            btnClass: style.btnClass,
+            barColor: style.barColor,
+          };
+        });
+
+        if (mapped.length > 0) {
+          setTopCareers(mapped);
+        }
+      } catch {
+        // Keep fallback UI if API fails
+      } finally {
+        setIsLoadingResult(false);
+      }
+    };
+
+    void loadResults();
+  }, [accessToken]);
 
   return (
     <div className="bg-background min-h-screen pb-20">
@@ -133,6 +202,9 @@ const AssessmentResult = () => {
           <p className="text-muted-foreground mt-3 text-sm sm:text-base">
             AI đã phân tích 20 câu trả lời và so sánh với 50,000+ hồ sơ nghề nghiệp
           </p>
+          {isLoadingResult && (
+            <p className="text-muted-foreground mt-2 text-xs">Dang tai ket qua tu he thong AI...</p>
+          )}
         </motion.div>
       </div>
 
@@ -144,7 +216,7 @@ const AssessmentResult = () => {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {topCareers.map((career) => (
               <div key={career.title} className="glass-card relative overflow-hidden rounded-2xl">
-                <div className={`h-2 w-full bg-gradient-to-r ${career.gradient}`} />
+                <div className={`h-2 w-full bg-linear-to-r ${career.gradient}`} />
                 {career.rank === 1 && (
                   <span className="absolute top-4 right-4 rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-bold text-white">
                     #1 Tốt nhất
@@ -160,7 +232,7 @@ const AssessmentResult = () => {
                       <div className="text-foreground font-bold">{career.title}</div>
                       <div className="bg-muted mt-1 h-1.5 w-full overflow-hidden rounded-full">
                         <div
-                          className={`h-full bg-gradient-to-r ${career.gradient}`}
+                          className={`h-full bg-linear-to-r ${career.gradient}`}
                           style={{ width: `${career.match}%` }}
                         />
                       </div>
@@ -274,7 +346,7 @@ const AssessmentResult = () => {
                 </div>
                 <div className="bg-muted mb-2 h-2 w-full overflow-hidden rounded-full">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-400"
+                    className="h-full rounded-full bg-linear-to-r from-violet-500 to-purple-400"
                     style={{ width: `${trait.value}%` }}
                   />
                 </div>

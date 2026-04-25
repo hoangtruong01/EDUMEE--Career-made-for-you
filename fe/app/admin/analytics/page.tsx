@@ -170,7 +170,7 @@ export default function AdminAnalyticsPage() {
                   />
                   {monthlyPoints.map((point, index) => (
                     <circle
-                      key={point + index}
+                      key={`line-point-${index}-${point}`}
                       cx={index * (560 / (monthlyPoints.length - 1)) + 20}
                       cy={200 - point * 2.2}
                       r="4"
@@ -182,7 +182,7 @@ export default function AdminAnalyticsPage() {
                 <div className="flex h-full items-end justify-between gap-2 px-3 pb-4">
                   {monthlyPoints.map((point, index) => (
                     <div
-                      key={point + index}
+                      key={`column-point-${index}-${point}`}
                       className="flex h-full w-full items-end justify-center"
                     >
                       <div
@@ -220,7 +220,10 @@ export default function AdminAnalyticsPage() {
         <p className="mb-4 text-sm text-slate-500">6 tuần gần nhất</p>
         <div className="flex h-64 items-end justify-between gap-4 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-6">
           {weeklyBars.map((item, index) => (
-            <div key={item + index} className="flex w-full flex-col items-center gap-2">
+            <div
+              key={`weekly-bar-${index}-${item}`}
+              className="flex w-full flex-col items-center gap-2"
+            >
               <div
                 className="w-14 rounded-t-xl bg-linear-to-b from-indigo-500 to-violet-500"
                 style={{ height: `${Math.max(56, Math.round((item / maxWeekly) * 190))}px` }}

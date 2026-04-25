@@ -42,6 +42,14 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  // 2b. Đăng nhập Admin (riêng biệt)
+  @ApiOperation({ summary: 'Đăng nhập dành riêng cho Admin' })
+  @HttpCode(HttpStatus.OK)
+  @Post('admin-login')
+  async adminLogin(@Body() loginDto: LoginDto) {
+    return this.authService.adminLogin(loginDto);
+  }
+
   // 3. Đăng xuất
   @ApiOperation({ summary: 'Đăng xuất khỏi hệ thống (Yêu cầu Access Token)' })
   @ApiBearerAuth('JWT-auth') // Báo cho Swagger hiện ổ khóa gắn Token
@@ -145,6 +153,16 @@ export class AuthController {
   }
 
   // =======================================================================
+  // ENDPOINT KHỞI TẠO ĐĂNG NHẬP GOOGLE
+  // =======================================================================
+  @ApiOperation({ summary: 'Khởi tạo đăng nhập Google OAuth' })
+  @Get('google')
+  @Redirect()
+  googleAuth() {
+    return { url: this.authService.getGoogleAuthorizationUrl() };
+  }
+
+  // =======================================================================
   // ENDPOINT NHẬN CALLBACK TỪ GOOGLE
   // =======================================================================
   @ApiOperation({
@@ -153,13 +171,20 @@ export class AuthController {
   @Get('google/callback')
   @Redirect()
   async googleAuthCallback(@Query('code') code: string) {
+    if (!code) {
+      const frontendUrl =
+        this.configService.get<string>('CLIENT_REDIRECT_CALLBACK') ||
+        'http://localhost:3000/oauth-success';
+      return { url: `${frontendUrl}?error=missing_code` };
+    }
+
     const result = await this.authService.googleLogin(code);
 
     const frontendUrl =
       this.configService.get<string>('CLIENT_REDIRECT_CALLBACK') ||
       'http://localhost:3000/oauth-success';
 
-    const redirectUrl = `${frontendUrl}?access_token=${result.access_token}&refresh_token=${result.refresh_token}&new_user=${result.new_user}`;
+    const redirectUrl = `${frontendUrl}?access_token=${encodeURIComponent(result.access_token)}&refresh_token=${encodeURIComponent(result.refresh_token)}&role=${encodeURIComponent(result.role)}&new_user=${result.new_user}`;
 
     return { url: redirectUrl };
   }

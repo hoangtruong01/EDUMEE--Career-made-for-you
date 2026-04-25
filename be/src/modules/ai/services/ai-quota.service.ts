@@ -3,6 +3,7 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -42,6 +43,7 @@ const FEATURE_TO_FLAG_KEY: Partial<Record<AiFeature, keyof AiPlan['features']>> 
 
 @Injectable()
 export class AiQuotaService {
+  private readonly logger = new Logger(AiQuotaService.name);
   constructor(
     @InjectModel(UserSubscription.name)
     private readonly userSubscriptionModel: Model<UserSubscriptionDocument>,
@@ -71,9 +73,10 @@ export class AiQuotaService {
   async checkQuota(userId: string, feature: AiFeature, now = new Date()): Promise<void> {
     const plan = await this.getPlanForUserOrFree(userId);
     if (!plan) {
-      // No subscription: treat as no AI access except if plan-less flows decide otherwise.
+      this.logger.error(`No plan found for user ${userId}`);
       throw new ForbiddenException('AI plan is required');
     }
+    this.logger.log(`Using plan ${plan.name} for user ${userId}`);
 
     this.assertFeatureEnabled(plan, feature);
 
@@ -93,7 +96,9 @@ export class AiQuotaService {
       })
       .exec();
     const used = usage?.requestCount || 0;
+    this.logger.log(`User ${userId} used ${used}/${limit} for ${feature}`);
     if (used >= limit) {
+      this.logger.warn(`Quota exceeded for user ${userId} on ${feature}`);
       throw new HttpException('AI quota exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
   }

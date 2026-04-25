@@ -149,6 +149,8 @@ export class CareerFitResult {
     feedbackDate?: Date;
   };
 
+  createdAt!: Date;
+  updatedAt!: Date;
 }
 
 export const CareerFitResultSchema = SchemaFactory.createForClass(CareerFitResult);
