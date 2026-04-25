@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsNumber, IsObject, IsOptional, Min } from 'class-validator';
-import { PlanName } from '../schema/ai-plan.schema';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class AiPlanLimitsDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) assessmentsPerMonth?: number;
@@ -25,10 +34,18 @@ export class AiPlanFeaturesDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() personalizedRoadmap?: boolean;
 }
 
+export class AiPlanBillingCycleDiscountsDto {
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) monthly?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) three_months?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) five_months?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) nine_months?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) yearly?: number;
+}
+
 export class CreateAiPlanDto {
-  @ApiProperty({ enum: PlanName })
-  @IsEnum(PlanName)
-  name!: PlanName;
+  @ApiProperty()
+  @IsString()
+  name!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -36,14 +53,38 @@ export class CreateAiPlanDto {
   @Min(0)
   price?: number;
 
-  @ApiPropertyOptional({ type: AiPlanLimitsDto })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional({
+    description: 'Marks this plan as the default fallback plan for users without an active subscription.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDefaultPlan?: boolean;
+
+  @ApiPropertyOptional({
+    type: AiPlanBillingCycleDiscountsDto,
+    description: 'Discount percentage by billing cycle for this plan.',
+  })
   @IsOptional()
   @IsObject()
+  @ValidateNested()
+  @Type(() => AiPlanBillingCycleDiscountsDto)
+  billingCycleDiscounts?: AiPlanBillingCycleDiscountsDto;
+
+  @ApiPropertyOptional({ type: AiPlanLimitsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AiPlanLimitsDto)
   limits?: AiPlanLimitsDto;
 
   @ApiPropertyOptional({ type: AiPlanFeaturesDto })
   @IsOptional()
-  @IsObject()
+  @ValidateNested()
+  @Type(() => AiPlanFeaturesDto)
   features?: AiPlanFeaturesDto;
 }
 

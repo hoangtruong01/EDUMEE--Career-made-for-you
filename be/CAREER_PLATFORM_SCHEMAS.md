@@ -1,215 +1,403 @@
-# AI Career Consulting Platform - Database Schema Documentation
+# AI Career Consulting Platform - Schema Documentation
 
-## Mục tiêu tài liệu
+## Muc tieu tai lieu
 
-Tài liệu này được viết lại theo codebase hiện tại của backend NestJS/MongoDB, thay vì theo mô tả khái niệm cũ. Mục tiêu là phản ánh đúng các schema đang có, các module thực tế, và các quan hệ chính giữa chúng.
+Tai lieu nay mo ta schema theo **target design** cua nen tang, khong chi la anh chup cua code hien tai. Noi dung duoc viet de review nghiep vu, thiet ke API, validation, va mo rong cac flow con thieu theo huong production-ready.
 
-## Tổng quan kiến trúc dữ liệu
+Tai phien ban nay, schema da duoc cap nhat them cho:
 
-Codebase hiện tại có 8 module dữ liệu chính và 23 schema MongoDB:
+- payment workflow cho booking le va mentor cashflow
+- AI roadmap generation theo kieu async co fallback
+- state machine mentoring va quan ly slot ranh cua mentor
+- versioning cho `CareerFitResult` va `LearningRoadmap`
+- notification va progress tracking
+
+## Tong quan kien truc du lieu
+
+Nen tang duoc to chuc quanh 7 cum nghiep vu chinh:
+
+- danh tinh, xac thuc va ho so nguoi dung
+- onboarding, assessment va career matching
+- learning roadmap, async AI generation va progress tracking
+- mentoring, availability, review va moderation
+- payment, transaction, invoice, refund va payout
+- cong dong va feedback
+- notification va event delivery
+
+### Cac module du lieu chinh
 
 - `users`: `User`, `UserProfile`
-- `ai`: `AiPlan`, `AiUsageLog`
+- `onboarding`: `OnboardingSession`
 - `assessment`: `AssessmentSession`, `AssessmentQuestion`, `AssessmentAnswer`, `CareerFitResult`
 - `careers`: `Career`, `CareerComparison`
-- `learning`: `SimulationTask`, `TaskSubmission`, `LearningRoadmap`, `WeeklyPlan`, `Checkpoint`
-- `mentoring`: `TutorProfile`, `BookingSession`, `TutoringSession`, `SessionReview`
+- `learning`: `LearningRoadmap`, `RoadmapGenerationJob`, `TemplateRoadmap`, `WeeklyPlan`, `SimulationTask`, `TaskSubmission`, `Checkpoint`
+- `mentoring`: `TutorProfile`, `MentorSchedule`, `BookingSession`, `TutoringSession`, `SessionReview`
 - `community`: `CareerReview`, `ReviewVote`, `ReviewReport`
-- `onboarding`: `OnboardingSession`
-
-Mô hình dữ liệu xoay quanh 3 luồng chính:
-
-- Định danh người dùng và hồ sơ mở rộng
-- Đánh giá, gợi ý nghề nghiệp và lập lộ trình học
-- Mentoring, cộng đồng và theo dõi sử dụng AI
+- `ai`: `AiPlan`, `AiUsageLog`
+- `billing`: `UserSubscription`, `Payment`, `PaymentTransaction`, `Transaction`, `Invoice`
+- `notifications`: `Notification`
 
 ## 1. Users Module
 
-**Mục đích:** quản lý tài khoản, xác thực và hồ sơ mở rộng của người dùng.
+**Muc dich:** quan ly tai khoan, xac thuc va ho so phuc vu ca nhan hoa.
 
 ### `User`
 
-- Schema lõi cho tài khoản và xác thực.
-- Lưu thông tin như tên, email, mật khẩu, số điện thoại, vai trò, trạng thái verify, avatar và các token khôi phục/quên mật khẩu.
-- Là điểm tham chiếu cho hầu hết các module khác qua `userId` hoặc biến thể của `userId`.
+- Thuc the goc cho dang ky, dang nhap, verify email, reset password va phan quyen.
+- La diem tham chieu cho gan nhu toan bo schema nghiep vu khac.
 
 ### `UserProfile`
 
-- Hồ sơ mở rộng cho dữ liệu nghề nghiệp và học tập.
-- Lưu các thuộc tính như năm sinh, trình độ học vấn, công việc hiện tại, số năm kinh nghiệm, kỹ năng, mức ngân sách, mục tiêu nghề nghiệp và bio.
-- Dùng để cá nhân hóa roadmap, gợi ý nghề nghiệp và trải nghiệm AI.
+- Ho so mo rong cho muc tieu nghe nghiep, hoc van, kinh nghiem, ky nang, budget, bio va cac preference lien quan.
+- Duoc dung de ca nhan hoa onboarding, recommendation, roadmap va trai nghiem mentoring.
 
-## 2. AI Module
+## 2. Onboarding Module
 
-**Mục đích:** theo dõi gói dịch vụ AI và mức sử dụng theo người dùng.
-
-### `AiPlan`
-
-- Định nghĩa gói AI theo tier.
-- Chứa thông tin giá, hạn mức sử dụng và các feature flag như career recommendation, job simulation, mentor booking, chatbot.
-- Phục vụ kiểm soát quyền truy cập và giới hạn tính năng.
-
-### `AiUsageLog`
-
-- Ghi nhận mức sử dụng AI theo user, feature, tháng và năm.
-- Theo dõi token đã dùng và số request.
-- Phục vụ billing, quota và phân tích hành vi sử dụng.
-
-## 3. Assessment Module
-
-**Mục đích:** thu thập dữ liệu đánh giá đầu vào và tạo kết quả phù hợp nghề nghiệp.
-
-### `AssessmentSession`
-
-- Phiên đánh giá tổng thể của người dùng.
-- Theo dõi trạng thái, số lần làm, thời gian bắt đầu/kết thúc và tiến trình của một đợt assessment.
-- Là khung bao cho các câu trả lời và kết quả phân tích.
-
-### `AssessmentQuestion`
-
-- Ngân hàng câu hỏi đánh giá.
-- Lưu nội dung câu hỏi, loại câu hỏi, dimension, options, thứ tự hiển thị và trạng thái active.
-- Chủ yếu phục vụ các bài test dạng lựa chọn cố định.
-
-### `AssessmentAnswer`
-
-- Câu trả lời của người dùng cho từng câu hỏi.
-- Lưu answer, thời gian phản hồi, metadata và liên kết tới question/session/user.
-- Dùng cho scoring và phân tích hành vi trả lời.
-
-### `CareerFitResult`
-
-- Kết quả phân tích mức phù hợp nghề nghiệp do AI hoặc logic chấm điểm tạo ra.
-- Lưu overall fit score, danh sách nghề được đề xuất, giải thích AI, phản hồi người dùng và các profile breakdown theo nhóm tiêu chí.
-- Là đầu ra chính sau assessment.
-
-## 4. Careers Module
-
-**Mục đích:** quản lý dữ liệu nghề nghiệp và so sánh các lựa chọn nghề nghiệp.
-
-### `Career`
-
-- Dữ liệu nghề nghiệp trung tâm của hệ thống.
-- Chứa mô tả, category, kỹ năng yêu cầu, mức độ phù hợp tính cách, các cấp độ nghề nghiệp, thông tin thị trường, lộ trình học, môi trường làm việc và các trường liên quan khác.
-- Là nguồn tham chiếu cho assessment, learning, community và mentoring.
-
-### `CareerComparison`
-
-- Lưu các lần so sánh nghề nghiệp do người dùng tạo.
-- Chứa danh sách nghề đem ra so sánh, tiêu chí so sánh có trọng số, kết quả chấm điểm, recommendation và quyết định cuối cùng của user.
-- Hữu ích cho việc ra quyết định trước khi vào roadmap học hoặc mentoring.
-
-## 5. Learning Module
-
-**Mục đích:** xây dựng lộ trình học cá nhân hóa, chia tuần và đánh giá tiến độ.
-
-### `LearningRoadmap`
-
-- Lộ trình học tổng thể cho một user hướng tới một nghề hoặc một cấp độ mục tiêu.
-- Lưu các phase, milestone, personalization data, progress và trạng thái thực thi.
-- Là xương sống cho toàn bộ luồng học tập.
-
-### `WeeklyPlan`
-
-- Kế hoạch học theo tuần được sinh ra từ roadmap.
-- Gồm mục tiêu tuần, activities, lịch thực hiện, phụ thuộc, checkpoint tuần và dữ liệu thích nghi.
-- Phục vụ vòng lặp học tập ngắn hạn và điều chỉnh kế hoạch.
-
-### `SimulationTask`
-
-- Nhiệm vụ mô phỏng công việc hoặc thử thách học tập.
-- Lưu task content, level, nghề liên quan, skill đánh giá, rubric và cấu hình AI evaluation.
-- Dùng cho các bài mô phỏng thực tế theo từng cấp độ.
-
-### `TaskSubmission`
-
-- Bài nộp của người dùng cho một simulation task.
-- Lưu trạng thái, nội dung nộp, thời gian làm, số lần làm, kết quả đánh giá và khuyến nghị cải thiện.
-- Là đầu vào cho feedback và tiến độ học.
-
-### `Checkpoint`
-
-- Mốc đánh giá định kỳ trong quá trình học.
-- Theo dõi tình trạng tiến độ, thách thức, kết quả đánh giá, đề xuất điều chỉnh roadmap và phản hồi của người dùng.
-- Là phần quan trọng của cơ chế học theo vòng lặp.
-
-## 6. Mentoring Module
-
-**Mục đích:** quản lý mentor, đặt lịch, diễn ra buổi tư vấn và đánh giá sau buổi học.
-
-### `TutorProfile`
-
-- Hồ sơ mentor/gia sư.
-- Chứa background, expertise, availability, pricing, verification và các chỉ số đánh giá chất lượng.
-- Là lớp dữ liệu dùng để hiển thị mentor cho người học.
-
-### `BookingSession`
-
-- Phiên đặt lịch giữa mentee và mentor.
-- Lưu yêu cầu đặt lịch, thời gian dự kiến, chủ đề, trạng thái trao đổi, thông tin thanh toán và lịch sử thay đổi lịch.
-- Là cầu nối giữa nhu cầu học và buổi mentoring thực tế.
-
-### `TutoringSession`
-
-- Phiên mentoring thực tế sau khi booking được xác nhận.
-- Lưu agenda, nội dung buổi học, tiến độ, quan sát của mentor và các đề xuất tiếp theo.
-- Có thể liên kết với roadmap để cập nhật tiến độ học.
-
-### `SessionReview`
-
-- Đánh giá sau buổi mentoring từ một hoặc cả hai phía.
-- Lưu rating, feedback, mức ảnh hưởng và các thông tin xác minh.
-- Phục vụ chất lượng dịch vụ và moderation nếu cần.
-
-## 7. Community Module
-
-**Mục đích:** lưu review nghề nghiệp ẩn danh và hệ thống tương tác/moderation cho review.
-
-### `CareerReview`
-
-- Review nghề nghiệp từ cộng đồng theo hướng ẩn danh nhưng vẫn có ngữ cảnh.
-- Chứa nội dung review, đánh giá, hành trình nghề nghiệp, insight thực tế và thông tin liên quan đến kinh nghiệm làm việc/học tập.
-- Là nguồn dữ liệu xã hội để bổ trợ career exploration.
-
-### `ReviewVote`
-
-- Phiếu vote cho review, thường theo các nhãn như helpful, accurate, relevant hoặc tương đương tùy schema cụ thể.
-- Có metadata về người vote và ngữ cảnh để hỗ trợ đánh trọng số.
-- Dùng để xếp hạng chất lượng review.
-
-### `ReviewReport`
-
-- Báo cáo vi phạm hoặc nội dung cần moderation.
-- Lưu reason, severity, trạng thái xử lý, kết quả điều tra và quy trình kháng nghị.
-- Hỗ trợ vận hành cộng đồng an toàn hơn.
-
-## 8. Onboarding Module
-
-**Mục đích:** theo dõi quá trình onboarding người dùng mới và thu thập dữ liệu nền.
+**Muc dich:** thu thap baseline data truoc khi user vao assessment va recommendation.
 
 ### `OnboardingSession`
 
-- Phiên onboarding theo từng bước.
-- Lưu trạng thái, tiến độ, intent của người dùng, dữ liệu nền và các cờ theo dõi trải nghiệm.
-- Là điểm vào đầu tiên của hệ thống trước khi sang assessment và recommendation.
+- Theo doi onboarding theo tung step, progress, intent, current situation va learning preferences.
+- La dau vao som nhat de xac dinh user can assessment, recommendation, learning hay mentoring.
 
-## Quan hệ chính giữa các module
+## 3. AI Module
 
-- `User` là thực thể gốc cho gần như toàn bộ dữ liệu nghiệp vụ.
-- `AssessmentSession` và `CareerFitResult` nối dữ liệu đầu vào với kết quả gợi ý nghề nghiệp.
-- `Career` được tái sử dụng ở assessment, learning, mentoring và community.
-- `LearningRoadmap`, `WeeklyPlan` và `Checkpoint` tạo thành vòng lặp học tập liên tục.
-- `BookingSession` và `TutoringSession` kết nối nhu cầu học với mentor thực tế.
-- `AiUsageLog` và `AiPlan` kiểm soát quota và gói dịch vụ AI.
+**Muc dich:** dinh nghia san pham AI va theo doi muc su dung AI theo chu ky.
 
-## Ghi chú kỹ thuật
+### `AiPlan`
 
-- Một số schema dùng nested object và array khá sâu, đặc biệt ở `Career`, `LearningRoadmap`, `WeeklyPlan`, `BookingSession` và `CareerReview`.
-- Cấu trúc collection hiện tại thiên về truy vấn theo user, trạng thái, thời gian và tiến trình.
-- Có một typo trong tên file: `src/modules/assessment/schemas/assessment-sesions.schema.ts`.
-- Module AI đang dùng thư mục `schema/` thay vì `schemas/` như các module khác.
-- Community gộp vote và report trong file `review-interactions.schema.ts` thay vì tách riêng theo tên collection.
+- Dinh nghia goi AI theo tier nhu Free, Plus, Pro.
+- Chua gia, billing defaults, monthly limits va feature flags.
+- Duoc dung nhu policy source cho entitlement, quota va gating tinh nang.
 
-## Kết luận
+### `AiUsageLog`
 
-Codebase hiện tại không chỉ có 6 flow nghiệp vụ như bản mô tả cũ mà đã mở rộng thành một hệ dữ liệu hoàn chỉnh gồm user/auth, AI plan/usage, assessment, careers, learning, mentoring, community và onboarding. Bản tài liệu này phản ánh đúng cấu trúc thực tế để dùng làm nền cho việc phát triển, review và mở rộng schema sau này.
+- Ghi nhan su dung AI theo `userId`, `feature`, `month`, `year`.
+- Luu request count, token usage, provider, latency, fallback source va metadata audit neu can.
+- Duoc dung cho quota, billing analysis va dieu tra sai lech usage.
+
+## 4. Billing Module
+
+**Muc dich:** mo hinh hoa thanh toan, giao dich, refund, payout, invoice va entitlement sau thanh toan.
+
+### `UserSubscription`
+
+- Dai dien cho quyen su dung goi AI cua user.
+- Noi voi `User` va `AiPlan`.
+- Chua billing cycle, `startDate`, `endDate`, `status` va cac moc quan trong cua vong doi subscription.
+
+**Target lifecycle:**
+
+- `pending_payment`: da tao order nhung chua nhan thanh toan hop le
+- `active`: da duoc cap entitlement
+- `cancelled`: bi huy theo user hoac admin policy
+- `expired`: het han ma khong gia han
+- `refunded` hoac `terminated`: bi thu hoi quyen sau refund, dispute hoac manual revoke
+
+### `Payment`
+
+- Dai dien cho mot payment order hoac mot lan thu tien cu the.
+- Thuong gan voi `userId`, `planId`, `bookingSessionId`, `billingCycle`, `amount`, `currency`, `provider`, `status`.
+- La nguon su that cho viec xac dinh user da thanh toan thanh cong cho goi nao hoac booking nao.
+
+**Target statuses:**
+
+- `pending`
+- `authorized`
+- `paid`
+- `failed`
+- `cancelled`
+- `refunded`
+- `partially_refunded`
+
+### `PaymentTransaction`
+
+- Log chi tiet tung su kien tu payment provider.
+- Luu provider transaction id, event type, raw payload, verification result, idempotency key va event status.
+- Dung de webhook idempotency, audit, troubleshooting va reconcile.
+
+### `Transaction`
+
+- Ledger bat buoc cho moi dong tien ra vao trong he thong, khong chi cho subscription ma ca booking le, refund, payout va wallet movement.
+- Co the tham chieu `userId`, `mentorId`, `paymentId`, `bookingSessionId`, `invoiceId`, `relatedTransactionId`.
+- Cho phep doi soat, rollback, lich su nap/rut tien mentor, refund va finance reporting.
+
+**Target transaction types:**
+
+- `subscription_payment`
+- `booking_payment`
+- `wallet_topup`
+- `wallet_withdrawal`
+- `mentor_payout`
+- `refund`
+- `penalty`
+- `adjustment`
+
+**Target transaction statuses:**
+
+- `pending`
+- `succeeded`
+- `failed`
+- `reversed`
+- `cancelled`
+
+**Target fields quan trong:**
+
+- `amount`, `currency`
+- `direction`: `credit` hoac `debit`
+- `balanceBefore`, `balanceAfter` neu he thong co wallet
+- `sourceType`: `subscription`, `booking`, `refund`, `payout`, `manual_adjustment`
+- `provider`, `providerRef`, `description`
+
+### `Invoice`
+
+- Chung tu billing duoc sinh sau khi payment thanh cong.
+- Thuong tham chieu `userId`, `paymentId`, `bookingSessionId`, `invoiceNumber`, amount, currency, issue date, tax data, pdf url.
+- Khong thay the `Payment`; no la billing artifact sau thu tien.
+
+## 5. Assessment Module
+
+**Muc dich:** thu thap cau tra loi va tao ket qua phu hop nghe nghiep.
+
+### `AssessmentSession`
+
+- Phien assessment cua mot user, gom status, progress, started/completed timestamps.
+- La khung bao cua `AssessmentAnswer` va `CareerFitResult`.
+
+### `AssessmentQuestion`
+
+- Ngan hang cau hoi active/inactive.
+- Chua noi dung cau hoi, type, dimension, option va display order.
+
+### `AssessmentAnswer`
+
+- Cau tra loi cua user cho tung question trong mot session.
+- Duoc dung cho scoring, review va AI analysis.
+
+### `CareerFitResult`
+
+- Dau ra phan tich fit score, recommended careers, explanation, breakdown va recommendation metadata.
+- Quan he nghiep vu la `User 1 - N CareerFitResult`, khong overwrite ket qua cu.
+- Moi lan user lam lai assessment se sinh mot ban ghi moi co `createdAt`, `assessmentSessionId`, `version`, `isLatest`.
+- Duoc dung lam dau vao cho `LearningRoadmap`, mentoring va lich su phat trien cua user.
+
+## 6. Careers Module
+
+**Muc dich:** lam catalog nghe nghiep va ho tro compare giua cac lua chon.
+
+### `Career`
+
+- Master data nghe nghiep: title, category, required skills, levels, market data, work style, learning path.
+
+### `CareerComparison`
+
+- Ban ghi user-driven compare nhieu nghe theo criteria va weights.
+- Co the chua recommendation cuoi cung va user decision.
+
+## 7. Learning Module
+
+**Muc dich:** quan ly roadmap hoc tap, async AI generation, fallback va progress tracking.
+
+### `LearningRoadmap`
+
+- Roadmap tong the huong toi mot career/level muc tieu.
+- Moi roadmap phai tham chieu `userId` va `careerFitResultId` de giu lich su versioning.
+- Khi user lam lai assessment sau 6 thang, roadmap hien tai khong bi ghi de ma duoc chuyen sang `archived`, roadmap moi duoc tao voi `status = active`.
+- Nen co `version`, `parentRoadmapId`, `generatedFrom`, `generationSource`, `archivedAt`, `archivedReason`.
+
+**Target statuses:**
+
+- `generating`
+- `active`
+- `paused`
+- `archived`
+- `failed`
+
+**Target generation sources:**
+
+- `ai`
+- `template_fallback`
+- `manual`
+
+### `RoadmapGenerationJob`
+
+- Job async cho viec sinh roadmap bang AI.
+- Luu `userId`, `careerFitResultId`, `status`, `attemptCount`, `provider`, `startedAt`, `finishedAt`, `errorCode`, `errorMessage`, `estimatedWaitSeconds`.
+- La noi ghi nhan UI state `processing` va cho phep retry/background worker.
+
+**Target statuses:**
+
+- `queued`
+- `processing`
+- `succeeded`
+- `failed`
+- `fallback_succeeded`
+
+### `TemplateRoadmap`
+
+- Thu vien roadmap mau cho cac career pho bien.
+- Dung lam ke hoach B khi AI timeout, quota loi, provider loi hoac cost policy yeu cau fallback.
+- Nen co `careerKey`, `level`, `language`, `templateVersion`, `isActive`, `tags`, `content`.
+
+### `WeeklyPlan`
+
+- Ke hoach hoc theo tuan duoc sinh tu roadmap.
+- Nen co `completionPercentage`, `completedTaskCount`, `totalTaskCount`.
+
+### `SimulationTask`
+
+- Bai tap mo phong cong viec/thu thach hoc tap theo muc do va skill.
+- Nen co `weight` hoac `progressPoints` de tinh tien do.
+
+### `TaskSubmission`
+
+- Bai nop cua user cho simulation task.
+- Chua content, attempts, evaluation result va improvement suggestion.
+
+### `Checkpoint`
+
+- Moc danh gia dinh ky de xem user dang on-track hay can dieu chinh roadmap.
+
+## 8. Mentoring Module
+
+**Muc dich:** quan ly mentor, availability, booking, phien mentoring, review va moderation.
+
+### `TutorProfile`
+
+- Ho so mentor, expertise, pricing, availability policy, verification, rating, strike count va cac policy.
+- Nen co `strikeCount`, `accountStatus`, `noShowCount`, `lastStrikeAt`.
+
+### `MentorSchedule`
+
+- Bang quan ly lich ranh cua mentor.
+- Mentor tu dang ky slot ranh de user chi co the book cac slot da mo.
+- Nen co `mentorId`, `slotId`, `startTime`, `endTime`, `timezone`, `recurrenceRule`, `status`, `capacity`.
+
+**Target statuses:**
+
+- `available`
+- `reserved`
+- `booked`
+- `blocked`
+- `cancelled`
+
+### `BookingSession`
+
+- Ban ghi dat lich giua mentee va mentor.
+- Nen tham chieu `mentorScheduleId` hoac dung cap `(mentorId, startTime, endTime)` lam khoa chong dat trung.
+- Chua scheduling details, booking request, payment metadata, cancel policy snapshot, refund result, reschedule history va dispute metadata.
+
+**Target statuses:**
+
+- `pending`
+- `accepted`
+- `paid`
+- `ongoing`
+- `completed`
+- `canceled`
+
+**Target payment statuses:**
+
+- `unpaid`
+- `paid`
+- `refunded`
+- `forfeited`
+- `waived`
+
+**Target indexes:**
+
+- unique compound index tren `(mentorId, slotId)` neu dung slot model
+- hoac unique compound index tren `(mentorId, startTime, endTime)` neu book truc tiep theo khoang thoi gian
+
+### `TutoringSession`
+
+- Phien mentoring thuc te duoc tao sau khi booking hop le.
+- Chua agenda, meeting link, material, attendance, observations, progress va follow-up planning.
+
+### `SessionReview`
+
+- Feedback sau session, sau goi hoc hoac theo chu ky tuan.
+- Nen co `reviewType`, `bookingSessionId`, `tutoringSessionId`, `weeklyPlanId`, `mentorId`, `userId`, `rating`, `comment`, `reviewWindowStart`, `reviewWindowEnd`.
+
+**Target review types:**
+
+- `final_course_review`
+- `weekly_checkin`
+
+**Target anti-abuse indexes:**
+
+- unique `(userId, mentorId, bookingPackageId, reviewType)` cho review tong ket
+- unique `(userId, mentorId, weeklyPlanId, reviewType)` cho review tuan
+
+## 9. Community Module
+
+**Muc dich:** luu review nghe nghiep, vote va report/moderation.
+
+### `CareerReview`
+
+- Review nghe nghiep theo huong an danh nhung van co context.
+
+### `ReviewVote`
+
+- Tuong tac xep hang review nhu helpful, accurate, relevant.
+
+### `ReviewReport`
+
+- Report vi pham va luong moderation.
+
+## 10. Notification Module
+
+**Muc dich:** thong bao bat dong bo cho roadmap generation, booking, refund, strike va review windows.
+
+### `Notification`
+
+- Ghi nhan message gui toi user hoac mentor.
+- Dung cho `roadmap_processing`, `roadmap_ready`, `roadmap_fallback_used`, `booking_confirmed`, `refund_completed`, `mentor_strike`, `review_window_opened`.
+- Nen co `recipientUserId`, `type`, `title`, `body`, `data`, `status`, `sentAt`, `readAt`.
+
+## Quan he chinh giua cac module
+
+- `User` la thuc the goc cua gan nhu moi schema nghiep vu.
+- `UserProfile` va `OnboardingSession` cung cap du lieu nen cho assessment, recommendation va roadmap.
+- `AssessmentSession` -> `AssessmentAnswer` -> `CareerFitResult` tao thanh chuoi phan tich nghe nghiep.
+- `CareerFitResult` la quan he 1-N voi `User`, khong overwrite ket qua cu.
+- `LearningRoadmap` phai tham chieu `CareerFitResult` cu the, va roadmap cu duoc archive khi roadmap moi duoc tao.
+- `RoadmapGenerationJob` la khau noi giua UI, AI provider, `TemplateRoadmap`, `LearningRoadmap` va `Notification`.
+- `SimulationTask` -> `TaskSubmission` -> `WeeklyPlan.completionPercentage` -> `LearningRoadmap` tao thanh progress loop lien tuc.
+- `TutorProfile`, `MentorSchedule`, `BookingSession`, `TutoringSession`, `SessionReview` tao thanh mentoring lifecycle.
+- `Payment` la payment order; `PaymentTransaction` la event log cua provider; `Transaction` la ledger noi bo cua he thong.
+- `Payment` co the sinh `Transaction` cho booking payment, refund va mentor payout.
+- `Payment` sinh `Invoice` sau khi thanh toan thanh cong.
+- `Payment` thanh cong moi duoc phep kich hoat `UserSubscription`.
+- `AiUsageLog` phai duoc tinh tren entitlement hop le cua `UserSubscription` hien hanh.
+- `Notification` duoc tao khi roadmap generation thay doi trang thai, booking thay doi trang thai, refund xay ra, hoac review window duoc mo.
+
+## Ky thuat va quy uoc
+
+- Nhieu schema su dung nested object/array sau, dac biet o `Career`, `LearningRoadmap`, `WeeklyPlan`, `TemplateRoadmap`, `BookingSession`, `CareerReview`.
+- `payment` domain can co unique/idempotency strategy ro rang cho `providerPaymentId`, `providerTransactionId`, `invoiceNumber`.
+- `BookingSession` phai co unique compound index de tranh 2 user cung dat mot slot trong cung thoi diem.
+- Neu booking yeu cau tru wallet, thao tac tao booking + tao `Transaction` + cap nhat so du phai nam trong cung mot MongoDB transaction.
+- JSON tra ve tu AI de tao roadmap phai duoc validate schema truoc khi save thanh `LearningRoadmap`.
+- Cac field progress nhu `completionPercentage` phai la derived field, khong cho phep client tu y set vuot 0-100.
+
+## Implementation Gap Notes
+
+- Code hien tai da co schema cho `Payment`, `PaymentTransaction`, `Invoice`, nhung can them `Transaction` de bao phu booking le, refund va mentor payout.
+- `UserSubscription` hien da ton tai trong code, nhung activation dang theo huong admin/manual upsert thay vi bat buoc di qua payment success.
+- Chua co `RoadmapGenerationJob`, `TemplateRoadmap` va `Notification` de ho tro async AI roadmap generation va fallback.
+- `CareerFitResult` va `LearningRoadmap` can duoc chot quan he versioning/archive, khong overwrite ban ghi cu.
+- `MentorSchedule` chua duoc mo ta ro nhu nguon slot ranh cho booking.
+- `BookingSession` can state machine ro rang hon va can unique index o tang DB de xu ly concurrency.
+- `TutorProfile` va `SessionReview` can them metadata cho strike/no-show, weekly review va anti-abuse rules.
+
+## Ket luan
+
+Target design cua he thong khong chi gom user, assessment, learning, mentoring va community, ma con can:
+
+- payment ledger du cho subscription va booking le
+- async roadmap generation co fallback va notification
+- versioning/archiving de giu lich su hoc tap
+- state machine va unique index de khoa logic mentoring
+
+Tai lieu nay duoc dung lam nen cho viec mo rong codebase tu trang thai hien tai sang he thong co schema du nghiep vu de di vao workflow, validation va implementation.

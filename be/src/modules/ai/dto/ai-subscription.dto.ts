@@ -11,7 +11,10 @@ export class UpsertAiSubscriptionDto {
   @IsString()
   planId!: string;
 
-  @ApiPropertyOptional({ enum: BillingCycle })
+  @ApiPropertyOptional({
+    enum: BillingCycle,
+    description: 'Supported values: monthly, three_months, five_months, nine_months, yearly',
+  })
   @IsOptional()
   @IsEnum(BillingCycle)
   billingCycle?: BillingCycle;
@@ -26,4 +29,3 @@ export class UpsertAiSubscriptionDto {
   @IsDateString()
   endDate?: string;
 }
-

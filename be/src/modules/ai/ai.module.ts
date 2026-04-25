@@ -6,7 +6,6 @@ import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-
 import { AiQuotaService } from './services/ai-quota.service';
 import { AiPlanService } from './services/ai-plan.service';
 import { AiSubscriptionService } from './services/ai-subscription.service';
-import { AiPlanSeedService } from './services/ai-plan-seed.service';
 import { AiPlanController } from './controllers/ai-plan.controller';
 import { AiSubscriptionController } from './controllers/ai-subscription.controller';
 
@@ -19,7 +18,7 @@ import { AiSubscriptionController } from './controllers/ai-subscription.controll
     ]),
   ],
   controllers: [AiPlanController, AiSubscriptionController],
-  providers: [AiQuotaService, AiPlanService, AiSubscriptionService, AiPlanSeedService],
+  providers: [AiQuotaService, AiPlanService, AiSubscriptionService],
   exports: [AiQuotaService, AiPlanService, AiSubscriptionService],
 })
 export class AiModule {}

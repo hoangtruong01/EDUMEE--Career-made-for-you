@@ -11,6 +11,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "ngrok:start": "powershell -ExecutionPolicy Bypass -File scripts/start-ngrok.ps1",
+    "seed:admin": "ts-node -r tsconfig-paths/register scripts/seed-admin.ts",
     "lint": "npx eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -43,6 +45,7 @@
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sepay-pg-node": "^1.0.0",
     "winston": "^3.11.0"
   },
   "devDependencies": {
@@ -53,10 +56,10 @@
     "@nestjs/testing": "^11.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^2.4.6",
-    "@types/lodash": "^4.17.0",
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/lodash": "^4.17.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.11",
     "@types/passport-google-oauth20": "^2.0.14",

@@ -20,7 +20,20 @@ async function bootstrap() {
   const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
 
   // Security
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          formAction: [
+            "'self'",
+            'https://pay-sandbox.sepay.vn',
+            'https://pay.sepay.vn',
+            'https://sandbox.pay.sepay.vn',
+          ],
+        },
+      },
+    }),
+  );
 
   // Compression
   app.use(compression());

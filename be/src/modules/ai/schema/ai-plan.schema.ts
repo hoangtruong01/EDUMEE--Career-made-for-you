@@ -1,13 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { BillingCycle } from '../../users/schemas/user-subscriptions';
 
 export type AiPlanDocument = AiPlan & Document;
-
-export enum PlanName {
-    FREE = 'Free',
-    PLUS = 'Plus',
-    PRO = 'Pro',
-}
 
 export enum PlanFeature {
     CAREER_RECOMMENDATION = 'career_recommendation',
@@ -29,11 +24,20 @@ export enum PlanFeature {
     },
 })
 export class AiPlan {
-    @Prop({ type: String, enum: PlanName, required: true })
-    name!: PlanName;
+    @Prop({ type: String, required: true, trim: true })
+    name!: string;
 
     @Prop({ type: Number, default: 0 })
     price!: number;
+
+    @Prop({ type: String, default: 'USD' })
+    currency!: string;
+
+    @Prop({ type: Boolean, default: false })
+    isDefaultPlan!: boolean;
+
+    @Prop({ type: Object, default: {} })
+    billingCycleDiscounts!: Partial<Record<BillingCycle, number>>;
 
     @Prop({ type: Object, default: {} })
     limits!: {
@@ -59,4 +63,8 @@ export class AiPlan {
 }
 
 export const AiPlanSchema = SchemaFactory.createForClass(AiPlan);
-AiPlanSchema.index({ name: 1 });
+AiPlanSchema.index({ name: 1 }, { unique: true });
+AiPlanSchema.index(
+    { isDefaultPlan: 1 },
+    { unique: true, partialFilterExpression: { isDefaultPlan: true } },
+);
