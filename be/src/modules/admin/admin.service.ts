@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, FilterQuery } from 'mongoose';
+
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Career, CareerDocument } from '../careers/schemas/career.schema';
 import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
 import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
-import { UserRole, UserVerifyStatus } from '../../common/enums';
+import { UserRole, UserVerifyStatus, LoginType } from '../../common/enums';
+
 
 @Injectable()
 export class AdminService {
@@ -15,6 +17,15 @@ export class AdminService {
     @InjectModel(CareerFitResult.name) private careerFitResultModel: Model<CareerFitResultDocument>,
     @InjectModel(BookingSession.name) private bookingSessionModel: Model<BookingSessionDocument>,
   ) {}
+
+  async deleteUser(id: string) {
+    return this.userModel.findByIdAndDelete(id);
+  }
+
+  async bulkDeleteUsers(ids: string[]) {
+    return this.userModel.deleteMany({ _id: { $in: ids } });
+  }
+
 
   async getDashboardStats() {
     const [totalUsers, totalTests, totalCareers, totalSessions] = await Promise.all([
@@ -54,13 +65,29 @@ export class AdminService {
       })),
     ].sort((a, b) => new Date(b.time as string | number | Date).getTime() - new Date(a.time as string | number | Date).getTime()).slice(0, 5);
 
-    // Popular careers (based on recommendations in CareerFitResult)
-    // This is a bit complex, let's just get top careers from the career model for now or aggregate
-    const popularCareers = await this.careerModel
-      .find()
-      .limit(5)
-      .select('title') // Removed viewCount and matchCount
-      .exec();
+    // Popular careers stats (Industries percentage)
+    const allResults = await this.careerFitResultModel.find().select('careerTitle').exec();
+    const industryCounts: Record<string, number> = {};
+    let totalRecommendations = 0;
+
+    for (const res of allResults) {
+      if (res.careerTitle) {
+        totalRecommendations++;
+        const title = res.careerTitle;
+        industryCounts[title] = (industryCounts[title] || 0) + 1;
+      }
+    }
+
+
+    const popularCareers = Object.entries(industryCounts)
+      .map(([name, count]) => ({
+        name,
+        views: count.toString(),
+        matches: `${Math.round((count / totalRecommendations) * 100)}%`,
+        delta: '+0%',
+      }))
+      .sort((a, b) => parseInt(b.views) - parseInt(a.views))
+      .slice(0, 5);
 
     return {
       stats: [
@@ -70,26 +97,29 @@ export class AdminService {
         { title: 'Lượt tư vấn', value: totalSessions.toLocaleString(), delta: '+0%', iconType: 'mentor' },
       ],
       recentActivities,
-      popularCareers: popularCareers.map(c => ({
-        name: c.title,
-        views: '0', // Placeholder
-        matches: '0 khớp', // Placeholder
-        delta: '+0%',
-      })),
+      popularCareers,
     };
   }
 
-  async getAllUsers(page: number = 1, limit: number = 10) {
+
+  async getAllUsers(page: number = 1, limit: number = 10, loginType?: string) {
     const skip = (page - 1) * limit;
+    const query: FilterQuery<User> = {};
+
+    if (loginType && loginType !== 'Tất cả') {
+      query.login_type = loginType === 'Google' ? 'google' : 'password';
+    }
+
     const [users, total] = await Promise.all([
       this.userModel
-        .find()
+        .find(query)
         .skip(skip)
         .limit(limit)
         .sort({ created_at: -1 })
         .exec(),
-      this.userModel.countDocuments(),
+      this.userModel.countDocuments(query),
     ]);
+
 
     // Fetch test counts for these users
     const userIds = users.map(u => u._id);
@@ -109,6 +139,8 @@ export class AdminService {
         name: u.name,
         email: u.email,
         role: u.role,
+        login_type: u.login_type === LoginType.GOOGLE ? 'Google' : 'Password',
+
         plan: 'Free' as const, // Default for now
         status: u.verify === UserVerifyStatus.Banned ? 'Bị khóa' : 'Hoạt động',
         joined: u.created_at,
@@ -117,6 +149,7 @@ export class AdminService {
       total,
     };
   }
+
 
   async updateUserStatus(id: string, status: string) {
     const verify = status === 'Hoạt động' ? 1 : 2; // Verified vs Banned

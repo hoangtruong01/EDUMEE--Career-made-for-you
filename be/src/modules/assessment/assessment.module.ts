@@ -13,6 +13,8 @@ import {
   CareerFitResultSchema,
 } from './schemas';
 import { AssessmentSession, AssessmentSessionSchema } from './schemas/assessment-sesions.schema';
+import { UsersModule } from '../users/users.module';
+
 
 // Services
 import { AIService } from '../../common/services/ai.service';
@@ -36,6 +38,8 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
 @Module({
   imports: [
     AiModule,
+    UsersModule,
+
     MongooseModule.forFeature([
       { name: AssessmentQuestion.name, schema: AssessmentQuestionSchema },
       { name: AssessmentAnswer.name, schema: AssessmentAnswerSchema },

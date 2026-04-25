@@ -8,6 +8,8 @@ import { AssessmentAnswerData, AIAnalysisResult } from '../../../common/interfac
 import { AssessmentAnswerService } from './assessment-answer.service';
 import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
+import { UsersService } from '../../users/users.service';
+
 
 interface QuestionData {
   _id?: Types.ObjectId | string;
@@ -37,7 +39,9 @@ export class CareerFitResultService {
     private readonly aiService: AIService,
     private readonly assessmentAnswerService: AssessmentAnswerService,
     private readonly aiQuotaService: AiQuotaService,
+    private readonly usersService: UsersService,
   ) { }
+
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
     const result = new this.careerFitResultModel({
@@ -295,7 +299,13 @@ export class CareerFitResultService {
       }
 
       this.logger.log(`Generated ${careerFitResults.length} career recommendations for user ${userId}`);
+
+      // Update user's onboarding status
+      await this.usersService.updateMe(userId, { onboarding_completed: true });
+
+
       return careerFitResults;
+
 
     } catch (error) {
       this.logger.error('Failed to generate AI analysis:', error);

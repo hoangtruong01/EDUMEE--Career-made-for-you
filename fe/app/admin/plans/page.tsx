@@ -441,7 +441,8 @@ export default function AdminPlansPage() {
   };
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
+
       <AdminSectionHeader title="Gói dịch vụ" subtitle={config.subtitle} />
 
       <div className="mb-4 inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">

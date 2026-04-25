@@ -215,7 +215,8 @@ export default function AdminContentPage() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div className="w-full">
+
       <AdminSectionHeader
         title="Ngân hàng câu hỏi"
         subtitle="Thêm, sửa, xóa câu hỏi bài test trực tiếp trong trang admin"

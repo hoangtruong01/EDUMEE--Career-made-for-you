@@ -11,9 +11,13 @@ interface RouteGuardProps {
 
 export default function RouteGuard({ children, requiredRole }: RouteGuardProps) {
   const [mounted, setMounted] = useState(false);
-  const { isAuthenticated, isHydrated, role } = useAuth();
+  const { isAuthenticated, isHydrated, role, onboardingCompleted } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+
+  const surveyPages = ['/onboarding', '/personality-test', '/assessment-result'];
+  const isSurveyPage = surveyPages.some(page => pathname?.startsWith(page));
+
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -41,8 +45,15 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
 
     if (!hasRoleAccess && !canAccessUserDemo) {
       router.replace('/unauthorized');
+      return;
     }
-  }, [canAccessUserDemo, hasRoleAccess, isAuthenticated, isHydrated, pathname, router]);
+
+    // Force orientation survey for non-admin users
+    if (isAuthenticated && role !== 'admin' && !onboardingCompleted && !isSurveyPage) {
+      router.replace('/onboarding');
+    }
+  }, [canAccessUserDemo, hasRoleAccess, isAuthenticated, isHydrated, pathname, router, onboardingCompleted, role, isSurveyPage]);
+
 
   if (!mounted || !isHydrated || !isAuthorized) {
     return (

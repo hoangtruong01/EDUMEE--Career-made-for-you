@@ -37,13 +37,27 @@ const Analyzing = ({ progress = 0 }: { progress?: number }) => {
         <p className="text-muted-foreground mb-6">{messages[msgIndex]}</p>
         <Progress value={progress} className="mb-2 h-3" />
         <p className="text-muted-foreground text-sm">{progress}%</p>
+
+        {progress >= 100 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8">
+            <Button
+              variant="hero"
+              onClick={() => window.location.href = '/assessment-result'}
+              className="w-full py-6 text-lg font-bold shadow-xl shadow-primary/20"
+            >
+              Xem kết quả ngay <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );
 };
 
+
 const PersonalityTest = () => {
-  const { accessToken, isHydrated, isAuthenticated } = useAuth();
+  const { accessToken, isHydrated, isAuthenticated, setOnboardingCompleted } = useAuth();
+
   const [step, setStep] = useState(0);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
   const [sessionId, setSessionId] = useState<string>('');
@@ -132,19 +146,30 @@ const PersonalityTest = () => {
       await assessmentService.generateMyAnalysis(accessToken);
 
       setAnalyzingProgress(95);
+
       const results = await assessmentService.getMyResults(accessToken);
       if (!results.length) {
         throw new Error('AI chua tra ket qua. Vui long thu lai.');
       }
 
+      // Unlock the platform immediately
+      setOnboardingCompleted(true);
       setAnalyzingProgress(100);
+
+
       markHasAssessmentResult();
-      router.push('/assessment-result');
-    } catch (error) {
+      
+      // Delay a bit to show 100% then redirect
+      setTimeout(() => {
+        router.replace('/assessment-result');
+      }, 500);
+    } catch (error: any) {
+      console.error('Submission error:', error);
       setAnalyzing(false);
-      setErrorMessage(error instanceof Error ? error.message : 'Khong the phan tich ket qua.');
+      setErrorMessage(error.message || 'Không thể phân tích kết quả. Vui lòng thử lại.');
     }
   };
+
 
   const next = () => {
     if (isLast) {

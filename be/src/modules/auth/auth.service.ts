@@ -20,7 +20,7 @@ import { UsersService } from '../users/users.service';
 import { RefreshToken, RefreshTokenDocument } from './schemas/refreshToken.schemas';
 
 // Import Utils & Enums
-import { UserRole, UserVerifyStatus } from '../../common/enums';
+import { UserRole, UserVerifyStatus, LoginType } from '../../common/enums';
 import { MailService } from '../../common/mail/mail.service';
 
 // =======================================================================
@@ -49,6 +49,7 @@ interface JwtPayload {
   email: string;
   role: string;
   verify?: number;
+  onboarding_completed?: boolean;
 }
 
 interface DecodedToken {
@@ -105,6 +106,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       verify: user.verify,
+      onboarding_completed: user.onboarding_completed,
     };
 
     const [access_token, refresh_token] = await Promise.all([
@@ -421,6 +423,7 @@ export class AuthService {
         verify: UserVerifyStatus.Verified,
         username: `user${userId.toString()}`,
         role: UserRole.USER,
+        login_type: LoginType.GOOGLE,
       });
       isNewUser = 1;
     }
@@ -429,6 +432,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       verify: user.verify,
+      onboarding_completed: user.onboarding_completed,
     };
 
     const [access_token, refresh_token] = await Promise.all([

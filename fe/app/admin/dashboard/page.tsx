@@ -93,7 +93,8 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
+
       <AdminSectionHeader
         title="Dashboard"
         subtitle="Tổng quan hoạt động hệ thống Career AI"

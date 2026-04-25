@@ -16,8 +16,12 @@ export class UpdateMeDto {
   @IsOptional() @IsString() gender?: string;
   @IsOptional() @IsString() avatar?: string;
 
+  @IsOptional() @IsString() phone_number?: string;
+  @IsOptional() @IsString() username?: string;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => AddressDto)
   address?: AddressDto;
 }
+

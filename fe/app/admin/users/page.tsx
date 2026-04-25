@@ -12,8 +12,11 @@ import {
   Shield,
   ShieldCheck,
   UserCog,
+  Trash2,
+  Filter,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, useCallback } from 'react';
+
 import { adminService, AdminUser } from '@/lib/admin.service';
 import { authStorage } from '@/lib/auth-storage';
 
@@ -40,7 +43,12 @@ export default function AdminUsersPage() {
   const [planFilter, setPlanFilter] = useState<'Tất cả' | Plan>('Tất cả');
   const [statusFilter, setStatusFilter] = useState<'Tất cả' | 'Hoạt động' | 'Bị khóa'>('Tất cả');
   const [currentPage, setCurrentPage] = useState(1);
+  const [loginTypeFilter, setLoginTypeFilter] = useState<'Tất cả' | 'Google' | 'Password'>(
+    'Tất cả',
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+
   const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
 
   const pageSize = 10;
@@ -49,8 +57,9 @@ export default function AdminUsersPage() {
     setIsLoading(true);
     try {
       const token = authStorage.getAccessToken();
-      const res = await adminService.getAllUsers(token, currentPage, pageSize);
+      const res = await adminService.getAllUsers(token, currentPage, pageSize, loginTypeFilter);
       // Map role from API to Vietnamese label if needed, but assuming API handles it or FE labels match
+
       const mappedUsers = res.users.map(u => ({
         ...u,
         role: u.role === 'admin' ? 'Admin' : u.role === 'mentor' ? 'Mentor' : 'Sinh viên'
@@ -66,7 +75,8 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+  }, [fetchUsers, loginTypeFilter]);
+
 
   const userStats = useMemo(() => [
     { label: 'Tổng người dùng', value: total.toLocaleString(), color: 'bg-indigo-100 text-indigo-600' },
@@ -78,8 +88,9 @@ export default function AdminUsersPage() {
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const bySearch =
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase());
+        (u.name?.toLowerCase() || '').includes(search.toLowerCase()) ||
+        (u.email?.toLowerCase() || '').includes(search.toLowerCase());
+
       const byRole = roleFilter === 'Tất cả' || u.role === roleFilter;
       const byPlan = planFilter === 'Tất cả' || u.plan === planFilter;
       const byStatus = statusFilter === 'Tất cả' || u.status === statusFilter;
@@ -126,6 +137,47 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa người dùng này?')) return;
+    try {
+      const token = authStorage.getAccessToken();
+      await adminService.deleteUser(token, id);
+      flash('Đã xóa người dùng thành công');
+      fetchUsers();
+    } catch {
+      flash('Lỗi khi xóa người dùng');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.length} người dùng đã chọn?`)) return;
+    try {
+      const token = authStorage.getAccessToken();
+      await adminService.bulkDeleteUsers(token, selectedIds);
+      flash(`Đã xóa ${selectedIds.length} người dùng thành công`);
+      setSelectedIds([]);
+      fetchUsers();
+    } catch {
+      flash('Lỗi khi xóa người dùng');
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === users.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(users.map((u) => u.id));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+    );
+  };
+
+
   const handleExport = () => {
     const header = 'Name,Email,Role,Plan,Status,Joined,Tests';
     const rows = filteredUsers.map(
@@ -156,7 +208,8 @@ export default function AdminUsersPage() {
   /* ── render ── */
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
+
       <AdminSectionHeader
         title="Quản lý người dùng"
         subtitle="Người dùng tự đăng ký tài khoản. Admin quản lý vai trò, trạng thái và gói dịch vụ."
@@ -229,14 +282,38 @@ export default function AdminUsersPage() {
             }}
             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
           >
-            <option>Tất cả</option>
             <option>Hoạt động</option>
             <option>Bị khóa</option>
           </select>
 
+          <select
+            value={loginTypeFilter}
+            onChange={(e) => {
+              setLoginTypeFilter(e.target.value as typeof loginTypeFilter);
+              setCurrentPage(1);
+            }}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+          >
+            <option>Tất cả</option>
+            <option>Google</option>
+            <option>Password</option>
+          </select>
+
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-rose-500 px-4 text-sm font-semibold text-white hover:bg-rose-600"
+            >
+              <Trash2 className="h-4 w-4" />
+              Xóa đã chọn ({selectedIds.length})
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleExport}
+
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold"
           >
             <Download className="h-4 w-4" />
@@ -249,8 +326,17 @@ export default function AdminUsersPage() {
           <table className="min-w-full bg-white text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
               <tr>
+                <th className="px-4 py-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.length === users.length && users.length > 0}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                  />
+                </th>
                 <th className="px-4 py-3">Người dùng</th>
                 <th className="px-4 py-3">Vai trò</th>
+                <th className="px-4 py-3">Nguồn</th>
                 <th className="px-4 py-3">Gói</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Ngày tham gia</th>
@@ -260,12 +346,22 @@ export default function AdminUsersPage() {
             </thead>
             <tbody>
               {paginatedUsers.map((u) => (
-                <tr key={u.id} className="border-t border-slate-100">
+                <tr key={u.id} className={cn("border-t border-slate-100", selectedIds.includes(u.id) && "bg-slate-50")}>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(u.id)}
+                      onChange={() => toggleSelect(u.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                    />
+                  </td>
                   <td className="px-4 py-3">
+
                     <div className="flex items-center gap-3">
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 text-xs font-bold text-white">
-                        {u.name.charAt(0)}
+                        {u.name?.charAt(0) || '?'}
                       </div>
+
                       <div>
                         <p className="font-semibold text-slate-800">{u.name}</p>
                         <p className="text-xs text-slate-500">{u.email}</p>
@@ -278,6 +374,15 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    <span className={cn(
+                      "rounded-full px-2 py-1 text-xs font-semibold",
+                      u.login_type === 'Google' ? "bg-red-50 text-red-600 border border-red-100" : "bg-blue-50 text-blue-600 border border-blue-100"
+                    )}>
+                      {u.login_type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+
                     <span
                       className={cn(
                         'rounded-full px-2 py-1 text-xs font-semibold',
@@ -344,9 +449,19 @@ export default function AdminUsersPage() {
                           <CheckCircle2 className="h-4 w-4" />
                         )}
                       </button>
+                      <button
+                        type="button"
+                        title="Xóa người dùng"
+                        onClick={() => handleDeleteUser(u.id)}
+                        className="rounded-lg p-1.5 hover:bg-rose-50 text-rose-500"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
+
+
               ))}
             </tbody>
           </table>

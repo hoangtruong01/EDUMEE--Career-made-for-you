@@ -46,6 +46,7 @@ export default function OAuthSuccessView() {
     }
 
     const role = roleFromQuery || decodeRoleFromToken(accessToken);
+    const isNewUser = searchParams.get('new_user') === '1';
 
     completeOAuthLogin({
       accessToken,
@@ -53,8 +54,13 @@ export default function OAuthSuccessView() {
       role,
     });
 
-    router.replace(role === 'admin' ? '/admin/dashboard' : '/dashboard');
-  }, [accessToken, completeOAuthLogin, error, refreshToken, roleFromQuery, router]);
+    if (isNewUser) {
+      router.replace('/complete-profile');
+    } else {
+      router.replace(role === 'admin' ? '/admin/dashboard' : '/dashboard');
+    }
+  }, [accessToken, completeOAuthLogin, error, refreshToken, roleFromQuery, router, searchParams]);
+
 
   if (errorMessage) {
     return (

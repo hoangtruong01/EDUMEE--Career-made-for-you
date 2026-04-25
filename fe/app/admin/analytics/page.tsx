@@ -80,7 +80,8 @@ export default function AdminAnalyticsPage() {
   }, []);
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
+
       <AdminSectionHeader
         title="Phân tích và Thống kê"
         subtitle="Theo dõi hiệu suất và xu hướng người dùng"

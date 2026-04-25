@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,9 +25,24 @@ export class AdminController {
   async getAllUsers(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('loginType') loginType?: string,
   ) {
-    return this.adminService.getAllUsers(Number(page) || 1, Number(limit) || 10);
+    return this.adminService.getAllUsers(Number(page) || 1, Number(limit) || 10, loginType);
   }
+
+  @ApiOperation({ summary: 'Xóa nhiều người dùng' })
+  @Delete('users/bulk-delete')
+  async bulkDeleteUsers(@Body('ids') ids: string[]) {
+    return this.adminService.bulkDeleteUsers(ids);
+  }
+
+  @ApiOperation({ summary: 'Xóa người dùng' })
+  @Delete('users/:id')
+  async deleteUser(@Param('id') id: string) {
+    return this.adminService.deleteUser(id);
+  }
+
+
 
   @ApiOperation({ summary: 'Cập nhật trạng thái người dùng' })
   @Patch('users/:id/status')

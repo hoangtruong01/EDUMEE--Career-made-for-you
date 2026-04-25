@@ -10,6 +10,7 @@ interface AuthState {
   role: UserRole;
   isAuthenticated: boolean;
   isHydrated: boolean;
+  onboardingCompleted: boolean;
 }
 
 interface LoginResult {
@@ -31,7 +32,9 @@ interface AuthContextValue extends AuthState {
   verifyForgotPasswordToken: (token: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  setOnboardingCompleted: (completed: boolean) => void;
 }
+
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -84,16 +87,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: '',
         isAuthenticated: false,
         isHydrated: true,
+        onboardingCompleted: false,
       };
     }
 
+
+    const payload = decodeJwtPayload(accessToken);
     return {
       accessToken,
       refreshToken,
       role,
       isAuthenticated: true,
       isHydrated: true,
+      onboardingCompleted: (payload?.onboarding_completed as boolean) || false,
     };
+
   });
 
   const login = useCallback(async (payload: LoginPayload) => {
@@ -105,13 +113,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: response.result.role,
     });
 
+    const payloadDecoded = decodeJwtPayload(response.result.access_token);
     setState({
       accessToken: response.result.access_token,
       refreshToken: response.result.refresh_token,
       role: response.result.role,
       isAuthenticated: true,
       isHydrated: true,
+      onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
+
 
     return { redirectTo: response.redirectTo };
   }, []);
@@ -125,13 +136,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: response.result.role,
     });
 
+    const payloadDecoded = decodeJwtPayload(response.result.access_token);
     setState({
       accessToken: response.result.access_token,
       refreshToken: response.result.refresh_token,
       role: response.result.role,
       isAuthenticated: true,
       isHydrated: true,
+      onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
+
 
     return { redirectTo: response.redirectTo };
   }, []);
@@ -139,13 +153,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeOAuthLogin = useCallback((payload: OAuthLoginPayload) => {
     authStorage.setSession(payload);
 
+    const payloadDecoded = decodeJwtPayload(payload.accessToken);
     setState({
       accessToken: payload.accessToken,
       refreshToken: payload.refreshToken,
       role: payload.role,
       isAuthenticated: true,
       isHydrated: true,
+      onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
+
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
@@ -180,8 +197,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: '',
       isAuthenticated: false,
       isHydrated: true,
+      onboardingCompleted: false,
     });
+
   }, [state.accessToken, state.refreshToken]);
+  
+  const setOnboardingCompleted = useCallback((completed: boolean) => {
+    setState((prev) => ({ ...prev, onboardingCompleted: completed }));
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -194,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyForgotPasswordToken,
       resetPassword,
       logout,
+      setOnboardingCompleted,
     }),
     [
       state,
@@ -205,8 +229,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyForgotPasswordToken,
       resetPassword,
       logout,
+      setOnboardingCompleted,
     ],
   );
+
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

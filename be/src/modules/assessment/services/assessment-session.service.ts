@@ -34,7 +34,11 @@ export class AssessmentSessionService {
                 const err = e as HttpException & { message: string; stack?: string };
                 this.logger.error(`Quota check failed for user ${userIdStr}: ${err.message}`, err.stack);
                 // Standardize quota to 429
-                if (e instanceof HttpException && e.getStatus() === 429) throw e;
+                if (e instanceof HttpException && (e.getStatus() as any) === (HttpStatus.TOO_MANY_REQUESTS as any)) throw e;
+
+
+
+
                 if (e instanceof HttpException) throw e;
                 throw new HttpException(err.message || 'Quota check failed', HttpStatus.INTERNAL_SERVER_ERROR);
             }

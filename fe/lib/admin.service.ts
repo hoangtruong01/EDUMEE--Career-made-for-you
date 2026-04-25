@@ -31,6 +31,7 @@ export interface AdminUser {
   status: 'Hoạt động' | 'Bị khóa';
   joined: string;
   tests: number;
+  login_type: 'Google' | 'Password';
 }
 
 export interface AdminUsersResponse {
@@ -43,8 +44,9 @@ export const adminService = {
     return apiClient.get<DashboardStats>('/admin/dashboard-stats', token);
   },
 
-  getAllUsers(token: string, page: number = 1, limit: number = 10) {
-    return apiClient.get<AdminUsersResponse>(`/admin/users?page=${page}&limit=${limit}`, token);
+  getAllUsers(token: string, page: number = 1, limit: number = 10, loginType?: string) {
+    const url = `/admin/users?page=${page}&limit=${limit}${loginType ? `&loginType=${loginType}` : ''}`;
+    return apiClient.get<AdminUsersResponse>(url, token);
   },
 
   updateUserStatus(token: string, userId: string, status: string) {
@@ -54,4 +56,14 @@ export const adminService = {
   updateUserRole(token: string, userId: string, role: string) {
     return apiClient.patch<void>(`/admin/users/${userId}/role`, { role }, token);
   },
+
+  deleteUser(token: string, userId: string) {
+    return apiClient.delete<void>(`/admin/users/${userId}`, token);
+  },
+
+  bulkDeleteUsers(token: string, userIds: string[]) {
+    return apiClient.delete<void>('/admin/users/bulk-delete', token, { ids: userIds });
+  },
+
 };
+

@@ -311,12 +311,13 @@ export class UsersService {
       updatePayload.date_of_birth = new Date(payload.date_of_birth);
     }
 
-    const flatFields = ['name', 'gender', 'avatar'] as const;
+    const flatFields = ['name', 'gender', 'avatar', 'phone_number', 'onboarding_completed'] as const;
     flatFields.forEach((field) => {
-      if (payload[field] !== undefined) {
-        updatePayload[field] = payload[field];
+      if (payload[field as keyof UpdateMeDto] !== undefined) {
+        updatePayload[field] = payload[field as keyof UpdateMeDto];
       }
     });
+
 
     const nestedFields = ['Address'] as const;
 

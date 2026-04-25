@@ -236,7 +236,8 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
+
       <AdminSectionHeader
         title="Cài đặt hệ thống"
         subtitle="Quản lý cấu hình và tùy chỉnh hệ thống"

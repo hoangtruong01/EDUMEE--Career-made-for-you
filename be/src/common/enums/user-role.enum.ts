@@ -24,3 +24,7 @@ export interface GoogleProfile {
   name: string;
   picture: string;
 }
+export enum LoginType {
+  PASSWORD = 'password',
+  GOOGLE = 'google',
+}
