@@ -2,7 +2,7 @@
 
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Award,
@@ -15,7 +15,6 @@ import {
   ClipboardCheck,
   Code2,
   DollarSign,
-  GitCompare,
   Layers,
   MessageSquareHeart,
   Moon,
@@ -24,15 +23,13 @@ import {
   Sparkles,
   Star,
   Sun,
-  Target,
-  Timer,
   TrendingUp,
   Users,
   Zap,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 const landingThemeSubscribe = (cb: () => void) => {
   if (typeof window === 'undefined') return () => {};
@@ -48,16 +45,6 @@ const getLandingTheme = () =>
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] } },
-};
-
-const fadeLeft = {
-  hidden: { opacity: 0, x: -50 },
-  show: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] } },
-};
-
-const fadeRight = {
-  hidden: { opacity: 0, x: 50 },
-  show: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] } },
 };
 
 const stagger = {
@@ -125,69 +112,6 @@ const steps = [
     title: 'Nhận gợi ý nghề nghiệp',
     desc: 'Nhận danh sách nghề nghiệp phù hợp kèm lộ trình phát triển chi tiết.',
     color: 'from-orange-500 to-amber-400',
-  },
-];
-
-const featureCategories = [
-  {
-    title: 'AI Career Analysis',
-    icon: Sparkles,
-    color: 'text-blue-500',
-    bg: 'bg-blue-500/10',
-    features: [
-      {
-        icon: Brain,
-        title: 'AI tư vấn thông minh',
-        desc: 'Phân tích tính cách, dự đoán hướng đi phù hợp nhất cho bạn.',
-        color: 'bg-sky-light text-primary',
-      },
-      {
-        icon: TrendingUp,
-        title: 'Lộ trình cá nhân hóa',
-        desc: 'Roadmap 3 tháng – 3 năm dựa trên năng lực & mục tiêu.',
-        color: 'bg-mint-light text-mint',
-      },
-    ],
-  },
-  {
-    title: 'Career Exploration',
-    icon: Target,
-    color: 'text-violet-500',
-    bg: 'bg-violet-500/10',
-    features: [
-      {
-        icon: Layers,
-        title: 'Mô phỏng nghề nghiệp',
-        desc: 'Trải nghiệm hành trình từ Intern → Senior → Leader.',
-        color: 'bg-lavender text-secondary',
-      },
-      {
-        icon: GitCompare,
-        title: 'So sánh ngành nghề',
-        desc: 'Thu nhập, áp lực, cơ hội – so sánh trực quan.',
-        color: 'bg-coral-light text-coral',
-      },
-    ],
-  },
-  {
-    title: 'Community Insights',
-    icon: Users,
-    color: 'text-orange-500',
-    bg: 'bg-orange-500/10',
-    features: [
-      {
-        icon: MessageSquareHeart,
-        title: 'Review từ chuyên gia',
-        desc: 'Chia sẻ ẩn danh từ người trong ngành, không filter.',
-        color: 'bg-gold-light text-gold',
-      },
-      {
-        icon: Award,
-        title: 'Badge & Achievement',
-        desc: 'Hoàn thành thử thách, nhận badge – giữ động lực liên tục.',
-        color: 'bg-sky-light text-primary',
-      },
-    ],
   },
 ];
 
@@ -429,31 +353,30 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* ═══ STATISTICS BENTO ═══ */}
-      <section className="py-16">
+      {/* ═══ STATISTICS BENTO V2 ═══ */}
+      <section className="py-12 md:py-20">
         <div className="container">
           <motion.div
             variants={stagger}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="grid gap-4 sm:grid-cols-3"
+            className="grid gap-6 sm:grid-cols-3"
           >
-            {stats.map((stat, i) => (
+            {stats.map((stat) => (
               <motion.div
                 key={stat.label}
                 variants={scaleIn}
-                className="bento-card group relative overflow-hidden p-8 text-center"
+                className="bento-card-v2 group p-8 text-center flex flex-col items-center justify-center min-h-[200px]"
               >
-                {/* Subtle glow behind icon */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                <div className="bg-primary/10 mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
+                <div className="border-beam opacity-0 group-hover:opacity-40 transition-opacity" />
+                <div className="bg-primary/10 mb-5 flex h-14 w-14 items-center justify-center rounded-2xl transition-all duration-500 group-hover:scale-110 group-hover:bg-primary/20">
                   <stat.icon className="text-primary h-7 w-7" />
                 </div>
-                <div className="stat-number font-display text-4xl font-extrabold">
+                <div className="stat-number font-display text-5xl font-black tracking-tighter">
                   {stat.value}
                 </div>
-                <div className="text-muted-foreground mt-1 text-sm font-medium">{stat.label}</div>
+                <div className="text-muted-foreground mt-2 text-sm font-bold uppercase tracking-widest opacity-60">{stat.label}</div>
               </motion.div>
             ))}
           </motion.div>
@@ -461,25 +384,22 @@ const Landing = () => {
       </section>
 
       {/* ═══ HOW IT WORKS ═══ */}
-      <section className="py-24 md:py-32">
+      <section className="py-24 md:py-32 relative">
         <div className="container">
           <motion.div
             variants={fadeUp}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="mb-16 text-center"
+            className="mb-20 text-center"
           >
-            <span className="tag-pill mx-auto mb-4">
+            <span className="tag-pill mx-auto mb-4 bg-secondary/20 text-secondary border-secondary/30">
               <Zap className="h-3.5 w-3.5" />
-              Đơn giản & nhanh chóng
+              Lộ trình 3 bước
             </span>
-            <h2 className="font-display mb-4 text-3xl font-bold md:text-4xl lg:text-5xl">
-              Chỉ <span className="text-gradient-animate">3 bước đơn giản</span>
+            <h2 className="font-display mb-6 text-4xl font-bold md:text-5xl tracking-tight">
+              Khởi đầu <span className="text-gradient-animate">chỉ với 3 bước</span>
             </h2>
-            <p className="text-muted-foreground mx-auto max-w-2xl text-lg">
-              Tìm ra con đường sự nghiệp phù hợp nhất với bạn
-            </p>
           </motion.div>
 
           <motion.div
@@ -487,22 +407,21 @@ const Landing = () => {
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="grid gap-6 sm:grid-cols-2 md:grid-cols-3"
+            className="grid gap-8 sm:grid-cols-2 md:grid-cols-3"
           >
-            {steps.map((step, i) => (
-              <motion.div key={step.num} variants={fadeUp} className="relative">
-                {i < steps.length - 1 && (
-                  <div className="from-border absolute top-16 right-0 hidden h-0.5 w-full translate-x-1/2 bg-gradient-to-r to-transparent md:block" />
-                )}
-                <div className="bento-card group relative overflow-hidden p-8 text-center">
-                  <div className="text-muted-foreground/15 mb-2 text-6xl font-black">{step.num}</div>
-                  <div
-                    className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${step.color} transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3`}
-                  >
-                    <step.icon className="h-8 w-8 text-white" />
+            {steps.map((step) => (
+              <motion.div key={step.num} variants={fadeUp} className="relative group">
+                <div className="bento-card-v2 p-10 h-full flex flex-col items-center text-center group-hover:border-primary/20">
+                  <div className="absolute top-6 right-8 text-6xl font-black text-muted/10 group-hover:text-primary/5 transition-colors">
+                    {step.num}
                   </div>
-                  <h3 className="font-display mb-3 text-xl font-bold">{step.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{step.desc}</p>
+                  <div
+                    className={`mb-8 flex h-20 w-20 items-center justify-center rounded-[2rem] bg-gradient-to-br ${step.color} shadow-lg shadow-primary/20 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6`}
+                  >
+                    <step.icon className="h-10 w-10 text-white" />
+                  </div>
+                  <h3 className="font-display mb-4 text-2xl font-bold">{step.title}</h3>
+                  <p className="text-muted-foreground text-base leading-relaxed opacity-80">{step.desc}</p>
                 </div>
               </motion.div>
             ))}
@@ -716,39 +635,39 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* ═══ SOCIAL PROOF ═══ */}
-      <section className="relative py-24 overflow-hidden">
-        <div className="bg-gradient-card absolute inset-0 opacity-20" />
+      {/* ═══ SOCIAL PROOF (INFINITE LOOP) ═══ */}
+      <section className="relative py-24 overflow-hidden bg-muted/30">
+        <div className="absolute inset-0 noise-bg opacity-40 pointer-events-none" />
         <div className="relative">
           <motion.div
             variants={fadeUp}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="mb-12 text-center container"
+            className="mb-16 text-center container"
           >
-            <h2 className="font-display mb-2 text-3xl font-bold md:text-4xl">
+            <h2 className="font-display mb-4 text-4xl font-bold md:text-5xl tracking-tight">
               Học sinh nói gì về <span className="text-gradient-animate">EDUMEE</span>?
             </h2>
-            <p className="text-muted-foreground text-base">Hơn 10,000 bạn trẻ đã tìm được hướng đi</p>
+            <p className="text-muted-foreground text-lg">Cộng đồng hơn 10,000+ bạn trẻ đang cùng phát triển</p>
           </motion.div>
 
-          {/* Auto-scroll marquee */}
-          <div className="overflow-hidden py-4">
-            <div className="marquee-track">
+          {/* Row 1: Forward Loop */}
+          <div className="flex overflow-hidden py-4 select-none">
+            <div className="marquee-track flex gap-6 px-4">
               {[...testimonials, ...testimonials].map((t, idx) => (
-                <div key={idx} className="bento-card w-[320px] flex-shrink-0 p-6">
-                  <div className="mb-3 flex gap-1">
+                <div key={`row1-${idx}`} className="bento-card-v2 w-[380px] flex-shrink-0 p-8">
+                  <div className="mb-4 flex gap-1">
                     {[...Array(5)].map((_, i) => (
                       <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
                     ))}
                   </div>
-                  <p className="text-foreground mb-5 text-sm leading-relaxed italic">{t.text}</p>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-full text-xl border border-border">{t.avatar}</div>
+                  <p className="text-foreground mb-6 text-base leading-relaxed font-medium italic">&quot;{t.text}&quot;</p>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-gradient-hero flex h-12 w-12 items-center justify-center rounded-full text-xl text-white shadow-md">{t.avatar}</div>
                     <div>
-                      <div className="text-sm font-semibold">{t.name}</div>
-                      <div className="text-muted-foreground text-xs">{t.school}</div>
+                      <div className="text-sm font-bold">{t.name}</div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wider">{t.school}</div>
                     </div>
                   </div>
                 </div>
@@ -758,49 +677,53 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* ═══ FINAL CTA ═══ */}
-      <section className="py-24 md:py-32">
-        <div className="container">
-          <div className="aurora-bg bg-gradient-hero relative overflow-hidden rounded-3xl p-12 text-center md:p-20">
-            <div className="gradient-orb h-64 w-64 -top-16 -right-16 bg-white/20" />
-            <div className="gradient-orb h-48 w-48 -bottom-12 -left-12 bg-white/15" style={{animationDelay:'3s'}} />
-
-            <motion.div
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true }}
-              className="relative"
-            >
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur glow-ring"
-              >
-                <Rocket className="h-8 w-8 text-white" />
-              </motion.div>
-              <h2 className="font-display text-primary-foreground mb-4 text-3xl font-bold md:text-4xl lg:text-5xl">
-                Sẵn sàng khám phá nghề nghiệp
-                <br />
-                tương lai của bạn?
+      {/* ═══ FINAL CTA ADAPTIVE COMPACT ═══ */}
+      <section className="py-12 md:py-16 relative overflow-hidden">
+        <div className="container relative z-10 max-w-4xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="bento-card-v2 noise-bg relative overflow-hidden rounded-[2rem] p-8 text-center md:p-12 shadow-xl"
+          >
+            {/* Adaptive Background Gradient */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-30 dark:opacity-50" />
+            <div className="border-beam opacity-40" />
+            
+            <div className="relative z-10">
+              <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 backdrop-blur-sm shadow-inner">
+                <Rocket className="h-6 w-6" />
+              </div>
+              
+              <h2 className="font-display mb-3 text-2xl font-black md:text-4xl tracking-tight leading-tight">
+                Sẵn sàng khám phá <br className="md:hidden" />
+                <span className="text-muted-foreground">tương lai của bạn?</span>
               </h2>
-              <p className="text-primary-foreground/80 mx-auto mb-8 max-w-xl text-lg">
-                Làm bài test AI 5 phút và nhận gợi ý nghề nghiệp được cá nhân hóa riêng cho bạn.
+              
+              <p className="text-muted-foreground mx-auto mb-8 max-w-md text-sm md:text-base font-medium">
+                Tìm thấy ngành nghề mơ ước chỉ sau 5 phút làm bài test AI.
               </p>
-              <Link href="/personality-test">
-                <Button
-                  size="lg"
-                  className="shimmer-btn gap-2 rounded-full bg-white px-10 py-6 text-base font-bold text-gray-900 shadow-2xl hover:bg-white/90 hover:scale-105 transition-transform"
-                >
-                  Bắt đầu bài test ngay
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-              </Link>
-              <p className="text-primary-foreground/60 mt-5 text-sm">
-                Miễn phí hoàn toàn • Không cần đăng ký • Kết quả tức thì
-              </p>
-            </motion.div>
-          </div>
+
+              <div className="flex flex-col items-center gap-4">
+                <Link href="/personality-test">
+                  <Button
+                    size="lg"
+                    className="shimmer-btn group relative h-12 md:h-14 gap-2 rounded-full px-8 md:px-10 text-sm md:text-base font-bold shadow-lg hover:scale-105 active:scale-95 transition-all"
+                  >
+                    Bắt đầu ngay
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+                
+                <div className="flex items-center gap-4 text-[10px] md:text-xs font-bold uppercase tracking-wider opacity-60">
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3" /> Miễn phí</span>
+                  <span className="h-1 w-1 rounded-full bg-foreground/20" />
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3" /> 5 Phút</span>
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3 w-3" /> Kết quả AI</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
