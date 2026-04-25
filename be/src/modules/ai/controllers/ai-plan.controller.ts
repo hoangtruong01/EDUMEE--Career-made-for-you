@@ -8,26 +8,44 @@ import { CreateAiPlanDto, UpdateAiPlanDto } from '../dto';
 import { AiPlanService } from '../services/ai-plan.service';
 
 @ApiTags('ai-plans')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
 @Controller('ai-plans')
 export class AiPlanController {
   constructor(private readonly aiPlanService: AiPlanService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List AI plans (admin)' })
-  findAll() {
+  @ApiOperation({ summary: 'List public AI plans for purchase and display' })
+  catalog() {
+    return this.aiPlanService.findCatalog();
+  }
+
+  @Get('catalog')
+  @ApiOperation({ summary: 'List public AI plans for purchase and display (legacy alias)' })
+  catalogAlias() {
+    return this.aiPlanService.findCatalog();
+  }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'List AI plans for admin management' })
+  findAllAdmin() {
     return this.aiPlanService.findAll();
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get AI plan by id (admin)' })
   findOne(@Param('id') id: string) {
     return this.aiPlanService.findOne(id);
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Create AI plan (admin)' })
   @ApiResponse({ status: HttpStatus.CREATED })
   create(@Body() dto: CreateAiPlanDto) {
@@ -35,16 +53,21 @@ export class AiPlanController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update AI plan (admin)' })
   update(@Param('id') id: string, @Body() dto: UpdateAiPlanDto) {
     return this.aiPlanService.update(id, dto);
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Delete AI plan (admin)' })
   async remove(@Param('id') id: string) {
     await this.aiPlanService.remove(id);
   }
 }
-

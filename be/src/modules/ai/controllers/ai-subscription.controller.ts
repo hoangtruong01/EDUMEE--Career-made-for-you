@@ -25,7 +25,7 @@ export class AiSubscriptionController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Upsert active subscription for user (admin)' })
+  @ApiOperation({ summary: 'Manual subscription override for user (admin backoffice)' })
   upsert(@Body() dto: UpsertAiSubscriptionDto) {
     return this.aiSubscriptionService.upsertActiveSubscription({
       userId: dto.userId,
@@ -49,7 +49,7 @@ export class AiSubscriptionController {
   @ApiOperation({ summary: 'Get current user plan + remaining quota (monthly)' })
   async me(@CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
-    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
+    const plan = await this.aiQuotaService.getPlanForUserOrFree(userId);
     const featuresToShow: AiFeature[] = [
       AiFeature.ASSESSMENT,
       AiFeature.CAREER_RECOMMENDATION,

@@ -1,121 +1,215 @@
-/**
- * Script tạo tài khoản Admin cho EDUMEE
- * Chạy: npx ts-node -r tsconfig-paths/register scripts/seed-admin.ts
- */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import * as bcrypt from 'bcrypt';
-import mongoose from 'mongoose';
+import mongoose, { Model } from 'mongoose';
 
-// ============================================================
-// CẤU HÌNH TÀI KHOẢN ADMIN - SỬA TẠI ĐÂY NẾU CẦN
-// ============================================================
-const ADMIN_CONFIG = {
-  name: 'Admin EDUMEE',
-  email: 'admin@edumee.com',
-  password: 'Admin@123456',
-  gender: 'Other',
-};
-// ============================================================
+import { User, UserSchema } from '../src/modules/users/schemas/user.schema';
+import { UserRole, UserVerifyStatus } from '../src/common/enums/user-role.enum';
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URI ||
-  'mongodb://localhost:27017/edumee';
+const REQUIRED_ENV_KEYS = [
+  'ADMIN_SEED_EMAIL',
+  'ADMIN_SEED_PASSWORD',
+  'ADMIN_SEED_NAME',
+  'ADMIN_SEED_GENDER',
+  'ADMIN_SEED_DATE_OF_BIRTH',
+  'ADMIN_SEED_USERNAME',
+] as const;
 
-const UserSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    gender: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    date_of_birth: { type: Date, required: true },
-    password: { type: String, required: true },
-    phone_number: { type: String, default: '' },
-    email_verify_token: { type: String, default: '' },
-    forgot_password_token: { type: String, default: '' },
-    verify: { type: Number, default: 1 }, // 1 = Verified
-    role: { type: String, default: 'admin' },
-    location: { type: String, default: '' },
-    username: { type: String, default: '' },
-    avatar: { type: String, default: '' },
-  },
-  {
-    collection: 'users',
-    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  },
-);
+type RequiredEnvKey = (typeof REQUIRED_ENV_KEYS)[number];
 
-async function seedAdmin() {
-  console.log('\n🚀 EDUMEE - Script tạo tài khoản Admin');
-  console.log('======================================');
-  console.log(`📡 Kết nối MongoDB: ${MONGODB_URI}`);
+interface SeedAdminConfig {
+  email: string;
+  password: string;
+  name: string;
+  gender: string;
+  dateOfBirth: Date;
+  username: string;
+}
 
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('✅ Đã kết nối MongoDB thành công!\n');
+interface SeedResult {
+  action: 'created' | 'updated';
+  email: string;
+  role: UserRole;
+  userId: string;
+}
 
-    const UserModel = mongoose.model('User', UserSchema);
+function loadEnvFiles(): void {
+  const cwd = process.cwd();
+  const envFiles = ['.env', '.env.local'];
+  const externallyProvidedKeys = new Set(Object.keys(process.env));
 
-    // Kiểm tra admin đã tồn tại chưa
-    const existingAdmin = await UserModel.findOne({ email: ADMIN_CONFIG.email });
-
-    if (existingAdmin) {
-      console.log(`⚠️  Tài khoản admin đã tồn tại!`);
-      console.log(`   Email: ${ADMIN_CONFIG.email}`);
-      console.log(`   Role: ${existingAdmin.role}`);
-
-      // Hỏi có muốn reset password không
-      console.log('\n🔄 Đang reset password cho admin hiện tại...');
-      const hashedPassword = await bcrypt.hash(ADMIN_CONFIG.password, 12);
-      await UserModel.updateOne(
-        { email: ADMIN_CONFIG.email },
-        {
-          $set: {
-            password: hashedPassword,
-            role: 'admin',
-            verify: 1,
-          },
-        },
-      );
-      console.log('✅ Đã reset password thành công!');
-    } else {
-      // Tạo tài khoản admin mới
-      const hashedPassword = await bcrypt.hash(ADMIN_CONFIG.password, 12);
-      const adminId = new mongoose.Types.ObjectId();
-
-      await UserModel.create({
-        _id: adminId,
-        name: ADMIN_CONFIG.name,
-        email: ADMIN_CONFIG.email,
-        password: hashedPassword,
-        gender: ADMIN_CONFIG.gender,
-        date_of_birth: new Date('1990-01-01'),
-        role: 'admin',
-        verify: 1, // Verified
-        username: `admin${adminId.toString()}`,
-        email_verify_token: '',
-        forgot_password_token: '',
-      });
-
-      console.log('✅ Tạo tài khoản Admin thành công!');
+  for (const fileName of envFiles) {
+    const filePath = path.join(cwd, fileName);
+    if (!fs.existsSync(filePath)) {
+      continue;
     }
 
-    console.log('\n========================================');
-    console.log('📋 THÔNG TIN TÀI KHOẢN ADMIN:');
-    console.log('========================================');
-    console.log(`   📧 Email   : ${ADMIN_CONFIG.email}`);
-    console.log(`   🔑 Mật khẩu: ${ADMIN_CONFIG.password}`);
-    console.log(`   👤 Role    : admin`);
-    console.log('========================================');
-    console.log('🌐 Đăng nhập tại: http://localhost:3000/admin-login');
-    console.log('   (Ấn logo 5 lần ở trang /login để vào trang admin)');
-    console.log('========================================\n');
-  } catch (error) {
-    console.error('❌ Lỗi:', error);
-    process.exit(1);
-  } finally {
-    await mongoose.disconnect();
-    console.log('🔌 Đã ngắt kết nối MongoDB.');
+    const parsed = parseEnvFile(filePath);
+    for (const [key, value] of Object.entries(parsed)) {
+      if (externallyProvidedKeys.has(key)) {
+        continue;
+      }
+      process.env[key] = value;
+    }
   }
 }
 
-void seedAdmin();
+function parseEnvFile(filePath: string): Record<string, string> {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const entries: Record<string, string> = {};
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    if (!key) {
+      continue;
+    }
+
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    entries[key] = stripWrappingQuotes(rawValue);
+  }
+
+  return entries;
+}
+
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function getRequiredEnv(key: RequiredEnvKey): string {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+
+  return value;
+}
+
+function getDatabaseUri(): string {
+  const uri = process.env.DATABASE_URI?.trim() || process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    throw new Error('Missing MongoDB connection string. Set DATABASE_URI or MONGODB_URI.');
+  }
+
+  return uri;
+}
+
+function buildSeedConfig(): SeedAdminConfig {
+  const dateOfBirthRaw = getRequiredEnv('ADMIN_SEED_DATE_OF_BIRTH');
+  const dateOfBirth = new Date(dateOfBirthRaw);
+
+  if (Number.isNaN(dateOfBirth.getTime())) {
+    throw new Error('ADMIN_SEED_DATE_OF_BIRTH must be a valid date string, for example 1990-01-01.');
+  }
+
+  return {
+    email: getRequiredEnv('ADMIN_SEED_EMAIL').toLowerCase(),
+    password: getRequiredEnv('ADMIN_SEED_PASSWORD'),
+    name: getRequiredEnv('ADMIN_SEED_NAME'),
+    gender: getRequiredEnv('ADMIN_SEED_GENDER'),
+    dateOfBirth,
+    username: getRequiredEnv('ADMIN_SEED_USERNAME'),
+  };
+}
+
+function getUserModel(): Model<User> {
+  const existingModel = mongoose.models[User.name] as Model<User> | undefined;
+  return existingModel ?? mongoose.model<User>(User.name, UserSchema);
+}
+
+async function upsertAdmin(model: Model<User>, config: SeedAdminConfig): Promise<SeedResult> {
+  const hashedPassword = await bcrypt.hash(config.password, 12);
+
+  const updatePayload = {
+    name: config.name,
+    gender: config.gender,
+    date_of_birth: config.dateOfBirth,
+    password: hashedPassword,
+    role: UserRole.ADMIN,
+    verify: UserVerifyStatus.Verified,
+    username: config.username,
+    email_verify_token: '',
+    forgot_password_token: '',
+  };
+
+  const existing = await model.findOne({ email: config.email }).exec();
+
+  if (existing) {
+    const updated = await model
+      .findByIdAndUpdate(existing._id, { $set: updatePayload }, { new: true, runValidators: true })
+      .exec();
+
+    if (!updated) {
+      throw new Error('Failed to update existing admin account.');
+    }
+
+    return {
+      action: 'updated',
+      email: updated.email,
+      role: updated.role,
+      userId: updated._id.toString(),
+    };
+  }
+
+  const created = await model.create({
+    ...updatePayload,
+    email: config.email,
+    phone_number: '',
+    Address: {},
+    location: '',
+    avatar: '',
+  });
+
+  return {
+    action: 'created',
+    email: created.email,
+    role: created.role,
+    userId: created._id.toString(),
+  };
+}
+
+async function main(): Promise<void> {
+  loadEnvFiles();
+
+  const dbUri = getDatabaseUri();
+  const config = buildSeedConfig();
+
+  await mongoose.connect(dbUri);
+
+  const userModel = getUserModel();
+  const result = await upsertAdmin(userModel, config);
+
+  console.log(`[seed:admin] Admin account ${result.action}.`);
+  console.log(`[seed:admin] Email: ${result.email}`);
+  console.log(`[seed:admin] Role: ${result.role}`);
+  console.log(`[seed:admin] User ID: ${result.userId}`);
+}
+
+void main()
+  .catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[seed:admin] Failed: ${message}`);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
+  });

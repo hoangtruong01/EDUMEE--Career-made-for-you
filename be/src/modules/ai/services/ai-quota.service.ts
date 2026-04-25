@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { AiPlan, AiPlanDocument, PlanName } from '../schema/ai-plan.schema';
+import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 import { AiFeature, AiUsageLog, AiUsageLogDocument } from '../schema/ai-usage-logs.schema';
 import {
   SubscriptionStatus,
@@ -55,8 +55,10 @@ export class AiQuotaService {
 
   async getActivePlanForUser(userId: string): Promise<AiPlanDocument | null> {
     if (!Types.ObjectId.isValid(userId)) return null;
+    await this.expireStaleSubscriptions(userId);
     const sub = await this.userSubscriptionModel
       .findOne({ userId: new Types.ObjectId(userId), status: SubscriptionStatus.ACTIVE })
+      .sort({ startDate: -1, createdAt: -1 })
       .exec();
     if (!sub) return null;
     return this.aiPlanModel.findById(sub.planId).exec();
@@ -65,8 +67,7 @@ export class AiQuotaService {
   async getPlanForUserOrFree(userId: string): Promise<AiPlanDocument | null> {
     const active = await this.getActivePlanForUser(userId);
     if (active) return active;
-    // Fallback to FREE plan if exists.
-    return this.aiPlanModel.findOne({ name: PlanName.FREE }).exec();
+    return this.aiPlanModel.findOne({ isDefaultPlan: true }).exec();
   }
 
   async checkQuota(userId: string, feature: AiFeature, now = new Date()): Promise<void> {
@@ -182,5 +183,19 @@ export class AiQuotaService {
     const plan = await this.getPlanForUserOrFree(userId);
     if (!plan) throw new ForbiddenException('AI plan is required');
     return { plan, limits: plan.limits || {} };
+  }
+
+  private async expireStaleSubscriptions(userId: string): Promise<void> {
+    const now = new Date();
+    await this.userSubscriptionModel
+      .updateMany(
+        {
+          userId: new Types.ObjectId(userId),
+          status: SubscriptionStatus.ACTIVE,
+          endDate: { $lte: now },
+        },
+        { $set: { status: SubscriptionStatus.EXPIRED } },
+      )
+      .exec();
   }
 }

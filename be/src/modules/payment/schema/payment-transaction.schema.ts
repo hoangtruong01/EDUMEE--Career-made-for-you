@@ -26,6 +26,9 @@ export class PaymentTransaction {
 	paymentId!: Types.ObjectId;
 
 	@Prop({ type: String })
+	eventId?: string;
+
+	@Prop({ type: String })
 	providerTransactionId?: string;
 
 	@Prop({ type: String })
@@ -41,5 +44,6 @@ export class PaymentTransaction {
 
 export const PaymentTransactionSchema = SchemaFactory.createForClass(PaymentTransaction);
 PaymentTransactionSchema.index({ paymentId: 1 });
+PaymentTransactionSchema.index({ paymentId: 1, eventId: 1 }, { unique: true, sparse: true });
 PaymentTransactionSchema.index({ providerTransactionId: 1 });
 PaymentTransactionSchema.index({ status: 1 });

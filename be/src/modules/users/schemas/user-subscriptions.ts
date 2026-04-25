@@ -5,6 +5,9 @@ export type UserSubscriptionDocument = UserSubscription & Document;
 
 export enum BillingCycle {
     MONTHLY = 'monthly',
+    THREE_MONTHS = 'three_months',
+    FIVE_MONTHS = 'five_months',
+    NINE_MONTHS = 'nine_months',
     YEARLY = 'yearly',
 }
 
@@ -34,6 +37,9 @@ export class UserSubscription {
     @Prop({ required: true, type: Types.ObjectId, ref: 'AiPlan' })
     planId!: Types.ObjectId;
 
+    @Prop({ type: Types.ObjectId, ref: 'Payment' })
+    paymentId?: Types.ObjectId;
+
     @Prop({ type: String, enum: BillingCycle, required: true })
     billingCycle!: BillingCycle;
 
@@ -51,3 +57,4 @@ export const UserSubscriptionSchema = SchemaFactory.createForClass(UserSubscript
 UserSubscriptionSchema.index({ userId: 1 });
 UserSubscriptionSchema.index({ planId: 1 });
 UserSubscriptionSchema.index({ status: 1 });
+UserSubscriptionSchema.index({ paymentId: 1 }, { unique: true, sparse: true });
