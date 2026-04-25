@@ -34,8 +34,10 @@ export default function CompleteProfileView() {
       } else {
         router.replace('/dashboard');
       }
-    } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra khi cập nhật thông tin');
+    } catch (err: unknown) {
+      const errorMessage = (err as { message?: string })?.message || 'Có lỗi xảy ra khi cập nhật thông tin';
+      setError(errorMessage);
+
     } finally {
       setIsLoading(false);
     }

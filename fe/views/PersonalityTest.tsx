@@ -163,10 +163,12 @@ const PersonalityTest = () => {
       setTimeout(() => {
         router.replace('/assessment-result');
       }, 500);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error('Submission error:', error);
       setAnalyzing(false);
-      setErrorMessage(error.message || 'Không thể phân tích kết quả. Vui lòng thử lại.');
+      setErrorMessage(err.message || 'Không thể phân tích kết quả. Vui lòng thử lại.');
+
     }
   };
 

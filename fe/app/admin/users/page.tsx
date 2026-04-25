@@ -13,8 +13,8 @@ import {
   ShieldCheck,
   UserCog,
   Trash2,
-  Filter,
 } from 'lucide-react';
+
 import { useEffect, useMemo, useState, useCallback } from 'react';
 
 import { adminService, AdminUser } from '@/lib/admin.service';
@@ -71,7 +71,8 @@ export default function AdminUsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage]);
+  }, [currentPage, loginTypeFilter]);
+
 
   useEffect(() => {
     fetchUsers();
