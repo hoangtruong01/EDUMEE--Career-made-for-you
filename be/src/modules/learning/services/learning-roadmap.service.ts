@@ -154,13 +154,24 @@ export class LearningRoadmapService {
       .exec();
   }
 
-  async findByCareer(careerId: string): Promise<LearningRoadmap[]> {
+  async findByCareer(careerId: string, userId?: string): Promise<LearningRoadmap[]> {
     if (!Types.ObjectId.isValid(careerId)) {
       throw new BadRequestException('Invalid career ID');
     }
 
+    const filters: Record<string, unknown> = {
+      targetCareer: new Types.ObjectId(careerId),
+    };
+
+    if (userId) {
+      if (!Types.ObjectId.isValid(userId)) {
+        throw new BadRequestException('Invalid user ID');
+      }
+      filters.userId = new Types.ObjectId(userId);
+    }
+
     return this.learningRoadmapModel
-      .find({ targetCareer: new Types.ObjectId(careerId) })
+      .find(filters)
       .populate('userId', 'email firstName lastName')
       .sort({ createdAt: -1 })
       .exec();

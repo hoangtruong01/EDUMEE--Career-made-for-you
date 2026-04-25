@@ -6,10 +6,6 @@ import { BillingCycle } from '../../users/schemas/user-subscriptions';
 export type PaymentDocument = Payment & Document;
 
 export enum PaymentProvider {
-    STRIPE = 'stripe',
-    PAYPAL = 'paypal',
-    VNPAY = 'vnpay',
-    ZALOPAY = 'zalopay',
     SEPAY = 'sepay',
 }
 

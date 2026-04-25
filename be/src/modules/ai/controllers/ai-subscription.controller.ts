@@ -25,7 +25,7 @@ export class AiSubscriptionController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Manual subscription override for user (admin backoffice)' })
+  @ApiOperation({ summary: 'Backoffice manual subscription override for user (admin only)' })
   upsert(@Body() dto: UpsertAiSubscriptionDto) {
     return this.aiSubscriptionService.upsertActiveSubscription({
       userId: dto.userId,
@@ -40,7 +40,7 @@ export class AiSubscriptionController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Cancel subscription (admin)' })
+  @ApiOperation({ summary: 'Backoffice cancel subscription manually (admin only)' })
   cancel(@Param('id') id: string) {
     return this.aiSubscriptionService.cancelSubscription(id);
   }

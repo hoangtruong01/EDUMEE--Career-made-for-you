@@ -40,10 +40,15 @@ export class CareerFitResultService {
   ) { }
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
+    const nextVersion = await this.getNextVersionForUser(createDto.userId);
+    await this.markPreviousResultsNotLatest(createDto.userId);
+
     const result = new this.careerFitResultModel({
       ...createDto,
       userId: new Types.ObjectId(createDto.userId),
       careerId: new Types.ObjectId(createDto.careerId),
+      version: nextVersion,
+      isLatest: true,
     });
     return result.save();
   }
@@ -226,12 +231,6 @@ export class CareerFitResultService {
 
       await this.aiQuotaService.checkQuota(userId, AiFeature.CAREER_RECOMMENDATION);
 
-      // Delete old results for this user before creating new ones
-      const deleteResult = await this.careerFitResultModel.deleteMany({
-        userId: new Types.ObjectId(userId)
-      });
-      this.logger.log(`Deleted ${deleteResult.deletedCount} old career fit results for user ${userId}`);
-
       // Get AI analysis
       const analysis: AIAnalysisResult = await this.aiService.analyzePersonalityAndCareers(
         assessmentAnswers,
@@ -244,6 +243,14 @@ export class CareerFitResultService {
         ? limits.maxCareerRecommendationsPerRun
         : undefined;
       const recommendations = maxPerRun ? analysis.careerRecommendations.slice(0, maxPerRun) : analysis.careerRecommendations;
+
+      if (recommendations.length === 0) {
+        this.logger.warn(`AI analysis returned no career recommendations for user ${userId}`);
+        return [];
+      }
+
+      const nextVersion = await this.getNextVersionForUser(userId);
+      await this.markPreviousResultsNotLatest(userId);
 
       // Convert AI recommendations to CareerFitResult documents
       const careerFitResults: CareerFitResult[] = [];
@@ -286,6 +293,8 @@ export class CareerFitResultService {
           // Personality profile
           personalityProfile: analysis.personalityAnalysis.personalityProfile,
           assessmentSessionId: assessmentSessionId ? new Types.ObjectId(assessmentSessionId) : undefined,
+          version: nextVersion,
+          isLatest: true,
         };
 
         // Save to database
@@ -448,5 +457,25 @@ export class CareerFitResultService {
     }
 
     return query;
+  }
+
+  private async getNextVersionForUser(userId: string): Promise<number> {
+    const latest = await this.careerFitResultModel
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .sort({ version: -1, createdAt: -1 })
+      .select({ version: 1 })
+      .lean()
+      .exec();
+
+    return typeof latest?.version === 'number' ? latest.version + 1 : 1;
+  }
+
+  private async markPreviousResultsNotLatest(userId: string): Promise<void> {
+    await this.careerFitResultModel
+      .updateMany(
+        { userId: new Types.ObjectId(userId), isLatest: true },
+        { $set: { isLatest: false } },
+      )
+      .exec();
   }
 }

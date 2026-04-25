@@ -1,403 +1,183 @@
-# AI Career Consulting Platform - Schema Documentation
+# AI Career Platform - V1 Schema Documentation
 
-## Muc tieu tai lieu
+## Muc tieu
 
-Tai lieu nay mo ta schema theo **target design** cua nen tang, khong chi la anh chup cua code hien tai. Noi dung duoc viet de review nghiep vu, thiet ke API, validation, va mo rong cac flow con thieu theo huong production-ready.
+Tai lieu nay mo ta **schema v1 dang ton tai va dang duoc van hanh trong codebase**, khong mo ta full target architecture chua duoc implement.
 
-Tai phien ban nay, schema da duoc cap nhat them cho:
+## Tong quan v1
 
-- payment workflow cho booking le va mentor cashflow
-- AI roadmap generation theo kieu async co fallback
-- state machine mentoring va quan ly slot ranh cua mentor
-- versioning cho `CareerFitResult` va `LearningRoadmap`
-- notification va progress tracking
-
-## Tong quan kien truc du lieu
-
-Nen tang duoc to chuc quanh 7 cum nghiep vu chinh:
-
-- danh tinh, xac thuc va ho so nguoi dung
-- onboarding, assessment va career matching
-- learning roadmap, async AI generation va progress tracking
-- mentoring, availability, review va moderation
-- payment, transaction, invoice, refund va payout
-- cong dong va feedback
-- notification va event delivery
-
-### Cac module du lieu chinh
+He thong v1 xoay quanh cac cum du lieu sau:
 
 - `users`: `User`, `UserProfile`
 - `onboarding`: `OnboardingSession`
 - `assessment`: `AssessmentSession`, `AssessmentQuestion`, `AssessmentAnswer`, `CareerFitResult`
 - `careers`: `Career`, `CareerComparison`
-- `learning`: `LearningRoadmap`, `RoadmapGenerationJob`, `TemplateRoadmap`, `WeeklyPlan`, `SimulationTask`, `TaskSubmission`, `Checkpoint`
-- `mentoring`: `TutorProfile`, `MentorSchedule`, `BookingSession`, `TutoringSession`, `SessionReview`
+- `learning`: `LearningRoadmap`, `WeeklyPlan`, `SimulationTask`, `TaskSubmission`, `Checkpoint`
+- `mentoring`: `TutorProfile`, `BookingSession`, `TutoringSession`, `SessionReview`
 - `community`: `CareerReview`, `ReviewVote`, `ReviewReport`
 - `ai`: `AiPlan`, `AiUsageLog`
-- `billing`: `UserSubscription`, `Payment`, `PaymentTransaction`, `Transaction`, `Invoice`
-- `notifications`: `Notification`
+- `billing`: `UserSubscription`, `Payment`, `PaymentTransaction`
 
-## 1. Users Module
-
-**Muc dich:** quan ly tai khoan, xac thuc va ho so phuc vu ca nhan hoa.
-
-### `User`
-
-- Thuc the goc cho dang ky, dang nhap, verify email, reset password va phan quyen.
-- La diem tham chieu cho gan nhu toan bo schema nghiep vu khac.
-
-### `UserProfile`
-
-- Ho so mo rong cho muc tieu nghe nghiep, hoc van, kinh nghiem, ky nang, budget, bio va cac preference lien quan.
-- Duoc dung de ca nhan hoa onboarding, recommendation, roadmap va trai nghiem mentoring.
-
-## 2. Onboarding Module
-
-**Muc dich:** thu thap baseline data truoc khi user vao assessment va recommendation.
-
-### `OnboardingSession`
-
-- Theo doi onboarding theo tung step, progress, intent, current situation va learning preferences.
-- La dau vao som nhat de xac dinh user can assessment, recommendation, learning hay mentoring.
-
-## 3. AI Module
-
-**Muc dich:** dinh nghia san pham AI va theo doi muc su dung AI theo chu ky.
-
-### `AiPlan`
-
-- Dinh nghia goi AI theo tier nhu Free, Plus, Pro.
-- Chua gia, billing defaults, monthly limits va feature flags.
-- Duoc dung nhu policy source cho entitlement, quota va gating tinh nang.
-
-### `AiUsageLog`
-
-- Ghi nhan su dung AI theo `userId`, `feature`, `month`, `year`.
-- Luu request count, token usage, provider, latency, fallback source va metadata audit neu can.
-- Duoc dung cho quota, billing analysis va dieu tra sai lech usage.
-
-## 4. Billing Module
-
-**Muc dich:** mo hinh hoa thanh toan, giao dich, refund, payout, invoice va entitlement sau thanh toan.
+## 1. Billing v1
 
 ### `UserSubscription`
 
-- Dai dien cho quyen su dung goi AI cua user.
-- Noi voi `User` va `AiPlan`.
-- Chua billing cycle, `startDate`, `endDate`, `status` va cac moc quan trong cua vong doi subscription.
+- Dai dien cho entitlement AI hien hanh cua user.
+- Noi voi `User`, `AiPlan`, va co the noi voi `Payment`.
+- V1 xem day la nguon su that cho premium access.
 
-**Target lifecycle:**
+**Statuses dang dung trong code**
 
-- `pending_payment`: da tao order nhung chua nhan thanh toan hop le
-- `active`: da duoc cap entitlement
-- `cancelled`: bi huy theo user hoac admin policy
-- `expired`: het han ma khong gia han
-- `refunded` hoac `terminated`: bi thu hoi quyen sau refund, dispute hoac manual revoke
+- `active`
+- `cancelled`
+- `expired`
 
 ### `Payment`
 
-- Dai dien cho mot payment order hoac mot lan thu tien cu the.
-- Thuong gan voi `userId`, `planId`, `bookingSessionId`, `billingCycle`, `amount`, `currency`, `provider`, `status`.
-- La nguon su that cho viec xac dinh user da thanh toan thanh cong cho goi nao hoac booking nao.
+- Dai dien cho mot payment order cu the trong flow mua AI plan.
+- V1 hien tai la SePay-oriented flow.
+- Chua:
+  - `userId`
+  - `planId`
+  - `billingCycle`
+  - `amount`
+  - `currency`
+  - `provider`
+  - `paymentMethod`
+  - `checkoutReference`
+  - `checkoutTokenHash`
+  - `checkoutTokenExpiresAt`
+  - `successUrl`, `errorUrl`, `cancelUrl`
+  - `providerPaymentId`
+  - `status`
+  - `paidAt`, `refundedAt`, `failureReason`, `refundReason`
 
-**Target statuses:**
+**Statuses dang dung trong code**
 
 - `pending`
-- `authorized`
 - `paid`
 - `failed`
 - `cancelled`
 - `refunded`
-- `partially_refunded`
 
 ### `PaymentTransaction`
 
-- Log chi tiet tung su kien tu payment provider.
-- Luu provider transaction id, event type, raw payload, verification result, idempotency key va event status.
-- Dung de webhook idempotency, audit, troubleshooting va reconcile.
+- La provider event log/audit trail.
+- Dung cho webhook idempotency, debug, va reconcile voi gateway.
+- Khong phai finance ledger tong.
 
-### `Transaction`
+**Fields chinh**
 
-- Ledger bat buoc cho moi dong tien ra vao trong he thong, khong chi cho subscription ma ca booking le, refund, payout va wallet movement.
-- Co the tham chieu `userId`, `mentorId`, `paymentId`, `bookingSessionId`, `invoiceId`, `relatedTransactionId`.
-- Cho phep doi soat, rollback, lich su nap/rut tien mentor, refund va finance reporting.
+- `paymentId`
+- `eventId`
+- `providerTransactionId`
+- `eventType`
+- `status`
+- `payload`
 
-**Target transaction types:**
-
-- `subscription_payment`
-- `booking_payment`
-- `wallet_topup`
-- `wallet_withdrawal`
-- `mentor_payout`
-- `refund`
-- `penalty`
-- `adjustment`
-
-**Target transaction statuses:**
-
-- `pending`
-- `succeeded`
-- `failed`
-- `reversed`
-- `cancelled`
-
-**Target fields quan trong:**
-
-- `amount`, `currency`
-- `direction`: `credit` hoac `debit`
-- `balanceBefore`, `balanceAfter` neu he thong co wallet
-- `sourceType`: `subscription`, `booking`, `refund`, `payout`, `manual_adjustment`
-- `provider`, `providerRef`, `description`
-
-### `Invoice`
-
-- Chung tu billing duoc sinh sau khi payment thanh cong.
-- Thuong tham chieu `userId`, `paymentId`, `bookingSessionId`, `invoiceNumber`, amount, currency, issue date, tax data, pdf url.
-- Khong thay the `Payment`; no la billing artifact sau thu tien.
-
-## 5. Assessment Module
-
-**Muc dich:** thu thap cau tra loi va tao ket qua phu hop nghe nghiep.
-
-### `AssessmentSession`
-
-- Phien assessment cua mot user, gom status, progress, started/completed timestamps.
-- La khung bao cua `AssessmentAnswer` va `CareerFitResult`.
-
-### `AssessmentQuestion`
-
-- Ngan hang cau hoi active/inactive.
-- Chua noi dung cau hoi, type, dimension, option va display order.
-
-### `AssessmentAnswer`
-
-- Cau tra loi cua user cho tung question trong mot session.
-- Duoc dung cho scoring, review va AI analysis.
+## 2. Assessment v1
 
 ### `CareerFitResult`
 
-- Dau ra phan tich fit score, recommended careers, explanation, breakdown va recommendation metadata.
-- Quan he nghiep vu la `User 1 - N CareerFitResult`, khong overwrite ket qua cu.
-- Moi lan user lam lai assessment se sinh mot ban ghi moi co `createdAt`, `assessmentSessionId`, `version`, `isLatest`.
-- Duoc dung lam dau vao cho `LearningRoadmap`, mentoring va lich su phat trien cua user.
+- Luu ket qua fit score va recommendation nghe nghiep cho user.
+- V1 da chot theo huong **append-only history**:
+  - moi lan generate ket qua moi se tang `version`
+  - ket qua moi nhat duoc danh dau `isLatest = true`
+  - ket qua cu cua cung user duoc chuyen `isLatest = false`
 
-## 6. Careers Module
+**Fields bo sung can duy tri**
 
-**Muc dich:** lam catalog nghe nghiep va ho tro compare giua cac lua chon.
+- `version`
+- `isLatest`
+- `generatedAt`
+- `assessmentSessionId`
 
-### `Career`
+### Ghi chu v1
 
-- Master data nghe nghiep: title, category, required skills, levels, market data, work style, learning path.
+- Khong overwrite hoac `deleteMany` lich su ket qua cu trong flow generate moi.
 
-### `CareerComparison`
-
-- Ban ghi user-driven compare nhieu nghe theo criteria va weights.
-- Co the chua recommendation cuoi cung va user decision.
-
-## 7. Learning Module
-
-**Muc dich:** quan ly roadmap hoc tap, async AI generation, fallback va progress tracking.
+## 3. Learning v1
 
 ### `LearningRoadmap`
 
-- Roadmap tong the huong toi mot career/level muc tieu.
-- Moi roadmap phai tham chieu `userId` va `careerFitResultId` de giu lich su versioning.
-- Khi user lam lai assessment sau 6 thang, roadmap hien tai khong bi ghi de ma duoc chuyen sang `archived`, roadmap moi duoc tao voi `status = active`.
-- Nen co `version`, `parentRoadmapId`, `generatedFrom`, `generationSource`, `archivedAt`, `archivedReason`.
+- Roadmap hoc tap dang duoc tao va cap nhat dong bo qua API.
+- Chua:
+  - `userId`
+  - `targetCareer`
+  - `targetLevel`
+  - `title`, `description`
+  - `status`
+  - `phases`
+  - `personalization`
+  - `progress`
+  - `adaptations`
+  - `weeklyPlans`
+  - `isTemplate`, `isPublic`
+  - `tags`
+  - `successMetrics`
 
-**Target statuses:**
+**Statuses dang dung trong code**
 
-- `generating`
+- `draft`
 - `active`
 - `paused`
-- `archived`
-- `failed`
+- `completed`
+- `abandoned`
 
-**Target generation sources:**
+### Ghi chu v1
 
-- `ai`
-- `template_fallback`
-- `manual`
+- Chua co `RoadmapGenerationJob`
+- Chua co `TemplateRoadmap` schema rieng
+- Chua co `generationSource`, `archivedAt`, `parentRoadmapId`, `careerFitResultId` trong schema v1
 
-### `RoadmapGenerationJob`
-
-- Job async cho viec sinh roadmap bang AI.
-- Luu `userId`, `careerFitResultId`, `status`, `attemptCount`, `provider`, `startedAt`, `finishedAt`, `errorCode`, `errorMessage`, `estimatedWaitSeconds`.
-- La noi ghi nhan UI state `processing` va cho phep retry/background worker.
-
-**Target statuses:**
-
-- `queued`
-- `processing`
-- `succeeded`
-- `failed`
-- `fallback_succeeded`
-
-### `TemplateRoadmap`
-
-- Thu vien roadmap mau cho cac career pho bien.
-- Dung lam ke hoach B khi AI timeout, quota loi, provider loi hoac cost policy yeu cau fallback.
-- Nen co `careerKey`, `level`, `language`, `templateVersion`, `isActive`, `tags`, `content`.
-
-### `WeeklyPlan`
-
-- Ke hoach hoc theo tuan duoc sinh tu roadmap.
-- Nen co `completionPercentage`, `completedTaskCount`, `totalTaskCount`.
-
-### `SimulationTask`
-
-- Bai tap mo phong cong viec/thu thach hoc tap theo muc do va skill.
-- Nen co `weight` hoac `progressPoints` de tinh tien do.
-
-### `TaskSubmission`
-
-- Bai nop cua user cho simulation task.
-- Chua content, attempts, evaluation result va improvement suggestion.
-
-### `Checkpoint`
-
-- Moc danh gia dinh ky de xem user dang on-track hay can dieu chinh roadmap.
-
-## 8. Mentoring Module
-
-**Muc dich:** quan ly mentor, availability, booking, phien mentoring, review va moderation.
+## 4. Mentoring v1
 
 ### `TutorProfile`
 
-- Ho so mentor, expertise, pricing, availability policy, verification, rating, strike count va cac policy.
-- Nen co `strikeCount`, `accountStatus`, `noShowCount`, `lastStrikeAt`.
-
-### `MentorSchedule`
-
-- Bang quan ly lich ranh cua mentor.
-- Mentor tu dang ky slot ranh de user chi co the book cac slot da mo.
-- Nen co `mentorId`, `slotId`, `startTime`, `endTime`, `timezone`, `recurrenceRule`, `status`, `capacity`.
-
-**Target statuses:**
-
-- `available`
-- `reserved`
-- `booked`
-- `blocked`
-- `cancelled`
+- Ho so mentor va metadata cho availability/pricing o muc v1.
 
 ### `BookingSession`
 
 - Ban ghi dat lich giua mentee va mentor.
-- Nen tham chieu `mentorScheduleId` hoac dung cap `(mentorId, startTime, endTime)` lam khoa chong dat trung.
-- Chua scheduling details, booking request, payment metadata, cancel policy snapshot, refund result, reschedule history va dispute metadata.
-
-**Target statuses:**
-
-- `pending`
-- `accepted`
-- `paid`
-- `ongoing`
-- `completed`
-- `canceled`
-
-**Target payment statuses:**
-
-- `unpaid`
-- `paid`
-- `refunded`
-- `forfeited`
-- `waived`
-
-**Target indexes:**
-
-- unique compound index tren `(mentorId, slotId)` neu dung slot model
-- hoac unique compound index tren `(mentorId, startTime, endTime)` neu book truc tiep theo khoang thoi gian
+- Chua scheduling details, booking request, payment metadata, communication thread va QA metadata.
 
 ### `TutoringSession`
 
-- Phien mentoring thuc te duoc tao sau khi booking hop le.
-- Chua agenda, meeting link, material, attendance, observations, progress va follow-up planning.
+- Ban ghi session mentoring thuc te.
 
 ### `SessionReview`
 
-- Feedback sau session, sau goi hoc hoac theo chu ky tuan.
-- Nen co `reviewType`, `bookingSessionId`, `tutoringSessionId`, `weeklyPlanId`, `mentorId`, `userId`, `rating`, `comment`, `reviewWindowStart`, `reviewWindowEnd`.
+- Feedback sau session theo current capability.
 
-**Target review types:**
+### Ghi chu v1
 
-- `final_course_review`
-- `weekly_checkin`
+- Chua co `MentorSchedule`
+- Chua co unique compound index khoa slot nhu target production design
+- Chua co ledger payout/refund rieng cho mentoring
 
-**Target anti-abuse indexes:**
-
-- unique `(userId, mentorId, bookingPackageId, reviewType)` cho review tong ket
-- unique `(userId, mentorId, weeklyPlanId, reviewType)` cho review tuan
-
-## 9. Community Module
-
-**Muc dich:** luu review nghe nghiep, vote va report/moderation.
+## 5. Community v1
 
 ### `CareerReview`
 
-- Review nghe nghiep theo huong an danh nhung van co context.
+- Review nghe nghiep theo context cong dong.
 
 ### `ReviewVote`
 
-- Tuong tac xep hang review nhu helpful, accurate, relevant.
+- Vote tuong tac tren review.
 
 ### `ReviewReport`
 
-- Report vi pham va luong moderation.
+- Report/moderation trail.
 
-## 10. Notification Module
+## 6. Ngoai scope / Planned
 
-**Muc dich:** thong bao bat dong bo cho roadmap generation, booking, refund, strike va review windows.
+Nhung schema sau **khong ton tai trong code v1 hien tai** va khong nen duoc docs mo ta nhu da support:
 
-### `Notification`
+- `Invoice`
+- `Transaction`
+- `RoadmapGenerationJob`
+- `TemplateRoadmap`
+- `Notification`
+- `MentorSchedule`
 
-- Ghi nhan message gui toi user hoac mentor.
-- Dung cho `roadmap_processing`, `roadmap_ready`, `roadmap_fallback_used`, `booking_confirmed`, `refund_completed`, `mentor_strike`, `review_window_opened`.
-- Nen co `recipientUserId`, `type`, `title`, `body`, `data`, `status`, `sentAt`, `readAt`.
-
-## Quan he chinh giua cac module
-
-- `User` la thuc the goc cua gan nhu moi schema nghiep vu.
-- `UserProfile` va `OnboardingSession` cung cap du lieu nen cho assessment, recommendation va roadmap.
-- `AssessmentSession` -> `AssessmentAnswer` -> `CareerFitResult` tao thanh chuoi phan tich nghe nghiep.
-- `CareerFitResult` la quan he 1-N voi `User`, khong overwrite ket qua cu.
-- `LearningRoadmap` phai tham chieu `CareerFitResult` cu the, va roadmap cu duoc archive khi roadmap moi duoc tao.
-- `RoadmapGenerationJob` la khau noi giua UI, AI provider, `TemplateRoadmap`, `LearningRoadmap` va `Notification`.
-- `SimulationTask` -> `TaskSubmission` -> `WeeklyPlan.completionPercentage` -> `LearningRoadmap` tao thanh progress loop lien tuc.
-- `TutorProfile`, `MentorSchedule`, `BookingSession`, `TutoringSession`, `SessionReview` tao thanh mentoring lifecycle.
-- `Payment` la payment order; `PaymentTransaction` la event log cua provider; `Transaction` la ledger noi bo cua he thong.
-- `Payment` co the sinh `Transaction` cho booking payment, refund va mentor payout.
-- `Payment` sinh `Invoice` sau khi thanh toan thanh cong.
-- `Payment` thanh cong moi duoc phep kich hoat `UserSubscription`.
-- `AiUsageLog` phai duoc tinh tren entitlement hop le cua `UserSubscription` hien hanh.
-- `Notification` duoc tao khi roadmap generation thay doi trang thai, booking thay doi trang thai, refund xay ra, hoac review window duoc mo.
-
-## Ky thuat va quy uoc
-
-- Nhieu schema su dung nested object/array sau, dac biet o `Career`, `LearningRoadmap`, `WeeklyPlan`, `TemplateRoadmap`, `BookingSession`, `CareerReview`.
-- `payment` domain can co unique/idempotency strategy ro rang cho `providerPaymentId`, `providerTransactionId`, `invoiceNumber`.
-- `BookingSession` phai co unique compound index de tranh 2 user cung dat mot slot trong cung thoi diem.
-- Neu booking yeu cau tru wallet, thao tac tao booking + tao `Transaction` + cap nhat so du phai nam trong cung mot MongoDB transaction.
-- JSON tra ve tu AI de tao roadmap phai duoc validate schema truoc khi save thanh `LearningRoadmap`.
-- Cac field progress nhu `completionPercentage` phai la derived field, khong cho phep client tu y set vuot 0-100.
-
-## Implementation Gap Notes
-
-- Code hien tai da co schema cho `Payment`, `PaymentTransaction`, `Invoice`, nhung can them `Transaction` de bao phu booking le, refund va mentor payout.
-- `UserSubscription` hien da ton tai trong code, nhung activation dang theo huong admin/manual upsert thay vi bat buoc di qua payment success.
-- Chua co `RoadmapGenerationJob`, `TemplateRoadmap` va `Notification` de ho tro async AI roadmap generation va fallback.
-- `CareerFitResult` va `LearningRoadmap` can duoc chot quan he versioning/archive, khong overwrite ban ghi cu.
-- `MentorSchedule` chua duoc mo ta ro nhu nguon slot ranh cho booking.
-- `BookingSession` can state machine ro rang hon va can unique index o tang DB de xu ly concurrency.
-- `TutorProfile` va `SessionReview` can them metadata cho strike/no-show, weekly review va anti-abuse rules.
-
-## Ket luan
-
-Target design cua he thong khong chi gom user, assessment, learning, mentoring va community, ma con can:
-
-- payment ledger du cho subscription va booking le
-- async roadmap generation co fallback va notification
-- versioning/archiving de giu lich su hoc tap
-- state machine va unique index de khoa logic mentoring
-
-Tai lieu nay duoc dung lam nen cho viec mo rong codebase tu trang thai hien tai sang he thong co schema du nghiep vu de di vao workflow, validation va implementation.
+Neu can bo sung, nen xem do la phase mo rong rieng va thiet ke lai workflow/schema tuong ung.

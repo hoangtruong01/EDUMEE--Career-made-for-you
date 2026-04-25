@@ -32,7 +32,7 @@ export class PaymentController {
   @Post('webhooks/test')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Process a verified provider-agnostic payment event (admin test webhook)' })
+  @ApiOperation({ summary: 'Process a verified test payment event for the current billing flow (admin)' })
   webhookTest(@Body() dto: PaymentWebhookTestDto) {
     return this.paymentService.handleVerifiedPaymentEvent(dto);
   }
@@ -52,7 +52,7 @@ export class PaymentController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a payment by id for its owner or admin' })
+  @ApiOperation({ summary: 'Get a payment and provider transaction history by id for its owner or admin' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     return this.paymentService.findOneForActor(id, user);
   }

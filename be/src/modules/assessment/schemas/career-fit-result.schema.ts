@@ -132,6 +132,12 @@ export class CareerFitResult {
   @Prop({ type: Date, default: Date.now })
   generatedAt!: Date;
 
+  @Prop({ type: Number, default: 1, min: 1 })
+  version!: number;
+
+  @Prop({ type: Boolean, default: true })
+  isLatest!: boolean;
+
   @Prop({ type: Types.ObjectId, ref: 'AssessmentSession' })
   assessmentSessionId?: Types.ObjectId;
 
@@ -157,6 +163,8 @@ export const CareerFitResultSchema = SchemaFactory.createForClass(CareerFitResul
 
 // Indexes
 CareerFitResultSchema.index({ userId: 1 });
+CareerFitResultSchema.index({ userId: 1, version: -1 });
+CareerFitResultSchema.index({ userId: 1, isLatest: 1 });
 CareerFitResultSchema.index({ assessmentSessionId: 1 });
 CareerFitResultSchema.index({ generatedAt: -1 });
 CareerFitResultSchema.index({ 'careerRecommendations.careerId': 1 });
