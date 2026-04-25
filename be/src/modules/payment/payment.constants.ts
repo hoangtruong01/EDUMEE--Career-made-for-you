@@ -1,0 +1,6 @@
+export enum SepayPaymentMethod {
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  NAPAS_BANK_TRANSFER = 'NAPAS_BANK_TRANSFER',
+}
+
+export const DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS = 15 * 60 * 1000;
