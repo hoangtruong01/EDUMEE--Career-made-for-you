@@ -160,6 +160,18 @@ export class LearningRoadmapService {
       .exec();
   }
 
+  async findLatestByUser(userId: string): Promise<LearningRoadmap | null> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.learningRoadmapModel
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .populate('targetCareer', 'title category industry description requiredSkills')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
   async findByCareer(careerId: string): Promise<LearningRoadmap[]> {
     if (!Types.ObjectId.isValid(careerId)) {
       throw new BadRequestException('Invalid career ID');

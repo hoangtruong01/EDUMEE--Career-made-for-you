@@ -73,6 +73,10 @@ export const roadmapService = {
     return apiClient.get<GeneratedRoadmap>(`/learning-roadmaps/${id}`, accessToken);
   },
 
+  async getLatestRoadmap(accessToken: string): Promise<GeneratedRoadmap | null> {
+    return apiClient.get<GeneratedRoadmap | null>('/learning-roadmaps/latest', accessToken);
+  },
+
   async getMyRoadmaps(accessToken: string): Promise<GeneratedRoadmap[]> {
     const res = await apiClient.get<{ data: GeneratedRoadmap[] }>(
       '/learning-roadmaps?limit=10',

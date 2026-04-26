@@ -55,14 +55,21 @@ const LearningRoadmap = () => {
   const [apiRoadmap, setApiRoadmap] = useState<GeneratedRoadmap | null>(null);
 
   useEffect(() => {
-    if (!roadmapId || !accessToken) return;
+    if (!accessToken) return;
     const load = async () => {
       try {
         setIsLoading(true);
-        const data = await roadmapService.getRoadmapById(accessToken, roadmapId);
-        setApiRoadmap(data);
+        if (roadmapId) {
+          const data = await roadmapService.getRoadmapById(accessToken, roadmapId);
+          setApiRoadmap(data);
+        } else {
+          const latest = await roadmapService.getLatestRoadmap(accessToken);
+          if (latest) {
+            setApiRoadmap(latest);
+          }
+        }
       } catch {
-        // fallback to static data
+        // Handle error if needed
       } finally {
         setIsLoading(false);
       }

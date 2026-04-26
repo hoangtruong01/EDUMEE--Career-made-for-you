@@ -57,6 +57,14 @@ export class LearningRoadmapController {
     return this.learningRoadmapService.generateAIRoadmap(userId, body.careerTitle);
   }
 
+  @Get('latest')
+  @ApiOperation({ summary: 'Get the latest learning roadmap for the current user' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Latest roadmap retrieved successfully' })
+  async findLatest(@CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    return this.learningRoadmapService.findLatestByUser(userId);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get all learning roadmaps' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Roadmaps retrieved successfully' })
