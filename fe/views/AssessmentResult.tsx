@@ -38,14 +38,45 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
+interface CareerResult {
+  rank: number;
+  icon: string;
+  title: string;
+  match: number;
+  salary: string;
+  growth: string;
+  skills: string[];
+  insight: string;
+  gradient: string;
+  btnClass: string;
+  barColor: string;
+}
+
+interface RadarData {
+  subject: string;
+  A: number;
+}
+
+interface BarData {
+  name: string;
+  score: number;
+  color: string;
+}
+
+interface PersonalityTrait {
+  name: string;
+  value: number;
+  desc: string;
+}
+
 /* ─── Component ─── */
 const AssessmentResult = () => {
   const router = useRouter();
   const { accessToken } = useAuth();
-  const [topCareers, setTopCareers] = useState<unknown[]>([]);
-  const [radarData, setRadarData] = useState<unknown[]>([]);
-  const [barData, setBarData] = useState<unknown[]>([]);
-  const [personalityTraits, setPersonalityTraits] = useState<unknown[]>([]);
+  const [topCareers, setTopCareers] = useState<CareerResult[]>([]);
+  const [radarData, setRadarData] = useState<RadarData[]>([]);
+  const [barData, setBarData] = useState<BarData[]>([]);
+  const [personalityTraits, setPersonalityTraits] = useState<PersonalityTrait[]>([]);
   const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
