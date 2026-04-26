@@ -142,8 +142,8 @@ const AssessmentResult = () => {
 
         // Map bar data
         setBarData(results.slice(0, 5).map(r => ({
-          name: r.careerTitle,
-          score: r.overallFitScore,
+          name: r.careerTitle || 'Nghề nghiệp',
+          score: Number(r.overallFitScore || 0),
           color: '#7c3aed'
         })));
 
