@@ -18,6 +18,7 @@ import {
   CheckpointController,
 } from './controllers';
 import { AiModule } from '../ai/ai.module';
+import { AIService } from '../../common/services/ai.service';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { AiModule } from '../ai/ai.module';
     TaskSubmissionService,
     WeeklyPlanService,
     CheckpointService,
+    AIService,
   ],
   exports: [
     LearningRoadmapService,
@@ -53,3 +55,4 @@ import { AiModule } from '../ai/ai.module';
   ],
 })
 export class LearningModule {}
+

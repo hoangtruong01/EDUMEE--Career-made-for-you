@@ -301,4 +301,238 @@ Giữ phản hồi chuyên nghiệp và khích lệ. Trả lời bằng tiếng 
       return `${careerTitle} có thể phù hợp với hồ sơ tính cách của bạn. Hãy tập trung phát triển các kỹ năng liên quan và tích lũy kinh nghiệm trong lĩnh vực này.`;
     }
   }
+
+  async generateDetailedCareerAnalysis(careerTitle: string, personalityTraits: string[]): Promise<{
+    overview: string;
+    pros: string[];
+    cons: string[];
+    trends: { year: string; description: string }[];
+    salaryRange: string;
+    demandLevel: string;
+    keySkills: string[];
+    topCompanies: string[];
+  }> {
+    const prompt = `
+Bạn là chuyên gia tư vấn nghề nghiệp hàng đầu tại Việt Nam. Hãy phân tích chi tiết về nghề "${careerTitle}" dựa trên hồ sơ tính cách:
+${personalityTraits.length > 0 ? `Tính cách nổi bật: ${personalityTraits.join(', ')}` : ''}
+
+Trả lời JSON hợp lệ KHÔNG có markdown code blocks:
+{
+  "overview": "Mô tả tổng quan chi tiết 3-4 câu về nghề này, xu hướng hiện tại và tại sao nó phù hợp với tính cách được mô tả",
+  "pros": ["ưu điểm 1", "ưu điểm 2", "ưu điểm 3", "ưu điểm 4", "ưu điểm 5"],
+  "cons": ["nhược điểm 1", "nhược điểm 2", "nhược điểm 3", "nhược điểm 4"],
+  "trends": [
+    { "year": "2025", "description": "Xu hướng năm 2025" },
+    { "year": "2026", "description": "Xu hướng năm 2026" },
+    { "year": "2027", "description": "Xu hướng năm 2027" },
+    { "year": "2028", "description": "Xu hướng năm 2028" },
+    { "year": "2029", "description": "Xu hướng năm 2029" }
+  ],
+  "salaryRange": "X - Y triệu/tháng tùy kinh nghiệm",
+  "demandLevel": "Cao / Rất cao / Trung bình",
+  "keySkills": ["kỹ năng 1", "kỹ năng 2", "kỹ năng 3", "kỹ năng 4", "kỹ năng 5"],
+  "topCompanies": ["Công ty 1", "Công ty 2", "Công ty 3", "Công ty 4"]
+}
+
+Quy tắc:
+1. Tất cả nội dung phải bằng tiếng Việt.
+2. Thực tế, dựa trên thị trường lao động Việt Nam.
+3. Chỉ trả về JSON, không có text thêm.
+`;
+
+    try {
+      const response = await this.callGeminiAPI(prompt);
+      let clean = response.trim();
+      if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
+      if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
+      return JSON.parse(clean) as {
+        overview: string;
+        pros: string[];
+        cons: string[];
+        trends: { year: string; description: string }[];
+        salaryRange: string;
+        demandLevel: string;
+        keySkills: string[];
+        topCompanies: string[];
+      };
+    } catch (error) {
+      this.logger.error('Failed to generate detailed career analysis:', error);
+      return {
+        overview: `${careerTitle} là một lĩnh vực đầy tiềm năng với nhu cầu tuyển dụng cao tại Việt Nam. Với hồ sơ tính cách của bạn, đây là một lựa chọn sự nghiệp phù hợp và có thể phát triển bền vững trong tương lai.`,
+        pros: ['Cơ hội việc làm rộng mở', 'Mức lương cạnh tranh', 'Phát triển nghề nghiệp rõ ràng', 'Môi trường làm việc hiện đại', 'Tích lũy kinh nghiệm quý báu'],
+        cons: ['Đòi hỏi học hỏi liên tục', 'Áp lực công việc cao', 'Cạnh tranh trong ngành ngày càng tăng', 'Cần cập nhật kỹ năng thường xuyên'],
+        trends: [
+          { year: '2025', description: 'Nhu cầu tuyển dụng tăng mạnh, nhiều cơ hội mới' },
+          { year: '2026', description: 'Ứng dụng AI và công nghệ mới vào công việc' },
+          { year: '2027', description: 'Mở rộng thị trường, cơ hội quốc tế' },
+          { year: '2028', description: 'Chuyên môn hóa sâu hơn được đề cao' },
+          { year: '2029', description: 'Vai trò ngày càng quan trọng trong nền kinh tế số' },
+        ],
+        salaryRange: '15 - 50 triệu/tháng tùy kinh nghiệm',
+        demandLevel: 'Cao',
+        keySkills: ['Tư duy phân tích', 'Kỹ năng giao tiếp', 'Làm việc nhóm', 'Học hỏi liên tục', 'Giải quyết vấn đề'],
+        topCompanies: ['FPT Software', 'VNG', 'Tiki', 'VinGroup'],
+      };
+    }
+  }
+
+  async generateCareerRoadmap(careerTitle: string, personalityTraits: string[]): Promise<{
+    title: string;
+    description: string;
+    totalDuration: string;
+    phases: {
+      phaseId: string;
+      phase: string;
+      title: string;
+      description: string;
+      estimatedDuration: string;
+      objectives: string[];
+      order: number;
+      milestones: {
+        milestoneId: string;
+        title: string;
+        description: string;
+        tasks: { taskId: string; taskTitle: string; isRequired: boolean; estimatedHours: number; order: number }[];
+        skills: { skillName: string; targetLevel: number }[];
+        completionCriteria: { requiredTasks: string[] };
+      }[];
+    }[];
+  }> {
+    const prompt = `
+Bạn là chuyên gia thiết kế lộ trình học tập nghề nghiệp. Tạo lộ trình học tập chi tiết cho nghề "${careerTitle}" từ người mới bắt đầu.
+${personalityTraits.length > 0 ? `Tính cách học viên: ${personalityTraits.join(', ')}` : ''}
+
+Trả lời JSON hợp lệ KHÔNG có markdown code blocks:
+{
+  "title": "Lộ trình ${careerTitle}",
+  "description": "Mô tả lộ trình 1-2 câu",
+  "totalDuration": "X tháng",
+  "phases": [
+    {
+      "phaseId": "phase_1",
+      "phase": "foundation",
+      "title": "Tên giai đoạn 1",
+      "description": "Mô tả giai đoạn",
+      "estimatedDuration": "Tháng 1-3",
+      "order": 1,
+      "objectives": ["mục tiêu 1", "mục tiêu 2"],
+      "milestones": [
+        {
+          "milestoneId": "m1_1",
+          "title": "Tên milestone",
+          "description": "Mô tả milestone",
+          "tasks": [
+            { "taskId": "t1_1_1", "taskTitle": "Tên task", "isRequired": true, "estimatedHours": 10, "order": 1 }
+          ],
+          "skills": [
+            { "skillName": "Tên kỹ năng", "targetLevel": 3 }
+          ],
+          "completionCriteria": { "requiredTasks": ["t1_1_1"] }
+        }
+      ]
+    }
+  ]
+}
+
+Quy tắc:
+1. Tạo 3-4 phases theo trình tự: foundation -> skill_building -> practice -> advanced
+2. Mỗi phase có 2-3 milestones
+3. Mỗi milestone có 3-5 tasks
+4. Giá trị "phase" chỉ được dùng: "foundation", "skill_building", "practice", "advanced", "specialization"
+5. Nội dung phải bằng tiếng Việt
+6. Phù hợp với thị trường Việt Nam
+7. Chỉ trả về JSON, không có text thêm
+`;
+
+    try {
+      const response = await this.callGeminiAPI(prompt);
+      let clean = response.trim();
+      if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
+      if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
+      return JSON.parse(clean) as {
+        title: string;
+        description: string;
+        totalDuration: string;
+        phases: any[];
+      };
+    } catch (error) {
+      this.logger.error('Failed to generate career roadmap:', error);
+      // Return a sensible fallback
+      return {
+        title: `Lộ trình ${careerTitle}`,
+        description: `Lộ trình học tập từ cơ bản đến nâng cao cho nghề ${careerTitle}`,
+        totalDuration: '12 tháng',
+        phases: [
+          {
+            phaseId: 'phase_1',
+            phase: 'foundation',
+            title: 'Nền tảng & Cơ bản',
+            description: 'Xây dựng kiến thức nền tảng cần thiết',
+            estimatedDuration: 'Tháng 1–3',
+            order: 1,
+            objectives: ['Nắm vững kiến thức cơ bản', 'Làm quen với công cụ nghề nghiệp'],
+            milestones: [
+              {
+                milestoneId: 'm1_1',
+                title: 'Kiến thức nền tảng',
+                description: 'Học các khái niệm và kỹ năng cơ bản',
+                tasks: [
+                  { taskId: 't1_1_1', taskTitle: 'Nghiên cứu tổng quan về ngành', isRequired: true, estimatedHours: 8, order: 1 },
+                  { taskId: 't1_1_2', taskTitle: 'Học các khái niệm cơ bản', isRequired: true, estimatedHours: 16, order: 2 },
+                  { taskId: 't1_1_3', taskTitle: 'Thực hành bài tập cơ bản', isRequired: true, estimatedHours: 12, order: 3 },
+                ],
+                skills: [{ skillName: 'Kiến thức nền tảng', targetLevel: 2 }],
+                completionCriteria: { requiredTasks: ['t1_1_1', 't1_1_2', 't1_1_3'] },
+              },
+            ],
+          },
+          {
+            phaseId: 'phase_2',
+            phase: 'skill_building',
+            title: 'Xây dựng kỹ năng',
+            description: 'Phát triển các kỹ năng chuyên môn cốt lõi',
+            estimatedDuration: 'Tháng 4–7',
+            order: 2,
+            objectives: ['Thành thạo kỹ năng chuyên môn', 'Áp dụng vào dự án thực tế'],
+            milestones: [
+              {
+                milestoneId: 'm2_1',
+                title: 'Kỹ năng chuyên môn',
+                description: 'Phát triển các kỹ năng cốt lõi của nghề',
+                tasks: [
+                  { taskId: 't2_1_1', taskTitle: 'Học công cụ chuyên ngành', isRequired: true, estimatedHours: 20, order: 1 },
+                  { taskId: 't2_1_2', taskTitle: 'Thực hành dự án nhỏ', isRequired: true, estimatedHours: 24, order: 2 },
+                ],
+                skills: [{ skillName: 'Kỹ năng chuyên môn', targetLevel: 3 }],
+                completionCriteria: { requiredTasks: ['t2_1_1', 't2_1_2'] },
+              },
+            ],
+          },
+          {
+            phaseId: 'phase_3',
+            phase: 'practice',
+            title: 'Thực hành & Dự án',
+            description: 'Áp dụng kiến thức vào các dự án thực tế',
+            estimatedDuration: 'Tháng 8–12',
+            order: 3,
+            objectives: ['Hoàn thành ít nhất 2 dự án thực tế', 'Sẵn sàng đi làm'],
+            milestones: [
+              {
+                milestoneId: 'm3_1',
+                title: 'Dự án thực tế',
+                description: 'Xây dựng portfolio với các dự án chất lượng',
+                tasks: [
+                  { taskId: 't3_1_1', taskTitle: 'Lên kế hoạch dự án', isRequired: true, estimatedHours: 8, order: 1 },
+                  { taskId: 't3_1_2', taskTitle: 'Triển khai dự án', isRequired: true, estimatedHours: 40, order: 2 },
+                  { taskId: 't3_1_3', taskTitle: 'Trình bày và nhận phản hồi', isRequired: false, estimatedHours: 4, order: 3 },
+                ],
+                skills: [{ skillName: 'Thực hành dự án', targetLevel: 4 }],
+                completionCriteria: { requiredTasks: ['t3_1_1', 't3_1_2'] },
+              },
+            ],
+          },
+        ],
+      };
+    }
+  }
 }

@@ -2,10 +2,9 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
-import { useToast } from '@/hooks/use-toast';
 import { assessmentService } from '@/lib/assessment.service';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Download, RotateCcw, Share2, TrendingUp } from 'lucide-react';
+import { CheckCircle2, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -34,74 +33,6 @@ const getIsDark = () =>
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
 /* ─── Data ─── */
-const fallbackTopCareers = [
-  {
-    rank: 1,
-    icon: '💻',
-    title: 'Kỹ sư Phần mềm',
-    match: 92,
-    salary: '25–60 triệu/tháng',
-    growth: '+22% đến 2030',
-    skills: ['Lập trình', 'Problem Solving', 'Teamwork'],
-    insight:
-      'Tư duy logic cao, yêu thích xây dựng sản phẩm và khả năng học công nghệ mới tốt phù hợp với yêu cầu nghề.',
-    gradient: 'from-violet-500 to-purple-600',
-    btnClass: 'bg-violet-600 hover:bg-violet-700',
-    barColor: '#7c3aed',
-  },
-  {
-    rank: 2,
-    icon: '🤖',
-    title: 'Kỹ sư AI/Machine Learning',
-    match: 85,
-    salary: '30–80 triệu/tháng',
-    growth: '+45% đến 2030',
-    skills: ['Python', 'Data', 'Deep Learning'],
-    insight:
-      'Xu hướng AI bùng nổ, nền tảng toán học vững và khả năng tư duy trừu tượng của bạn phù hợp hoàn hảo.',
-    gradient: 'from-pink-500 to-rose-500',
-    btnClass: 'bg-pink-500 hover:bg-pink-600',
-    barColor: '#ec4899',
-  },
-  {
-    rank: 3,
-    icon: '📊',
-    title: 'Data Scientist',
-    match: 87,
-    salary: '20–50 triệu/tháng',
-    growth: '+35% đến 2030',
-    skills: ['Statistics', 'Python', 'SQL'],
-    insight: 'Kỹ năng phân tích dữ liệu và tư duy hệ thống là lợi thế lớn trong lĩnh vực này.',
-    gradient: 'from-blue-500 to-cyan-400',
-    btnClass: 'bg-blue-500 hover:bg-blue-600',
-    barColor: '#3b82f6',
-  },
-];
-
-const radarData = [
-  { subject: 'Tư duy logic', A: 90 },
-  { subject: 'Sáng tạo', A: 75 },
-  { subject: 'Giao tiếp', A: 60 },
-  { subject: 'Kỹ thuật', A: 85 },
-  { subject: 'Lãnh đạo', A: 55 },
-  { subject: 'Cảm xúc xã hội', A: 65 },
-];
-
-const barData = [
-  { name: 'Kỹ sư phần mềm', score: 92, color: '#7c3aed' },
-  { name: 'Data Scientist', score: 87, color: '#7c3aed' },
-  { name: 'Product Manager', score: 74, color: '#7c3aed' },
-  { name: 'UX Designer', score: 68, color: '#06b6d4' },
-  { name: 'Kỹ sư AI/ML', score: 85, color: '#7c3aed' },
-];
-
-const personalityTraits = [
-  { name: 'INTJ – Nhà chiến lược', value: 85, desc: 'Độc lập, logic, dài hạn' },
-  { name: 'Analytical Thinking', value: 90, desc: 'Yêu thích phân tích dữ liệu' },
-  { name: 'Intrinsic Motivation', value: 78, desc: 'Tự thúc đẩy bản thân' },
-  { name: 'Tech Enthusiast', value: 92, desc: 'Đam mê công nghệ' },
-];
-
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -110,9 +41,11 @@ const fadeUp = {
 /* ─── Component ─── */
 const AssessmentResult = () => {
   const router = useRouter();
-  const { toast } = useToast();
   const { accessToken } = useAuth();
-  const [topCareers, setTopCareers] = useState(fallbackTopCareers);
+  const [topCareers, setTopCareers] = useState<unknown[]>([]);
+  const [radarData, setRadarData] = useState<unknown[]>([]);
+  const [barData, setBarData] = useState<unknown[]>([]);
+  const [personalityTraits, setPersonalityTraits] = useState<unknown[]>([]);
   const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
@@ -157,30 +90,48 @@ const AssessmentResult = () => {
           },
         ];
 
+        // Map careers
         const mapped = results.slice(0, 3).map((item, idx) => {
           const style = palette[idx] || palette[0];
           return {
             rank: idx + 1,
             icon: idx === 0 ? '💻' : idx === 1 ? '🤖' : '📊',
-            title: item.careerTitle || `Nghe nghiep #${idx + 1}`,
+            title: item.careerTitle || `Nghề nghiệp #${idx + 1}`,
             match: Number(item.overallFitScore || 0),
-            salary: 'Cap nhat theo du lieu thi truong',
-            growth: 'Cap nhat theo du lieu thi truong',
+            salary: 'Cập nhật theo thị trường',
+            growth: 'Nhu cầu cao',
             skills: (item.strengths || []).slice(0, 3),
-            insight:
-              item.aiExplanation ||
-              'AI danh gia nghe nay co do phu hop cao dua tren cau tra loi RIASEC cua ban.',
+            insight: item.aiExplanation || 'AI đánh giá nghề này có độ phù hợp cao.',
             gradient: style.gradient,
             btnClass: style.btnClass,
             barColor: style.barColor,
           };
         });
+        setTopCareers(mapped);
 
-        if (mapped.length > 0) {
-          setTopCareers(mapped);
-        }
-      } catch {
-        // Keep fallback UI if API fails
+        // Map bar data
+        setBarData(results.slice(0, 5).map(r => ({
+          name: r.careerTitle,
+          score: r.overallFitScore,
+          color: '#7c3aed'
+        })));
+
+        // Placeholder for radar & personality if not in DTO
+        setRadarData([
+          { subject: 'Logic', A: 85 },
+          { subject: 'Sáng tạo', A: 70 },
+          { subject: 'Giao tiếp', A: 75 },
+          { subject: 'Kỹ thuật', A: 80 },
+          { subject: 'Lãnh đạo', A: 65 },
+        ]);
+
+        setPersonalityTraits([
+          { name: 'Phân tích', value: 85, desc: 'Tư duy logic tốt' },
+          { name: 'Kỹ thuật', value: 90, desc: 'Đam mê công nghệ' },
+        ]);
+
+      } catch (error) {
+        console.error('Failed to load results:', error);
       } finally {
         setIsLoadingResult(false);
       }
@@ -208,13 +159,16 @@ const AssessmentResult = () => {
         </motion.div>
       </div>
 
-      <div className="container space-y-8 py-8">
-        <motion.section variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="text-foreground mb-5 flex items-center gap-2 text-xl font-bold">
-            🎯 Top 3 nghề phù hợp nhất
-          </h2>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {topCareers.map((career) => (
+      <div className="container mt-8 space-y-10 px-4">
+        {topCareers.length > 0 ? (
+          <>
+            <motion.section variants={fadeUp} initial="hidden" animate="show">
+              <h2 className="text-foreground mb-6 flex items-center gap-2 text-xl font-bold">
+                <TrendingUp className="h-5 w-5 text-violet-500" />
+                Top Nghề nghiệp phù hợp nhất
+              </h2>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {topCareers.map((career) => (
               <div key={career.title} className="glass-card relative overflow-hidden rounded-2xl">
                 <div className={`h-2 w-full bg-linear-to-r ${career.gradient}`} />
                 {career.rank === 1 && (
@@ -254,7 +208,7 @@ const AssessmentResult = () => {
                   </div>
 
                   <div className="mb-3 flex flex-wrap gap-1.5">
-                    {career.skills.map((s) => (
+                    {career.skills.map((s: string) => (
                       <span
                         key={s}
                         className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs"
@@ -269,10 +223,14 @@ const AssessmentResult = () => {
                   </p>
 
                   <button
-                    onClick={() => router.push('/learning-roadmap')}
+                    onClick={() =>
+                      router.push(
+                        `/career-analysis?career=${encodeURIComponent(career.title)}&match=${career.match}`,
+                      )
+                    }
                     className={`w-full rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 ${career.btnClass}`}
                   >
-                    Xem lộ trình học &gt;
+                    Xem phân tích &amp; lộ trình &gt;
                   </button>
                 </div>
               </div>
@@ -355,59 +313,27 @@ const AssessmentResult = () => {
             ))}
           </div>
         </motion.section>
-
-        <motion.section variants={fadeUp} initial="hidden" animate="show" className="text-center">
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/learning-roadmap">
-              <Button className="gap-2 rounded-full bg-violet-600 px-6 text-white hover:bg-violet-700">
-                🎁 Xem lộ trình học tập
-              </Button>
-            </Link>
-
-            <Link href="/career-compare">
-              <Button variant="outline" className="gap-2 rounded-full px-6">
-                → Khám phá thêm nghề
-              </Button>
-            </Link>
-
-            <Button
-              variant="outline"
-              className="gap-2 rounded-full px-6"
-              onClick={() =>
-                toast({
-                  title: 'Đang xử lý...',
-                  description:
-                    'Hệ thống đang xuất file PDF báo cáo của bạn. Vui lòng đợi trong giây lát!',
-                })
-              }
-            >
-              <Download className="h-4 w-4" /> Tải kết quả PDF
-            </Button>
-
-            <Button
-              variant="outline"
-              className="gap-2 rounded-full px-6"
-              onClick={() =>
-                toast({
-                  title: 'Đã copy link!',
-                  description: 'Bạn có thể dán link này để gửi cho bạn bè ngay bây giờ.',
-                })
-              }
-            >
-              <Share2 className="h-4 w-4" /> Chia sẻ
-            </Button>
-          </div>
-          <div className="mt-4">
-            <Link href="/personality-test">
-              <Button variant="ghost" className="text-muted-foreground gap-1.5 text-sm">
-                <RotateCcw className="h-3.5 w-3.5" /> Làm lại bài đánh giá
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="bg-muted mb-4 flex h-20 w-20 items-center justify-center rounded-full">
+              <TrendingUp className="text-muted-foreground h-10 w-10" />
+            </div>
+            <h2 className="text-xl font-bold text-foreground">Chưa có kết quả đánh giá</h2>
+            <p className="text-muted-foreground mt-2 max-w-sm">
+              Bạn cần hoàn thành bài trắc nghiệm tính cách để AI có thể phân tích và đề xuất nghề nghiệp phù hợp.
+            </p>
+            <Link href="/personality-test" className="mt-6">
+              <Button className="bg-violet-600 hover:bg-violet-700">
+                Làm bài trắc nghiệm ngay
               </Button>
             </Link>
           </div>
-        </motion.section>
+        )}
       </div>
     </div>
   );
 };
+
 
 export default AssessmentResult;

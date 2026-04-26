@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, Document } from 'mongoose';
 import {
   LearningRoadmap,
   LearningRoadmapDocument,
   RoadmapStatus,
+  LearningPhase,
 } from '../schemas/learning-roadmap.schema';
 import { CreateLearningRoadmapDto, UpdateLearningRoadmapDto } from '../dto';
+import { AIService } from '../../../common/services/ai.service';
+import { ExperienceLevel } from '../../careers/schemas/career.schema';
 
 interface Milestone {
   milestoneId: string;
@@ -79,9 +82,12 @@ interface IProgress {
 
 @Injectable()
 export class LearningRoadmapService {
+  private readonly logger = new Logger(LearningRoadmapService.name);
+
   constructor(
     @InjectModel(LearningRoadmap.name)
     private readonly learningRoadmapModel: Model<LearningRoadmapDocument>,
+    private readonly aiService: AIService,
   ) {}
 
   async create(createDto: CreateLearningRoadmapDto): Promise<LearningRoadmap> {
@@ -427,6 +433,62 @@ export class LearningRoadmapService {
     }
 
     return roadmap;
+  }
+
+  async generateAIRoadmap(userId: string, careerTitle: string): Promise<LearningRoadmap> {
+    this.logger.log(`Generating AI roadmap for user ${userId}, career: ${careerTitle}`);
+
+    const aiResult = await this.aiService.generateCareerRoadmap(careerTitle, []);
+
+    // Map AI result phases to schema-compatible format
+    const phases = aiResult.phases.map((p, idx) => ({
+      phaseId: p.phaseId || `phase_${idx + 1}`,
+      phase: (Object.values(LearningPhase).includes(p.phase as LearningPhase)
+        ? p.phase
+        : LearningPhase.FOUNDATION) as LearningPhase,
+      title: p.title,
+      description: p.description,
+      estimatedDuration: p.estimatedDuration,
+      objectives: p.objectives || [],
+      order: p.order || idx + 1,
+      prerequisites: idx === 0 ? [] : [`phase_${idx}`],
+      milestones: p.milestones.map((m) => ({
+        milestoneId: m.milestoneId,
+        title: m.title,
+        description: m.description,
+        tasks: m.tasks.map((t) => ({
+          taskId: t.taskId,
+          taskTitle: t.taskTitle,
+          isRequired: t.isRequired,
+          estimatedHours: t.estimatedHours,
+          order: t.order,
+        })),
+        skills: m.skills.map((s) => ({
+          skillName: s.skillName,
+          targetLevel: s.targetLevel,
+        })),
+        completionCriteria: {
+          requiredTasks: m.completionCriteria?.requiredTasks || [],
+        },
+      })),
+    }));
+
+    const roadmapData = {
+      userId: new Types.ObjectId(userId),
+      // Use a placeholder ObjectId for targetCareer since we only have the title
+      targetCareer: new Types.ObjectId('000000000000000000000001'),
+      targetLevel: ExperienceLevel.JUNIOR,
+      title: aiResult.title || `Lộ trình ${careerTitle}`,
+      description: aiResult.description || `Lộ trình học tập cá nhân hóa cho nghề ${careerTitle}`,
+      status: RoadmapStatus.ACTIVE,
+      phases,
+      tags: [careerTitle],
+      isTemplate: false,
+      isPublic: false,
+    };
+
+    const roadmap = new this.learningRoadmapModel(roadmapData);
+    return roadmap.save();
   }
 
   async remove(id: string): Promise<void> {

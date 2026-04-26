@@ -1,5 +1,10 @@
-import LearningRoadmap from "@/views/LearningRoadmap";
+import { Suspense } from 'react';
+import LearningRoadmap from '@/views/LearningRoadmap';
 
 export default function LearningRoadmapPage() {
-  return <LearningRoadmap />;
+  return (
+    <Suspense fallback={null}>
+      <LearningRoadmap />
+    </Suspense>
+  );
 }

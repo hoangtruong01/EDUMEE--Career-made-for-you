@@ -83,6 +83,17 @@ export class CareerFitResultController {
     return { careerTitle, personalityTraits, insight };
   }
 
+  @Get('detailed-analysis')
+  @ApiOperation({ summary: 'Get AI-generated detailed career analysis with pros/cons and 5-year trends' })
+  @ApiQuery({ name: 'careerTitle', required: true, type: String, description: 'Career title to analyze' })
+  @ApiResponse({ status: 200, description: 'Detailed AI career analysis' })
+  async getDetailedAnalysis(
+    @CurrentUser() user: AuthUserLike,
+    @Query('careerTitle') careerTitle: string,
+  ) {
+    return this.careerFitResultService.getDetailedAnalysis(getAuthUserId(user), careerTitle);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new career fit result' })
   @ApiResponse({ status: 201, description: 'Career fit result created successfully' })

@@ -46,6 +46,17 @@ export class LearningRoadmapController {
     return res;
   }
 
+  @Post('generate-ai')
+  @ApiOperation({ summary: 'Generate a personalized AI learning roadmap from a career title' })
+  @ApiResponse({ status: HttpStatus.CREATED, description: 'AI roadmap generated and saved' })
+  async generateAIRoadmap(
+    @CurrentUser() user: AuthUserLike,
+    @Body() body: { careerTitle: string },
+  ) {
+    const userId = getAuthUserId(user);
+    return this.learningRoadmapService.generateAIRoadmap(userId, body.careerTitle);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get all learning roadmaps' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Roadmaps retrieved successfully' })

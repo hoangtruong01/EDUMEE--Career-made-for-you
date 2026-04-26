@@ -2,6 +2,8 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { useAuth } from '@/context/auth-context';
+import { roadmapService, GeneratedRoadmap, RoadmapPhase } from '@/lib/roadmap.service';
 import { motion } from 'framer-motion';
 import {
   BookOpen,
@@ -10,178 +12,143 @@ import {
   ChevronUp,
   Clock,
   Lock,
+  Loader2,
   Target,
   Trophy,
+  ArrowLeft,
+  Sparkles,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
-const roadmapData = [
-  {
-    phase: 'Tháng 1–3',
-    title: 'Nền tảng & Công cụ',
-    status: 'completed',
-    progress: 100,
-    milestones: [
-      {
-        title: 'HTML/CSS cơ bản → nâng cao',
-        done: true,
-        desc: 'Responsive, Flexbox, Grid, accessibility',
-        tasks: [
-          'Box model & layout',
-          'Flexbox exercises',
-          'Grid basics',
-          'Accessibility checklist',
-        ],
-      },
-      {
-        title: 'JavaScript cơ bản',
-        done: true,
-        desc: 'ES6+, DOM, async/await',
-        tasks: [
-          'Variables & scope',
-          'Functions & closures',
-          'DOM manipulation',
-          'Fetch + async/await',
-        ],
-      },
-      {
-        title: 'Git + GitHub',
-        done: true,
-        desc: 'Branching, PR, collaboration',
-        tasks: [
-          'Init repo & commits',
-          'Branching workflow',
-          'Open PR & review',
-          'Resolve merge conflicts',
-        ],
-      },
-      {
-        title: 'Mini project: Portfolio',
-        done: true,
-        desc: 'Host trên GitHub Pages/Vercel',
-        tasks: ['Design layout', 'Implement pages', 'Deploy to Vercel', 'Write README & showcase'],
-      },
-    ],
-    skills: ['HTML/CSS', 'JavaScript', 'Git'],
-    kpi: 'Hoàn thành portfolio cơ bản và repo gọn gàng',
-  },
-  {
-    phase: 'Tháng 4–6',
-    title: 'Frontend & Tooling',
-    status: 'current',
-    progress: 35,
-    milestones: [
-      {
-        title: 'React cơ bản → nâng cao',
-        done: false,
-        desc: 'Components, hooks, router, performance',
-        tasks: ['Create components', 'UseState & UseEffect', 'React Router', 'Optimize renders'],
-      },
-      {
-        title: 'TypeScript cơ bản',
-        done: false,
-        desc: 'Types, interfaces, generics',
-        tasks: ['Types for props', 'Interfaces vs types', 'Generics examples'],
-      },
-      {
-        title: 'State management',
-        done: false,
-        desc: 'Context, Redux hoặc Zustand',
-        tasks: ['Context API', 'Redux basics', 'Zustand intro'],
-      },
-      {
-        title: 'Project: SPA có state & routing',
-        done: false,
-        desc: 'Deploy có CI',
-        tasks: ['Design app routes', 'Implement state flows', 'Set up GitHub Actions'],
-      },
-    ],
-    skills: ['React', 'TypeScript', 'State Management'],
-    kpi: 'Deploy 1 SPA có state + CI/CD',
-  },
-  {
-    phase: 'Tháng 7–12',
-    title: 'Backend & Fullstack',
-    status: 'locked',
-    progress: 0,
-    milestones: [
-      {
-        title: 'Node.js + Express (hoặc Nest)',
-        done: false,
-        desc: 'REST API, auth, validation',
-        tasks: ['Setup server', 'Routes & controllers', 'JWT auth'],
-      },
-      {
-        title: 'Database cơ bản',
-        done: false,
-        desc: 'Postgres / Mongo, ORM',
-        tasks: ['Schema design', 'CRUD queries', 'Use ORM (Prisma/TypeORM/Mongoose)'],
-      },
-      {
-        title: 'Testing & TDD',
-        done: false,
-        desc: 'Unit + integration tests',
-        tasks: ['Write unit tests', 'Integration tests with DB', 'Mocking'],
-      },
-      {
-        title: 'Project: Fullstack CRUD App',
-        done: false,
-        desc: 'Auth + DB + Deployment',
-        tasks: ['Design feature list', 'Implement backend & frontend', 'Deploy & monitor'],
-      },
-    ],
-    skills: ['Node.js', 'Databases', 'Testing', 'Deployment'],
-    kpi: 'Hoàn thành 1 fullstack app production-ready',
-  },
-  {
-    phase: 'Năm 2',
-    title: 'Chuyên sâu & Chuẩn bị tuyển dụng',
-    status: 'locked',
-    progress: 0,
-    milestones: [
-      {
-        title: 'System Design cơ bản',
-        done: false,
-        desc: 'Scalability, caching, load balancing',
-        tasks: ['Read system-design primer', 'Draw architecture diagrams', 'Discuss trade-offs'],
-      },
-      {
-        title: 'Algorithms & LeetCode (medium)',
-        done: false,
-        desc: 'Practice interview problems',
-        tasks: ['Array & strings', 'Trees & graphs', 'Dynamic programming basics'],
-      },
-      {
-        title: 'Performance & Security',
-        done: false,
-        desc: 'Profiling, OWASP basics',
-        tasks: ['Use profiler', 'Fix bottlenecks', 'Learn OWASP Top10'],
-      },
-      {
-        title: 'Portfolio nâng cao & Open-source',
-        done: false,
-        desc: 'Projects with tests and docs',
-        tasks: ['Add tests', 'Write docs', 'Publish project'],
-      },
-    ],
-    skills: ['System Design', 'Algorithms', 'Security'],
-    kpi: 'Sẵn sàng phỏng vấn: pass coding + system-design interviews',
-  },
-];
+/* ── Static fallback data removed ── */
 
+/* ── Map API phase data to display format ── */
+function mapApiRoadmap(roadmap: GeneratedRoadmap) {
+  return roadmap.phases.map((phase: RoadmapPhase, i: number) => ({
+    phase: phase.estimatedDuration || `Giai đoạn ${i + 1}`,
+    title: phase.title,
+    status: i === 0 ? 'current' : 'locked',
+    progress: i === 0 ? 0 : 0,
+    milestones: phase.milestones.map((m) => ({
+      title: m.title,
+      done: false,
+      desc: m.description,
+      tasks: m.tasks.map((t) => t.taskTitle),
+    })),
+    skills: phase.milestones.flatMap((m) => m.skills.map((s) => s.skillName)).slice(0, 3),
+    kpi: phase.objectives.join(' • ') || 'Hoàn thành giai đoạn',
+  }));
+}
+
+/* ── Main Component ── */
 const LearningRoadmap = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { accessToken } = useAuth();
+
+  const roadmapId = searchParams.get('id');
+  const careerFromParam = searchParams.get('career');
+
   const [expanded, setExpanded] = useState<number | null>(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiRoadmap, setApiRoadmap] = useState<GeneratedRoadmap | null>(null);
+
+  useEffect(() => {
+    if (!roadmapId || !accessToken) return;
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        const data = await roadmapService.getRoadmapById(accessToken, roadmapId);
+        setApiRoadmap(data);
+      } catch {
+        // fallback to static data
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void load();
+  }, [roadmapId, accessToken]);
+
+  if (isLoading) {
+    return (
+      <div className="bg-background flex min-h-screen items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4 text-center"
+        >
+          <div className="relative">
+            <div className="h-16 w-16 rounded-full bg-violet-500/20 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+            </div>
+            <div className="absolute inset-0 rounded-full animate-ping bg-violet-500/10" />
+          </div>
+          <p className="text-foreground font-semibold text-lg">Đang tải lộ trình của bạn...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!apiRoadmap) {
+    return (
+      <div className="bg-background flex min-h-screen flex-col items-center justify-center p-6 text-center">
+        <div className="bg-muted mb-4 flex h-20 w-20 items-center justify-center rounded-full">
+          <BookOpen className="text-muted-foreground h-10 w-10" />
+        </div>
+        <h2 className="text-xl font-bold">Chưa có lộ trình học tập</h2>
+        <p className="text-muted-foreground mt-2 max-w-sm">
+          Vui lòng hoàn thành phân tích nghề nghiệp và nhấn &quot;Bắt đầu lộ trình&quot; để AI thiết lập lộ trình cho bạn.
+        </p>
+        <button
+          onClick={() => router.push('/assessment-result')}
+          className="mt-6 rounded-xl bg-violet-600 px-6 py-2.5 font-semibold text-white hover:bg-violet-700 transition-colors"
+        >
+          Quay lại kết quả
+        </button>
+      </div>
+    );
+  }
+
+  const roadmapData = mapApiRoadmap(apiRoadmap);
+  const roadmapTitle = apiRoadmap.title;
+  const isAIGenerated = true;
 
   return (
     <div className="min-h-screen pb-20">
-      <div className="bg-gradient-card">
+      <div className="bg-gradient-card border-b border-border/50">
         <div className="container py-8">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm">
-              <BookOpen className="h-4 w-4" /> Lộ trình cá nhân hóa
+            {/* Back button when coming from analysis */}
+            {careerFromParam && (
+              <button
+                onClick={() => router.back()}
+                className="mb-4 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Quay lại phân tích
+              </button>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <div className="bg-primary/10 text-primary inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm">
+                <BookOpen className="h-4 w-4" />
+                Lộ trình cá nhân hóa
+              </div>
+              {isAIGenerated && (
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/15 border border-violet-500/30 px-3 py-1 text-xs font-semibold text-violet-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Được tạo bởi AI
+                </div>
+              )}
             </div>
-            <h1 className="font-display text-2xl font-bold md:text-3xl">Lộ trình Kĩ sư Phần Mềm</h1>
-            <p className="text-muted-foreground mt-1">Dựa trên profile và mục tiêu của bạn</p>
+
+            <h1 className="font-display text-2xl font-bold md:text-3xl">{roadmapTitle}</h1>
+            <p className="text-muted-foreground mt-1">
+              {isAIGenerated
+                ? `Lộ trình học tập AI cá nhân hóa cho nghề ${careerFromParam ?? roadmapTitle}`
+                : 'Dựa trên profile và mục tiêu của bạn'}
+            </p>
           </motion.div>
         </div>
       </div>
@@ -202,7 +169,7 @@ const LearningRoadmap = () => {
             >
               <button
                 onClick={() => setExpanded(isExpanded ? null : i)}
-                className={`flex w-full cursor-pointer items-center gap-4 p-6 text-left`}
+                className="flex w-full cursor-pointer items-center gap-4 p-6 text-left"
               >
                 <div
                   className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${

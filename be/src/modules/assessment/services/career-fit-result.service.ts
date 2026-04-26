@@ -388,6 +388,31 @@ export class CareerFitResultService {
     }
   }
 
+  async getDetailedAnalysis(userId: string, careerTitle: string): Promise<{
+    overview: string;
+    pros: string[];
+    cons: string[];
+    trends: { year: string; description: string }[];
+    salaryRange: string;
+    demandLevel: string;
+    keySkills: string[];
+    topCompanies: string[];
+    careerTitle: string;
+  }> {
+    // Get personality traits from user's career fit results
+    const results = await this.findByUser(userId, 5);
+    const personalityTraits: string[] = [];
+    for (const r of results) {
+      const profile = (r as unknown as { personalityProfile?: { dominantTraits?: string[] } }).personalityProfile;
+      if (profile?.dominantTraits) {
+        personalityTraits.push(...profile.dominantTraits);
+      }
+    }
+
+    const analysis = await this.aiService.generateDetailedCareerAnalysis(careerTitle, [...new Set(personalityTraits)]);
+    return { ...analysis, careerTitle };
+  }
+
   async getStatistics(): Promise<any> {
     const stats = await this.careerFitResultModel.aggregate([
       {
