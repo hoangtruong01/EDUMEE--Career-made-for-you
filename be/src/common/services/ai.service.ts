@@ -4,6 +4,7 @@ import {
   AIAnalysisResult,
   AssessmentAnswerData,
 } from '../interfaces/ai-analysis.interface';
+import { CareerSimulationData } from '../../modules/careers/schemas/career-simulation.schema';
 
 interface GeminiResponse {
   candidates: Array<{
@@ -533,6 +534,54 @@ Quy tắc:
           },
         ],
       };
+    }
+  }
+
+  async generateCareerSimulation(careerTitle: string, personalityTraits: string[]): Promise<CareerSimulationData> {
+    const prompt = `
+      Bạn là một chuyên gia tư vấn sự nghiệp AI. Hãy tạo một bản mô phỏng lộ trình nghề nghiệp chi tiết cho nghề: "${careerTitle}".
+      Dựa trên đặc điểm tính cách của người dùng: ${personalityTraits.join(', ')}.
+      
+      Hãy tạo ra 4 cấp độ (levels) phát triển nghề nghiệp: Intern, Junior, Senior, và Lead/Manager.
+      Mỗi cấp độ cần có:
+      - label (Tên cấp độ)
+      - salaryRange (Mức lương tham khảo tại VN, ví dụ: "10-15 triệu VNĐ")
+      - yearRange (Số năm kinh nghiệm, ví dụ: "0-1 năm")
+      - dailyTasks (Mảng gồm 3-4 công việc hàng ngày tiêu biểu)
+      - typicalSchedule (Mảng gồm 4 mốc thời gian trong ngày và công việc tương ứng)
+      - challenges (Mảng gồm 2-3 khó khăn thường gặp)
+      - tips (Mảng gồm 2-3 lời khuyên để thăng tiến)
+
+      Yêu cầu kết quả trả về là JSON thuần túy theo cấu trúc sau:
+      {
+        "careerTitle": "...",
+        "levels": [
+          {
+            "label": "...",
+            "salaryRange": "...",
+            "yearRange": "...",
+            "dailyTasks": ["...", "..."],
+            "typicalSchedule": [
+              {"time": "08:00", "activity": "..."},
+              {"time": "10:00", "activity": "..."},
+              {"time": "14:00", "activity": "..."},
+              {"time": "17:00", "activity": "..."}
+            ],
+            "challenges": ["...", "..."],
+            "tips": ["...", "..."]
+          }
+        ]
+      }
+      Lưu ý: Ngôn ngữ sử dụng là tiếng Việt. Trả về đúng định dạng JSON, không kèm thêm văn bản nào khác.
+    `;
+
+    try {
+      const text = await this.callGeminiAPI(prompt);
+      const cleanJson = text.replace(/```json|```/gi, '').trim();
+      return JSON.parse(cleanJson) as CareerSimulationData;
+    } catch (error) {
+      this.logger.error('Error generating career simulation:', error);
+      throw error;
     }
   }
 }
