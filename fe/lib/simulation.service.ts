@@ -8,10 +8,14 @@ export interface CareerSimulationLevel {
   yearRange: string;
   nextLevel: string;
   skills: { name: string; color: string }[];
-  tasks: string[];
-  daySchedule: string;
-  challenge: string;
-  tip: string;
+  tasks?: string[];
+  dailyTasks?: string[];
+  daySchedule?: string;
+  typicalSchedule?: { time: string; activity: string }[];
+  challenge?: string;
+  challenges?: string[];
+  tip?: string;
+  tips?: string[];
 }
 
 export interface CareerSimulationData {
