@@ -12,8 +12,10 @@ import {
   CareerFitResult,
   CareerFitResultSchema,
 } from './schemas';
+import { CareerInsight, CareerInsightSchema } from '../careers/schemas/career-insight.schema';
 import { AssessmentSession, AssessmentSessionSchema } from './schemas/assessment-sesions.schema';
 import { UsersModule } from '../users/users.module';
+import { AuthModule } from '../auth/auth.module';
 
 
 // Services
@@ -39,6 +41,7 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
   imports: [
     AiModule,
     UsersModule,
+    AuthModule,
 
     MongooseModule.forFeature([
       { name: AssessmentQuestion.name, schema: AssessmentQuestionSchema },
@@ -47,6 +50,7 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
       { name: AssessmentSession.name, schema: AssessmentSessionSchema },
       { name: UserSubscription.name, schema: UserSubscriptionSchema },
       { name: AiPlan.name, schema: AiPlanSchema },
+      { name: CareerInsight.name, schema: CareerInsightSchema },
     ]),
   ],
   controllers: [

@@ -9,6 +9,7 @@ import { AssessmentAnswerService } from './assessment-answer.service';
 import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 import { UsersService } from '../../users/users.service';
+import { CareerInsight, CareerInsightDocument } from '../../careers/schemas/career-insight.schema';
 
 
 interface QuestionData {
@@ -36,6 +37,8 @@ export class CareerFitResultService {
   constructor(
     @InjectModel(CareerFitResult.name)
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
+    @InjectModel(CareerInsight.name)
+    private readonly careerInsightModel: Model<CareerInsightDocument>,
     private readonly aiService: AIService,
     private readonly assessmentAnswerService: AssessmentAnswerService,
     private readonly aiQuotaService: AiQuotaService,
@@ -136,6 +139,10 @@ export class CareerFitResultService {
       .populate('careerId', 'title category industry')
       .sort({ overallFitScore: -1 })
       .exec();
+  }
+
+  async findAllInsights(): Promise<CareerInsight[]> {
+    return this.careerInsightModel.find().sort({ updatedAt: -1 }).exec();
   }
 
   async getTopCareerMatches(userId: string, limit = 10): Promise<CareerFitResult[]> {
@@ -248,6 +255,35 @@ export class CareerFitResultService {
         ? limits.maxCareerRecommendationsPerRun
         : undefined;
       const recommendations = maxPerRun ? analysis.careerRecommendations.slice(0, maxPerRun) : analysis.careerRecommendations;
+
+      // Seed Discovery Repository with new careers found by AI
+      try {
+        for (const rec of recommendations) {
+          const title = rec.careerTitle;
+          await this.careerInsightModel.findOneAndUpdate(
+            { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(title)}$`, 'i') } },
+            { 
+              $setOnInsert: { 
+                careerTitle: title,
+                lastAIUpdate: new Date(0), // Set to epoch so it's considered "stale" and will be fully analyzed on first click
+                analysis: {
+                  overview: rec.reasons?.join('. ') || 'Đang cập nhật thông tin...',
+                  pros: [],
+                  cons: [],
+                  trends: [],
+                  salaryRange: 'Đang cập nhật...',
+                  demandLevel: 'Đang cập nhật...',
+                  keySkills: [],
+                  topCompanies: []
+                }
+              } 
+            },
+            { upsert: true }
+          );
+        }
+      } catch (e) {
+        this.logger.error('Failed to seed discovery repository:', e);
+      }
 
       // Convert AI recommendations to CareerFitResult documents
       const careerFitResults: CareerFitResult[] = [];
@@ -388,29 +424,54 @@ export class CareerFitResultService {
     }
   }
 
-  async getDetailedAnalysis(userId: string, careerTitle: string): Promise<{
-    overview: string;
-    pros: string[];
-    cons: string[];
-    trends: { year: string; description: string }[];
-    salaryRange: string;
-    demandLevel: string;
-    keySkills: string[];
-    topCompanies: string[];
-    careerTitle: string;
-  }> {
-    // Get personality traits from user's career fit results
+  async getDetailedAnalysis(userId: string, careerTitle: string): Promise<Record<string, unknown>> {
+    // 1. Check shared cache first
+    const cachedInsight = await this.careerInsightModel.findOne({
+      careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') }
+    });
+
+    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+    const isExpired = cachedInsight && (Date.now() - cachedInsight.lastAIUpdate.getTime() > ONE_MONTH_MS);
+
+    if (cachedInsight && !isExpired) {
+      this.logger.log(`Using cached analysis for career: ${careerTitle}`);
+      return { ...cachedInsight.analysis, careerTitle: cachedInsight.careerTitle };
+    }
+
+    // 2. Not found or expired: Call AI
+    this.logger.log(`Generating NEW analysis for career: ${careerTitle} (Personalized for user: ${userId})`);
+
+    // Get personality traits to make the AI prompt more relevant (as per current design)
     const results = await this.findByUser(userId, 5);
     const personalityTraits: string[] = [];
     for (const r of results) {
-      const profile = (r as unknown as { personalityProfile?: { dominantTraits?: string[] } }).personalityProfile;
-      if (profile?.dominantTraits) {
-        personalityTraits.push(...profile.dominantTraits);
+      const profile = r.personalityProfile;
+      if (profile?.primaryTraits) {
+        personalityTraits.push(...profile.primaryTraits);
       }
     }
 
-    const analysis = await this.aiService.generateDetailedCareerAnalysis(careerTitle, [...new Set(personalityTraits)]);
+    const analysis = await this.aiService.generateDetailedCareerAnalysis(
+      careerTitle,
+      [...new Set(personalityTraits)]
+    );
+
+    // 3. Save to shared cache for other users
+    await this.careerInsightModel.findOneAndUpdate(
+      { careerTitle: { $regex: new RegExp(`^${careerTitle}$`, 'i') } },
+      {
+        careerTitle, // Normalize title
+        analysis,
+        lastAIUpdate: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
     return { ...analysis, careerTitle };
+  }
+
+  private escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   async getStatistics(): Promise<any> {

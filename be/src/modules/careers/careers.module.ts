@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Career, CareerSchema } from './schemas/career.schema';
 import { CareerComparison, CareerComparisonSchema } from './schemas/career-comparison.schema';
 import { CareerSimulation, CareerSimulationSchema } from './schemas/career-simulation.schema';
+import { CareerInsight, CareerInsightSchema } from './schemas/career-insight.schema';
 import { CareerService } from './services/career.service';
 import { CareerComparisonService } from './services/career-comparison.service';
 import { CareerSimulationService } from './services/career-simulation.service';
@@ -21,6 +22,7 @@ import { AIService } from '../../common/services/ai.service';
       { name: Career.name, schema: CareerSchema },
       { name: CareerComparison.name, schema: CareerComparisonSchema },
       { name: CareerSimulation.name, schema: CareerSimulationSchema },
+      { name: CareerInsight.name, schema: CareerInsightSchema },
     ]),
   ],
   controllers: [

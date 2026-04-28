@@ -49,6 +49,19 @@ function toOwnerId(value: unknown): string {
 @Controller('career-fit-results')
 export class CareerFitResultController {
   constructor(private readonly careerFitResultService: CareerFitResultService) { }
+  
+  @Get('insights')
+  @ApiOperation({ summary: 'Get all discovered career insights for repository' })
+  @ApiResponse({ status: 200, description: 'List of all career insights' })
+  async getInsights() {
+    return this.careerFitResultService.findAllInsights();
+  }
+
+  @Get('statistics')
+  @ApiOperation({ summary: 'Get career fit statistics' })
+  async getStatistics(): Promise<Record<string, unknown>> {
+    return this.careerFitResultService.getStatistics() as Promise<Record<string, unknown>>;
+  }
 
   @Post('generate-my-analysis')
   @ApiOperation({ summary: 'Generate AI-powered career analysis from current user answers (auto-fetch from DB)' })
@@ -90,7 +103,7 @@ export class CareerFitResultController {
   async getDetailedAnalysis(
     @CurrentUser() user: AuthUserLike,
     @Query('careerTitle') careerTitle: string,
-  ) {
+  ): Promise<Record<string, unknown>> {
     return this.careerFitResultService.getDetailedAnalysis(getAuthUserId(user), careerTitle);
   }
 
@@ -146,11 +159,7 @@ export class CareerFitResultController {
     return this.careerFitResultService.getTopCareerMatches(getAuthUserId(user), limit || 10);
   }
 
-  @Get('statistics')
-  @ApiOperation({ summary: 'Get career fit statistics' })
-  async getStatistics(): Promise<Record<string, unknown>> {
-    return this.careerFitResultService.getStatistics() as Promise<Record<string, unknown>>;
-  }
+
 
   @Get(':id')
   @ApiOperation({ summary: 'Get career fit result by ID' })
