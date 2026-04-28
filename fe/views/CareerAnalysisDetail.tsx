@@ -53,6 +53,7 @@ export default function CareerAnalysisDetail() {
   const { accessToken } = useAuth();
 
   const careerTitle = searchParams.get('career') ?? '';
+  const isFromDiscovery = searchParams.get('from') === 'discovery';
 
   const [analysis, setAnalysis] = useState<CareerDetailedAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -149,27 +150,29 @@ export default function CareerAnalysisDetail() {
               </div>
 
               {/* CTA button */}
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleStartRoadmap}
-                disabled={isGenerating}
-                id="btn-start-roadmap"
-                className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-violet-500/40 disabled:opacity-60"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Đang tạo lộ trình...
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="h-4 w-4" />
-                    Bắt đầu lộ trình
-                    <ChevronRight className="h-4 w-4" />
-                  </>
-                )}
-              </motion.button>
+              {!isFromDiscovery && (
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleStartRoadmap}
+                  disabled={isGenerating}
+                  id="btn-start-roadmap"
+                  className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-6 py-3 font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-violet-500/40 disabled:opacity-60"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang tạo lộ trình...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="h-4 w-4" />
+                      Bắt đầu lộ trình
+                      <ChevronRight className="h-4 w-4" />
+                    </>
+                  )}
+                </motion.button>
+              )}
             </div>
           </motion.div>
         </div>

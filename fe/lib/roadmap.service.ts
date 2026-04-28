@@ -12,6 +12,13 @@ export interface CareerDetailedAnalysis {
   topCompanies: string[];
 }
 
+export interface CareerInsight {
+  _id: string;
+  careerTitle: string;
+  analysis: CareerDetailedAnalysis;
+  lastAIUpdate: string;
+}
+
 export interface RoadmapPhase {
   phaseId: string;
   phase: string;
@@ -56,6 +63,10 @@ export const roadmapService = {
       `/career-fit-results/detailed-analysis?careerTitle=${encodeURIComponent(careerTitle)}`,
       accessToken,
     );
+  },
+
+  async getDiscoveryInsights(accessToken: string): Promise<CareerInsight[]> {
+    return apiClient.get<CareerInsight[]>('/career-fit-results/insights', accessToken);
   },
 
   async generateAIRoadmap(

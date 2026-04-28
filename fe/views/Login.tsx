@@ -9,8 +9,9 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -20,6 +21,14 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
   const { login } = useAuth();
+  const searchParams = useSearchParams();
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('expired') === 'true') {
+      setSessionExpired(true);
+    }
+  }, [searchParams]);
 
   // Đếm click logo để chuyển sang trang admin login
   const clickCountRef = useRef(0);
@@ -166,6 +175,13 @@ const Login = () => {
               </svg>
               Tiếp tục với Google
             </Button>
+
+            {sessionExpired && !errorMessage && (
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl flex items-start gap-2 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.
+              </div>
+            )}
 
             {errorMessage && <p className="text-destructive text-sm">{errorMessage}</p>}
           </form>

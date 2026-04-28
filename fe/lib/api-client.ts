@@ -1,3 +1,5 @@
+import { authStorage } from './auth-storage';
+
 export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -74,6 +76,17 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const payload = (await parseResponseBody(response)) as ApiErrorBody | ApiResponse<T> | T | null;
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Handle expired token or unauthorized access
+      if (typeof window !== 'undefined') {
+        authStorage.clearSession();
+        // Redirect to login if not already there
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login?expired=true';
+        }
+      }
+    }
+
     const parsedPayload = (payload || undefined) as ApiErrorBody | undefined;
     throw new ApiError(
       parseErrorMessage(parsedPayload, 'Đã xảy ra lỗi khi gọi API'),

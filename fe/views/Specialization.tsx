@@ -11,10 +11,12 @@ import {
   Search,
   Star,
   TrendingUp,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { roadmapService } from '@/lib/roadmap.service';
 
 /* ─── Data ─── */
 const CATEGORIES = [
@@ -29,219 +31,7 @@ const CATEGORIES = [
   'Quản lý sản phẩm',
 ];
 
-const SORT_OPTIONS = ['Phù hợp nhất', 'Lương cao nhất', 'Tăng trưởng cao nhất'];
-
-const careers = [
-  {
-    id: 'software-engineer',
-    icon: '💻',
-    title: 'Kỹ sư Phần mềm',
-    category: 'Công nghệ',
-    categoryColor: 'bg-sky-light text-primary',
-    match: 92,
-    description: 'Xây dựng và phát triển ứng dụng phần mềm cho web, mobile và desktop.',
-    salaryMin: 25,
-    salaryMax: 60,
-    growth: 22,
-    demandLabel: 'Rất cao',
-    demandStars: 4,
-    skills: ['JavaScript', 'Python', 'React', 'Node.js'],
-    aiInsight: 'AI và automation sẽ thay đổi nhưng không thay thế kỹ sư phần mềm.',
-    roadmap: [
-      'Học căn bản: HTML/CSS, JavaScript',
-      'Học lập trình nâng cao: Data structures, algorithms',
-      'Thành thạo framework: React / Node.js',
-      'Xây dự án thực tế và portfolio',
-      'Ứng tuyển vị trí Junior/Intern',
-    ],
-  },
-  {
-    id: 'data-scientist',
-    icon: '📊',
-    title: 'Data Scientist',
-    category: 'Dữ liệu & AI',
-    categoryColor: 'bg-lavender text-secondary',
-    match: 87,
-    description: 'Phân tích dữ liệu lớn để tìm insight và xây dựng mô hình dự đoán.',
-    salaryMin: 20,
-    salaryMax: 50,
-    growth: 35,
-    demandLabel: 'Cao',
-    demandStars: 5,
-    skills: ['Python', 'SQL', 'Machine Learning', 'Statistics'],
-    aiInsight: 'Nhu cầu tăng mạnh trong mọi ngành cần chuyên sâu về dữ liệu.',
-    roadmap: [
-      'Học Python và thống kê cơ bản',
-      'Học SQL và xử lý dữ liệu',
-      'Học Machine Learning cơ bản',
-      'Thực hành trên dự án/competitions',
-      'Xây portfolio và apply vị trí Data Analyst',
-    ],
-  },
-  {
-    id: 'ai-ml-engineer',
-    icon: '🤖',
-    title: 'Kỹ sư AI/ML',
-    category: 'Dữ liệu & AI',
-    categoryColor: 'bg-lavender text-secondary',
-    match: 85,
-    description: 'Xây dựng và triển khai các mô hình AI/ML cho sản phẩm thực tế.',
-    salaryMin: 30,
-    salaryMax: 80,
-    growth: 45,
-    demandLabel: 'Rất cao',
-    demandStars: 5,
-    skills: ['Deep Learning', 'TensorFlow', 'Python', 'Research'],
-    aiInsight: 'Lĩnh vực hot nhất thập kỷ với lương tầm cao và xuất sắc.',
-    roadmap: [
-      'Nền tảng toán, xác suất và Python',
-      'Học deep learning và frameworks (TensorFlow/PyTorch)',
-      'Thực hiện research/demo models',
-      'Triển khai model vào sản phẩm',
-      'Chuẩn hoá CV, apply roles AI/ML Engineer',
-    ],
-  },
-  {
-    id: 'product-manager',
-    icon: '🎯',
-    title: 'Product Manager',
-    category: 'Quản lý sản phẩm',
-    categoryColor: 'bg-mint-light text-mint',
-    match: 78,
-    description: 'Định hướng và phát triển sản phẩm từ ý tưởng đến thị trường.',
-    salaryMin: 25,
-    salaryMax: 70,
-    growth: 25,
-    demandLabel: 'Cao',
-    demandStars: 4,
-    skills: ['Strategy', 'Agile', 'Data Analysis', 'Communication'],
-    aiInsight: 'Vai trò không thể thiếu trong mọi công ty công nghệ.',
-    roadmap: [
-      'Học kỹ năng quản lý sản phẩm cơ bản',
-      'Thực hành với Agile và roadmap planning',
-      'Học phân tích dữ liệu để đưa quyết định',
-      'Làm sản phẩm nhỏ hoặc PM-assistant',
-      'Ứng tuyển Product Manager Junior',
-    ],
-  },
-  {
-    id: 'ux-ui-designer',
-    icon: '🎨',
-    title: 'UX/UI Designer',
-    category: 'Thiết kế',
-    categoryColor: 'bg-coral-light text-coral',
-    match: 65,
-    description: 'Thiết kế trải nghiệm người dùng và giao diện sản phẩm số.',
-    salaryMin: 15,
-    salaryMax: 40,
-    growth: 18,
-    demandLabel: 'Cao',
-    demandStars: 4,
-    skills: ['Figma', 'User Research', 'Prototyping', 'Design System'],
-    aiInsight: 'AI tools hỗ trợ nhưng không thay thế creative thinking.',
-    roadmap: [
-      'Học công cụ thiết kế: Figma, Sketch',
-      'Học research người dùng và prototyping',
-      'Xây portfolio gồm case studies',
-      'Học hệ thống design và accessibility',
-      'Ứng tuyển UX/UI Designer vị trí Junior',
-    ],
-  },
-  {
-    id: 'marketing-manager',
-    icon: '📣',
-    title: 'Marketing Manager',
-    category: 'Marketing',
-    categoryColor: 'bg-gold-light text-gold',
-    match: 58,
-    description: 'Lên chiến lược và thực thi các chiến dịch Marketing cho doanh nghiệp.',
-    salaryMin: 15,
-    salaryMax: 35,
-    growth: 15,
-    demandLabel: 'Cao',
-    demandStars: 4,
-    skills: ['Digital Marketing', 'Content', 'Analytics', 'SEO/SEM'],
-    aiInsight: 'Digital marketing và AI marketing đang bùng nổ tại Việt Nam.',
-    roadmap: [
-      'Học cơ bản Digital Marketing và content',
-      'Thực hành SEO/SEM và analytics',
-      'Chạy campaign thực tế và đo lường',
-      'Xây case studies và kết quả',
-      'Ứng tuyển Marketing roles hoặc freelancing',
-    ],
-  },
-  {
-    id: 'architect',
-    icon: '🏛️',
-    title: 'Kiến trúc sư',
-    category: 'Xây dựng',
-    categoryColor: 'bg-gold-light text-gold',
-    match: 52,
-    description: 'Thiết kế công trình kiến trúc từ nhà ở đến tòa nhà thương mại.',
-    salaryMin: 15,
-    salaryMax: 45,
-    growth: 10,
-    demandLabel: 'Trung bình',
-    demandStars: 3,
-    skills: ['AutoCAD', 'Revit', 'Thiết kế', 'BIM'],
-    aiInsight: 'Sustainable architecture và smart building đang là xu hướng mới.',
-    roadmap: [
-      'Học AutoCAD, Revit cơ bản',
-      'Thực hành thiết kế và mã hóa bản vẽ',
-      'Học BIM và sustainable design',
-      'Làm thực tập hoặc dự án hợp tác',
-      'Apply vị trí kiến trúc sư junior',
-    ],
-  },
-  {
-    id: 'doctor',
-    icon: '🩺',
-    title: 'Bác sĩ',
-    category: 'Y tế',
-    categoryColor: 'bg-mint-light text-mint',
-    match: 45,
-    description: 'Chăm sóc và điều trị sức khỏe cho bệnh nhân tại các cơ sở y tế.',
-    salaryMin: 20,
-    salaryMax: 100,
-    growth: 12,
-    demandLabel: 'Rất cao',
-    demandStars: 5,
-    skills: ['Y học', 'Chẩn đoán', 'Phẫu thuật', 'Giao tiếp'],
-    aiInsight: 'AI hỗ trợ chẩn đoán nhưng bác sĩ là nền tảng không thể thay thế.',
-    roadmap: [
-      'Hoàn thành chương trình y khoa cơ bản',
-      'Thực tập lâm sàng và chuyên ngành',
-      'Học kỹ năng giao tiếp và chẩn đoán',
-      'Tham gia đào tạo specialist nếu cần',
-      'Ứng tuyển/residency hoặc công tác tại bệnh viện',
-    ],
-  },
-  {
-    id: 'lawyer',
-    icon: '⚖️',
-    title: 'Luật sư',
-    category: 'Pháp luật',
-    categoryColor: 'bg-sky-light text-primary',
-    match: 40,
-    description: 'Tư vấn pháp lý và bảo vệ quyền lợi cho khách hàng và doanh nghiệp.',
-    salaryMin: 15,
-    salaryMax: 80,
-    growth: 8,
-    demandLabel: 'Trung bình',
-    demandStars: 3,
-    skills: ['Luật pháp', 'Nghiên cứu', 'Tranh tụng', 'Tư vấn'],
-    aiInsight: 'Legal tech và AI đang thay đổi cách ngành luật vận hành.',
-    roadmap: [
-      'Hoàn thiện nền tảng luật cơ bản',
-      'Thực hành nghiên cứu và soạn thảo',
-      'Học kỹ năng tranh tụng và tư vấn',
-      'Thực tập tại firm hoặc in-house',
-      'Apply vị trí junior lawyer / counsel',
-    ],
-  },
-];
-
-type Career = (typeof careers)[number];
+const SORT_OPTIONS = ['Mới nhất', 'Lương cao nhất', 'Tăng trưởng cao nhất'];
 
 /* ─── Stars component ─── */
 const Stars = ({ count }: { count: number }) => (
@@ -255,12 +45,28 @@ const Stars = ({ count }: { count: number }) => (
   </span>
 );
 
+interface CareerDiscoveryItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  categoryColor: string;
+  icon: string;
+  salaryMin: number;
+  salaryMax: number;
+  growth: number;
+  demandLabel: string;
+  demandStars: number;
+  skills: string[];
+  aiInsight: string;
+}
+
 /* ─── Career Card ─── */
 const CareerCard = ({
   career,
   index,
 }: {
-  career: (typeof careers)[0];
+  career: CareerDiscoveryItem;
   index: number;
 }) => (
   <motion.div
@@ -313,7 +119,7 @@ const CareerCard = ({
 
       {/* Skills */}
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {career.skills.map((s) => (
+        {career.skills.map((s: string) => (
           <span key={s} className="bg-sky-light text-primary rounded-full px-2.5 py-0.5 text-xs">
             {s}
           </span>
@@ -328,9 +134,9 @@ const CareerCard = ({
 
       {/* Buttons */}
       <div className="mt-auto flex gap-2">
-        <Link href={`/career-analysis?career=${encodeURIComponent(career.title)}`} className="flex-1">
+        <Link href={`/career-analysis?career=${encodeURIComponent(career.title)}&from=discovery`} className="flex-1">
           <Button variant="hero" size="sm" className="w-full gap-1.5">
-            <MapPin className="h-3.5 w-3.5" /> Lộ trình
+            <MapPin className="h-3.5 w-3.5" /> Khám phá
           </Button>
         </Link>
         <Link href="/career-compare">
@@ -349,10 +155,57 @@ const Specialization = () => {
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
   const [showSort, setShowSort] = useState(false);
-  const router = useRouter();
+  const [careerList, setCareerList] = useState<CareerDiscoveryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { accessToken } = useAuth();
+
+  useEffect(() => {
+    const load = async () => {
+      if (!accessToken) return;
+      try {
+        setIsLoading(true);
+        const insights = await roadmapService.getDiscoveryInsights(accessToken);
+        if (!Array.isArray(insights)) {
+          setCareerList([]);
+          return;
+        }
+        
+        // Map backend insights to frontend UI format
+        const mapped = insights.map(insight => {
+          const salary = insight.analysis?.salaryRange || '20-50';
+          const [minStr, maxStr] = salary.split('-').map(s => s.replace(/\D/g, ''));
+          const min = parseInt(minStr) || 20;
+          const max = parseInt(maxStr) || min + 20;
+          
+          return {
+            id: insight._id,
+            title: insight.careerTitle,
+            description: insight.analysis?.overview || 'Thông tin chi tiết đang được cập nhật...',
+            category: 'Công nghệ', 
+            categoryColor: 'bg-sky-light text-primary',
+            icon: '💼',
+            salaryMin: min,
+            salaryMax: max,
+            growth: 15,
+            demandLabel: insight.analysis?.demandLevel || 'Cao',
+            demandStars: 4,
+            skills: insight.analysis?.keySkills?.length ? insight.analysis.keySkills : ['Giao tiếp', 'Tư duy'],
+            aiInsight: 'Phân tích từ cộng đồng người dùng Edumee.'
+          };
+        });
+        
+        setCareerList(mapped);
+      } catch (err) {
+        console.error('Failed to load discovery insights:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [accessToken]);
 
   const filtered = useMemo(() => {
-    let list = careers;
+    let list = careerList;
     if (activeCategory !== 'Tất cả') {
       list = list.filter((c) => c.category === activeCategory);
     }
@@ -362,15 +215,15 @@ const Specialization = () => {
         (c) =>
           c.title.toLowerCase().includes(q) ||
           c.category.toLowerCase().includes(q) ||
-          c.skills.some((s) => s.toLowerCase().includes(q)),
+          c.skills.some((s: string) => s.toLowerCase().includes(q)),
       );
     }
     if (sortBy === 'Lương cao nhất') list = [...list].sort((a, b) => b.salaryMax - a.salaryMax);
     else if (sortBy === 'Tăng trưởng cao nhất')
       list = [...list].sort((a, b) => b.growth - a.growth);
-    else list = [...list].sort((a, b) => b.salaryMax - a.salaryMax);
+    else if (sortBy === 'Mới nhất') list = [...list]; // Default order
     return list;
-  }, [search, activeCategory, sortBy]);
+  }, [search, activeCategory, sortBy, careerList]);
 
   return (
     <div className="min-h-screen pb-20">
@@ -379,11 +232,11 @@ const Specialization = () => {
         <div className="container py-10 text-center">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
-              <TrendingUp className="h-4 w-4" /> 200+ ngành nghề
+              <TrendingUp className="h-4 w-4" /> {careerList.length}+ ngành nghề
             </span>
             <h1 className="font-display text-3xl font-bold md:text-4xl">Khám phá nghề nghiệp</h1>
             <p className="text-muted-foreground mt-2">
-              Tìm hiểu chi tiết về lương, kỹ năng và xu hướng của từng ngành
+              Kho thông tin nghề nghiệp được tổng hợp từ AI và cộng đồng người dùng
             </p>
           </motion.div>
         </div>
@@ -398,25 +251,21 @@ const Specialization = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm kiếm nghề..."
-              className="border-input bg-background focus:ring-ring h-10 w-full rounded-xl border pr-4 pl-9 text-sm outline-none focus:ring-2"
+              className="bg-secondary/50 border-border w-full rounded-2xl border py-3 pr-4 pl-10 text-sm focus:ring-2 focus:ring-purple-500/20 focus:outline-hidden"
             />
           </div>
-          <Button variant="outline" size="sm" className="hidden shrink-0 gap-1.5 sm:flex">
-            <Filter className="h-4 w-4" /> Lọc
-          </Button>
-          <div className="relative shrink-0">
+          <div className="relative">
             <Button
               variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setShowSort((v) => !v)}
+              onClick={() => setShowSort(!showSort)}
+              className="rounded-2xl gap-2"
             >
-              <span className="hidden sm:inline">Sắp xếp: {sortBy}</span>
-              <span className="sm:hidden">{sortBy.split(' ')[0]}</span>
-              <ChevronDown className="h-4 w-4" />
+              <Filter className="h-4 w-4" />
+              <span className="hidden sm:inline">{sortBy}</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showSort ? 'rotate-180' : ''}`} />
             </Button>
             {showSort && (
-              <div className="border-border bg-background absolute right-0 z-10 mt-1 w-52 rounded-xl border shadow-lg">
+              <div className="glass-card absolute top-full right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl py-1 shadow-2xl">
                 {SORT_OPTIONS.map((opt) => (
                   <button
                     key={opt}
@@ -424,7 +273,9 @@ const Specialization = () => {
                       setSortBy(opt);
                       setShowSort(false);
                     }}
-                    className={`hover:bg-muted w-full px-4 py-2.5 text-left text-sm ${sortBy === opt ? 'text-primary font-semibold' : ''}`}
+                    className={`hover:bg-primary/10 flex w-full items-center px-4 py-2 text-left text-sm ${
+                      sortBy === opt ? 'text-primary font-medium' : 'text-muted-foreground'
+                    }`}
                   >
                     {opt}
                   </button>
@@ -434,33 +285,44 @@ const Specialization = () => {
           </div>
         </div>
 
-        {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                activeCategory === cat
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Categories scroll */}
+        <div className="no-scrollbar -mx-4 flex overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-2">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-all ${
+                  activeCategory === cat
+                    ? 'bg-primary text-white shadow-lg shadow-purple-500/20'
+                    : 'bg-secondary/50 text-muted-foreground hover:bg-secondary border border-border'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Career grid */}
-        {filtered.length > 0 ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((career, i) => (
-              <CareerCard key={career.id} career={career} index={i} />
+        {/* Career Grid */}
+        {isLoading ? (
+          <div className="flex h-64 flex-col items-center justify-center gap-3">
+            <Loader2 className="text-primary h-10 w-10 animate-spin" />
+            <p className="text-muted-foreground animate-pulse">Đang tải kho nghề nghiệp...</p>
+          </div>
+        ) : filtered.length > 0 ? (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((career: CareerDiscoveryItem, idx: number) => (
+              <CareerCard key={career.id} career={career} index={idx} />
             ))}
           </div>
         ) : (
-          <div className="py-20 text-center">
-            <p className="text-muted-foreground">Không tìm thấy nghề phù hợp. Thử từ khóa khác.</p>
+          <div className="flex h-64 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border p-10 text-center">
+            <Search className="text-muted-foreground mb-4 h-12 w-12 opacity-20" />
+            <h3 className="text-lg font-semibold">Không tìm thấy ngành nghề</h3>
+            <p className="text-muted-foreground text-sm">
+              Thử tìm kiếm với từ khóa khác hoặc xóa bộ lọc
+            </p>
           </div>
         )}
       </div>
