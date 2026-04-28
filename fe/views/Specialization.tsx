@@ -15,15 +15,6 @@ import {
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
 
 /* ─── Data ─── */
 const CATEGORIES = [
@@ -252,21 +243,6 @@ const careers = [
 
 type Career = (typeof careers)[number];
 
-/* ─── Match color gradient helper ─── */
-const matchGradient = (match: number) => {
-  if (match >= 80) return 'from-violet-500 to-purple-600';
-  if (match >= 60) return 'from-blue-500 to-cyan-500';
-  if (match >= 40) return 'from-orange-400 to-amber-500';
-  return 'from-gray-400 to-gray-500';
-};
-
-const matchTextColor = (match: number) => {
-  if (match >= 80) return 'text-violet-600 dark:text-violet-400';
-  if (match >= 60) return 'text-blue-600 dark:text-blue-400';
-  if (match >= 40) return 'text-orange-500';
-  return 'text-gray-500';
-};
-
 /* ─── Stars component ─── */
 const Stars = ({ count }: { count: number }) => (
   <span className="flex items-center gap-0.5">
@@ -283,11 +259,9 @@ const Stars = ({ count }: { count: number }) => (
 const CareerCard = ({
   career,
   index,
-  onOpen,
 }: {
   career: (typeof careers)[0];
   index: number;
-  onOpen: (c: (typeof careers)[0]) => void;
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -296,7 +270,7 @@ const CareerCard = ({
     className="glass-card flex flex-col overflow-hidden rounded-2xl"
   >
     {/* Gradient top strip */}
-    <div className={`h-1 w-full bg-linear-to-r ${matchGradient(career.match)}`} />
+    <div className="h-1 w-full bg-linear-to-r from-violet-500 to-purple-600" />
 
     <div className="flex flex-1 flex-col p-5">
       {/* Header row */}
@@ -314,18 +288,6 @@ const CareerCard = ({
             </span>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className={`text-lg font-bold ${matchTextColor(career.match)}`}>{career.match}%</p>
-          <p className="text-muted-foreground text-xs">phù hợp</p>
-        </div>
-      </div>
-
-      {/* Match progress bar */}
-      <div className="bg-muted mb-3 h-1.5 w-full overflow-hidden rounded-full">
-        <div
-          className={`h-full rounded-full bg-linear-to-r ${matchGradient(career.match)} transition-all duration-700`}
-          style={{ width: `${career.match}%` }}
-        />
       </div>
 
       {/* Description */}
@@ -366,13 +328,11 @@ const CareerCard = ({
 
       {/* Buttons */}
       <div className="mt-auto flex gap-2">
-        <button className="flex-1" onClick={() => onOpen(career)}>
-          <Button asChild variant="hero" size="sm" className="w-full gap-1.5">
-            <span>
-              <MapPin className="h-3.5 w-3.5" /> Lộ trình
-            </span>
+        <Link href={`/career-analysis?career=${encodeURIComponent(career.title)}`} className="flex-1">
+          <Button variant="hero" size="sm" className="w-full gap-1.5">
+            <MapPin className="h-3.5 w-3.5" /> Lộ trình
           </Button>
-        </button>
+        </Link>
         <Link href="/career-compare">
           <Button variant="outline" size="sm" className="gap-1.5">
             <GitCompare className="h-3.5 w-3.5" /> So sánh
@@ -390,8 +350,6 @@ const Specialization = () => {
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
   const [showSort, setShowSort] = useState(false);
   const router = useRouter();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedCareer, setSelectedCareer] = useState<Career | null>(null);
 
   const filtered = useMemo(() => {
     let list = careers;
@@ -410,7 +368,7 @@ const Specialization = () => {
     if (sortBy === 'Lương cao nhất') list = [...list].sort((a, b) => b.salaryMax - a.salaryMax);
     else if (sortBy === 'Tăng trưởng cao nhất')
       list = [...list].sort((a, b) => b.growth - a.growth);
-    else list = [...list].sort((a, b) => b.match - a.match);
+    else list = [...list].sort((a, b) => b.salaryMax - a.salaryMax);
     return list;
   }, [search, activeCategory, sortBy]);
 
@@ -425,7 +383,7 @@ const Specialization = () => {
             </span>
             <h1 className="font-display text-3xl font-bold md:text-4xl">Khám phá nghề nghiệp</h1>
             <p className="text-muted-foreground mt-2">
-              Tìm hiểu chi tiết về lương, kỹ năng, xu hướng và độ phù hợp của từng ngành
+              Tìm hiểu chi tiết về lương, kỹ năng và xu hướng của từng ngành
             </p>
           </motion.div>
         </div>
@@ -497,15 +455,7 @@ const Specialization = () => {
         {filtered.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((career, i) => (
-              <CareerCard
-                key={career.id}
-                career={career}
-                index={i}
-                onOpen={(c) => {
-                  setSelectedCareer(c);
-                  setDialogOpen(true);
-                }}
-              />
+              <CareerCard key={career.id} career={career} index={i} />
             ))}
           </div>
         ) : (
@@ -514,43 +464,6 @@ const Specialization = () => {
           </div>
         )}
       </div>
-      {/* Confirm roadmap dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Xác nhận lộ trình</DialogTitle>
-            <DialogDescription>
-              Bạn sẽ xem lộ trình cho nghề: <strong>{selectedCareer?.title}</strong>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mt-2 text-sm">
-            <p>
-              Bạn có muốn theo lộ trình này cho nghề: <strong>{selectedCareer?.title}</strong>?
-            </p>
-            <p className="text-muted-foreground mt-2 text-xs">
-              Bạn sẽ được điều hướng tới trang lộ trình để xem chi tiết và bắt đầu.
-            </p>
-          </div>
-
-          <DialogFooter>
-            <DialogClose>
-              <Button variant="ghost">Huỷ</Button>
-            </DialogClose>
-            <Button
-              variant="hero"
-              onClick={() => {
-                if (selectedCareer) {
-                  router.push(`/learning-roadmap?career=${selectedCareer.id}`);
-                }
-                setDialogOpen(false);
-              }}
-            >
-              Xác nhận
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

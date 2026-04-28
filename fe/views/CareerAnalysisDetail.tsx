@@ -53,7 +53,6 @@ export default function CareerAnalysisDetail() {
   const { accessToken } = useAuth();
 
   const careerTitle = searchParams.get('career') ?? '';
-  const matchScore = searchParams.get('match') ?? '0';
 
   const [analysis, setAnalysis] = useState<CareerDetailedAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,9 +136,6 @@ export default function CareerAnalysisDetail() {
                     Phân tích AI
                   </span>
                   {analysis && <DemandBadge level={analysis.demandLevel} />}
-                  <span className="rounded-full bg-green-500/15 border border-green-500/30 px-3 py-1 text-xs font-semibold text-green-400">
-                    {matchScore}% phù hợp
-                  </span>
                 </div>
                 <h1 className="font-display text-foreground text-3xl font-extrabold sm:text-4xl">
                   {careerTitle}
@@ -283,6 +279,29 @@ export default function CareerAnalysisDetail() {
                     </motion.div>
                   ))}
                 </div>
+              </div>
+            </motion.div>
+
+            {/* Roadmap Preview */}
+            <motion.div variants={fadeUp} className="glass-card rounded-2xl p-6">
+              <h3 className="text-foreground mb-4 flex items-center gap-2 font-bold">
+                <Rocket className="h-5 w-5 text-violet-500" />
+                Lộ trình phát triển gợi ý
+              </h3>
+              <div className="space-y-4">
+                {[
+                  'Giai đoạn 1: Xây dựng nền tảng kiến thức cơ bản',
+                  'Giai đoạn 2: Phát triển kỹ năng chuyên sâu và thực hành',
+                  'Giai đoạn 3: Thực hiện dự án thực tế và xây dựng Portfolio',
+                  'Giai đoạn 4: Chuẩn bị hồ sơ và ứng tuyển',
+                ].map((step, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-500/10 text-sm font-bold text-violet-400">
+                      {i + 1}
+                    </div>
+                    <p className="text-foreground/80 text-sm">{step}</p>
+                  </div>
+                ))}
               </div>
             </motion.div>
 
