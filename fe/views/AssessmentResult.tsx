@@ -245,7 +245,7 @@ const AssessmentResult = () => {
         const mapped = results.slice(0, 3).map((item, idx) => {
           const style = palette[idx] || palette[0];
           return {
-            title: item.careerTitle,
+            title: item.careerTitle || 'Nghề nghiệp',
             match: Math.round(Number(item.overallFitScore || 0)),
             icon: style.icon,
             insight: item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
