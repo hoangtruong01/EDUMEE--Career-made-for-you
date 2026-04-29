@@ -139,7 +139,7 @@ const CareerCard = ({
             <MapPin className="h-3.5 w-3.5" /> Khám phá
           </Button>
         </Link>
-        <Link href="/career-compare">
+        <Link href={`/career-compare?ids=${career.id}`}>
           <Button variant="outline" size="sm" className="gap-1.5">
             <GitCompare className="h-3.5 w-3.5" /> So sánh
           </Button>

@@ -143,6 +143,12 @@ export class AiQuotaService {
     if (!flagKey) return;
 
     const enabled = plan.features?.[flagKey];
+    
+    // Bypass for Career Comparison during development/testing
+    if (feature === AiFeature.CAREER_COMPARISON) {
+      return;
+    }
+
     if (enabled !== true) {
       throw new ForbiddenException('AI feature is not available in your plan');
     }

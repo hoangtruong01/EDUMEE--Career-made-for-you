@@ -130,7 +130,7 @@ Requirements:
 `;
   }
 
-  private async callGeminiAPI(prompt: string): Promise<string> {
+  public async callGeminiAPI(prompt: string, retries = 3): Promise<string> {
     const fetch = (await import('node-fetch')).default;
     const url = `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`;
 
@@ -154,27 +154,41 @@ Requirements:
 
     this.logger.debug('Calling Gemini API for personality analysis');
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error('Gemini API error:', errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`Gemini API error (Attempt ${attempt}/${retries}):`, errorText);
+        
+        if (response.status === 429 && attempt < retries) {
+          // Exponential backoff: wait 1s, 2s, 4s...
+          const waitTime = Math.pow(2, attempt - 1) * 1000;
+          this.logger.warn(`Rate limit exceeded (429). Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+        
+        throw new Error(`Gemini API error: ${response.status}`);
+      }
+
+      const data = await response.json() as GeminiResponse;
+      
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        if (attempt < retries) continue;
+        throw new Error('Invalid response from Gemini API');
+      }
+
+      return data.candidates[0].content.parts[0].text;
     }
-
-    const data = await response.json() as GeminiResponse;
     
-    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Invalid response from Gemini API');
-    }
-
-    return data.candidates[0].content.parts[0].text;
+    throw new Error('Gemini API error: Max retries reached');
   }
 
   private parseAnalysisResponse(responseText: string): AIAnalysisResult {

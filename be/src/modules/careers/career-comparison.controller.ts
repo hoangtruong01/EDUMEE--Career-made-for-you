@@ -11,7 +11,6 @@ import {
   ParseIntPipe,
   HttpStatus,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -77,17 +76,7 @@ export class CareerComparisonController {
     @CurrentUser() user: AuthUserLike,
   ): Promise<CareerComparison> {
     const currentUserId = this.getCurrentUserId(user);
-    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
-    if (plan.features?.careerComparison === false) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
-    const max = limits.maxCareersPerComparison;
-    if (typeof max === 'number' && max > 0 && createCareerComparisonDto.careerIds?.length > max) {
-      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
-    }
-    if (typeof max === 'number' && max === 0) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
+    // Rely on service for validation and quota
     // Ensure userId is set to current user
     const dto = { ...createCareerComparisonDto, userId: currentUserId };
     return this.careerComparisonService.create(dto);
@@ -192,17 +181,7 @@ export class CareerComparisonController {
       );
     }
 
-    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
-    if (plan.features?.careerComparison === false) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
-    const max = limits.maxCareersPerComparison;
-    if (typeof max === 'number' && max > 0 && careerIds.length > max) {
-      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
-    }
-    if (typeof max === 'number' && max === 0) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
+    // Quota check will handle plan availability
 
     await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
     const res: Record<string, unknown> = await this.careerComparisonService.compareCareersSideBySide(careerIds) as Record<string, unknown>;
@@ -246,17 +225,7 @@ export class CareerComparisonController {
       );
     }
 
-    const { plan, limits } = await this.aiQuotaService.getPlanLimits(currentUserId);
-    if (plan.features?.careerComparison === false) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
-    const max = limits.maxCareersPerComparison;
-    if (typeof max === 'number' && max > 0 && careerIds.length > max) {
-      throw new BadRequestException(`Maximum ${max} careers can be compared in your plan`);
-    }
-    if (typeof max === 'number' && max === 0) {
-      throw new ForbiddenException('Career comparison is not available in your plan');
-    }
+    // Quota check will handle plan availability
 
     await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
     const res: Record<string, unknown> = await this.careerComparisonService.generateDetailedComparison(
