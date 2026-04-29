@@ -81,7 +81,7 @@ const CareerCard = ({
     <div className="flex flex-1 flex-col p-5">
       {/* Header row */}
       <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <span className="bg-muted flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl">
             {career.icon}
           </span>

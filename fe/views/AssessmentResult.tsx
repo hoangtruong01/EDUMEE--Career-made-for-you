@@ -81,15 +81,15 @@ const CareerCard = ({
       <div className="flex flex-1 flex-col p-5">
         {/* Header row */}
         <div className="mb-4 flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             <span className="bg-muted flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl shadow-sm border border-border/50">
               {career.icon}
             </span>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-display leading-tight font-bold text-base line-clamp-1">{career.title}</h3>
+              <div className="flex items-start gap-2">
+                <h3 className="font-display leading-tight font-bold text-base">{career.title}</h3>
                 {index === 0 && (
-                  <span className="bg-amber-400/20 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase border border-amber-400/30 shrink-0">
+                  <span className="bg-amber-400/20 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase border border-amber-400/30 shrink-0 mt-0.5">
                     TOP
                   </span>
                 )}
@@ -211,7 +211,7 @@ const AssessmentResult = () => {
   const [isLoadingResult, setIsLoadingResult] = useState(true);
 
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
-  const tickColor = isDark ? 'hsl(var(--muted-foreground))' : '#6b7280';
+  const tickColor = isDark ? 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))';
   const tooltipStyle = {
     borderRadius: 12,
     border: '1px solid hsl(var(--border))',
@@ -379,58 +379,99 @@ const AssessmentResult = () => {
             className="grid gap-6 md:grid-cols-2"
           >
             {/* Competency Radar */}
-            <div className="glass-card rounded-2xl p-6 border-border/50">
+            {/* Competency Radar */}
+            <div className="glass-card rounded-2xl p-6 border-border/50 shadow-soft hover:shadow-elevated transition-all duration-500">
               <div className="mb-6 flex items-center gap-2">
-                <div className="bg-primary/10 rounded-lg p-2">
+                <div className="bg-primary/10 rounded-xl p-2.5">
                   <BarChart3 className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-foreground font-bold">Biểu đồ năng lực</h3>
               </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: tickColor, fontWeight: 500 }} />
-                  <Radar
-                    name="Năng lực"
-                    dataKey="A"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary))"
-                    fillOpacity={0.2}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
+              <div className="flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={280}>
+                  <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                    <PolarGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
+                    <PolarAngleAxis 
+                      dataKey="subject" 
+                      tick={{ 
+                        fontSize: 10, 
+                        fill: tickColor, 
+                        fontWeight: 700,
+                        className: "uppercase tracking-tight"
+                      }} 
+                    />
+                    <Radar
+                      name="Năng lực"
+                      dataKey="A"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={3}
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.15}
+                      dot={{ 
+                        r: 4, 
+                        fill: 'hsl(var(--primary))', 
+                        strokeWidth: 2, 
+                        stroke: 'hsl(var(--background))' 
+                      }}
+                    />
+                    <Tooltip contentStyle={tooltipStyle} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* Fit Score Bar Chart */}
-            <div className="glass-card rounded-2xl p-6 border-border/50">
-              <div className="mb-6 flex items-center gap-2">
-                <div className="bg-primary/10 rounded-lg p-2">
-                  <Bot className="h-5 w-5 text-primary" />
+            {/* Fit Score - Modernized List */}
+            <div className="glass-card rounded-2xl p-6 border-border/50 shadow-soft hover:shadow-elevated transition-all duration-500">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary/10 rounded-xl p-2.5">
+                    <Bot className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-foreground font-bold">Phân tích độ phù hợp</h3>
                 </div>
-                <h3 className="text-foreground font-bold">Phân tích độ phù hợp</h3>
+                <span className="text-primary text-[10px] font-extrabold uppercase tracking-widest bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
+                  Top 5
+                </span>
               </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 30 }}>
-                  <XAxis type="number" domain={[0, 100]} hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 11, fill: tickColor, fontWeight: 500 }}
-                    width={110}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip 
-                    cursor={{ fill: 'hsl(var(--primary)/0.05)' }}
-                    contentStyle={tooltipStyle} 
-                  />
-                  <Bar dataKey="score" radius={[0, 8, 8, 0]} barSize={20}>
-                    {barData.map((entry, i) => (
-                      <Cell key={i} fill="hsl(var(--primary))" />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              
+              <div className="space-y-6 py-2">
+                {barData.map((item, i) => (
+                  <div key={i} className="group">
+                    <div className="mb-2.5 flex items-end justify-between">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                          Xếp hạng #{i + 1}
+                        </span>
+                        <span className="text-foreground text-sm font-bold group-hover:text-primary transition-colors line-clamp-1">
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className="text-primary font-display text-lg font-black leading-none">
+                        {item.score}<span className="text-[10px] ml-0.5">%</span>
+                      </span>
+                    </div>
+                    <div className="bg-muted/40 relative h-3 w-full overflow-hidden rounded-full border border-border/20 shadow-inner">
+                      {/* Background track shimmer */}
+                      <div className="absolute inset-0 opacity-10 bg-linear-to-r from-transparent via-white to-transparent -translate-x-full animate-[shimmer_3s_infinite]" />
+                      
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.score}%` }}
+                        transition={{ duration: 1.5, delay: i * 0.1, ease: [0.34, 1.56, 0.64, 1] }}
+                        className="relative h-full rounded-full shadow-lg"
+                        style={{ 
+                          background: i === 0 
+                            ? 'linear-gradient(90deg, hsl(var(--primary)), hsl(var(--secondary)))' 
+                            : 'hsl(var(--primary))'
+                        }}
+                      >
+                        {/* Subtle inner glow */}
+                        <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent" />
+                      </motion.div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </motion.div>
         )}
@@ -443,19 +484,28 @@ const AssessmentResult = () => {
               <p className="text-muted-foreground mt-1 text-sm">Các đặc điểm nổi bật tạo nên thế mạnh của bạn</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {personalityTraits.map((trait) => (
-                <div key={trait.name} className="glass-card flex flex-col rounded-2xl p-5 border-border/40">
+              {personalityTraits.map((trait, idx) => (
+                <div 
+                  key={trait.name} 
+                  className="glass-card group flex flex-col rounded-2xl p-5 border-border/40 shadow-soft hover:shadow-elevated hover:border-primary/30 transition-all duration-500"
+                >
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-foreground text-sm font-bold">{trait.name}</span>
-                    <span className="text-primary text-sm font-extrabold">{trait.value}%</span>
+                    <span className="text-foreground text-sm font-bold group-hover:text-primary transition-colors">{trait.name}</span>
+                    <span className="text-primary text-xs font-black bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
+                      {trait.value}%
+                    </span>
                   </div>
-                  <div className="bg-muted mb-3 h-2 w-full overflow-hidden rounded-full">
-                    <div
-                      className="h-full bg-linear-to-r from-primary to-purple-500 rounded-full"
-                      style={{ width: `${trait.value}%` }}
+                  <div className="bg-muted/50 mb-4 h-2 w-full overflow-hidden rounded-full border border-border/20 shadow-inner">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${trait.value}%` }}
+                      transition={{ duration: 1.5, delay: 0.2 + (idx * 0.1), ease: [0.34, 1.56, 0.64, 1] }}
+                      className="h-full bg-linear-to-r from-primary to-secondary rounded-full"
                     />
                   </div>
-                  <p className="text-muted-foreground text-xs leading-relaxed">{trait.desc}</p>
+                  <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-2 italic">
+                    &quot;{trait.desc}&quot;
+                  </p>
                 </div>
               ))}
             </div>
