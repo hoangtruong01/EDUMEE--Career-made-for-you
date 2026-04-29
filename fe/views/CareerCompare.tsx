@@ -125,15 +125,15 @@ const CareerCompare = () => {
             id,
             _id: id,
             title,
-            description: analysis.overview || c.description || 'Đang cập nhật...',
-            category: c.category || 'Công nghệ',
+            description: String(analysis.overview || c.description || 'Đang cập nhật...'),
+            category: String(c.category || 'Công nghệ'),
             icon: '💼',
-            skills: analysis.keySkills || c.requiredSkills || [],
-            pros: analysis.pros || [],
-            cons: analysis.cons || [],
+            skills: (Array.isArray(analysis.keySkills) ? analysis.keySkills : Array.isArray(c.requiredSkills) ? c.requiredSkills : []) as string[],
+            pros: (Array.isArray(analysis.pros) ? analysis.pros : []) as string[],
+            cons: (Array.isArray(analysis.cons) ? analysis.cons : []) as string[],
             jobOpportunity: analysis.demandLevel === 'Cao' ? 90 : 70,
-            salary: parseInt(analysis.salaryRange?.split('-')[0]) || 20,
-            growth: analysis.trends?.[0] || '+15%',
+            salary: parseInt(String(analysis.salaryRange || '').split('-')[0]) || 20,
+            growth: String((Array.isArray(analysis.trends) ? analysis.trends[0] : analysis.trends) || '+15%'),
             growthPct: 15,
             difficultyStars: 3,
             color: '#7c3aed',
@@ -146,8 +146,16 @@ const CareerCompare = () => {
         const urlIds = searchParams.get('ids')?.split(',').filter(id => id.length > 0) || [];
         
         // Extract top match ID safely
-        const firstMatch = topMatchesRes?.[0];
-        const topMatchId = firstMatch?.careerId?.id || firstMatch?.careerId?._id || (typeof firstMatch?.careerId === 'string' ? firstMatch.careerId : null);
+        const tMatches = (Array.isArray(topMatchesRes) ? topMatchesRes : []) as Record<string, unknown>[];
+        
+        const getCareerId = (match: Record<string, unknown> | undefined): string | null => {
+          if (!match || !match.careerId) return null;
+          if (typeof match.careerId === 'string') return match.careerId;
+          const cId = match.careerId as Record<string, unknown>;
+          return cId.id ? String(cId.id) : cId._id ? String(cId._id) : null;
+        };
+
+        const topMatchId = getCareerId(tMatches[0]);
         
         if (urlIds.length > 0) {
           if (urlIds.length === 1 && topMatchId && topMatchId !== urlIds[0]) {
@@ -156,8 +164,7 @@ const CareerCompare = () => {
              setSelectedIds(urlIds);
           }
         } else if (topMatchId) {
-          const secondMatch = topMatchesRes?.[1];
-          const secondMatchId = secondMatch?.careerId?.id || secondMatch?.careerId?._id || (typeof secondMatch?.careerId === 'string' ? secondMatch.careerId : null);
+          const secondMatchId = getCareerId(tMatches[1]);
           
           if (secondMatchId && secondMatchId !== topMatchId) {
             setSelectedIds([topMatchId, secondMatchId]);
@@ -473,7 +480,7 @@ const CareerCompare = () => {
                     values={comparisonData.detailedAnalysis.careerProgression.map((p, idx) => (
                       <div key={idx} className="flex flex-col gap-1">
                         <span className="font-semibold">{renderValue(p.seniorityLevels)}</span>
-                        {p.progressionPath && Array.isArray(p.progressionPath) && (
+                        {!!p.progressionPath && Array.isArray(p.progressionPath) && (
                           <div className="mt-1 space-y-1 text-left text-[10px] text-muted-foreground">
                             {p.progressionPath.slice(0, 2).map((step: unknown, sIdx: number) => (
                               <div key={sIdx} className="flex gap-1">
