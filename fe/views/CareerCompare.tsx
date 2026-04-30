@@ -78,7 +78,7 @@ const CareerCompare = () => {
       setError(null);
       try {
         let careersRes: unknown = null;
-        let topMatchesRes: unknown = null;
+        let topMatchesRes: Record<string, unknown>[] = [];
 
         try {
           const [cRes, tRes] = await Promise.allSettled([
@@ -98,7 +98,7 @@ const CareerCompare = () => {
             }
           }
 
-          topMatchesRes = tRes.status === 'fulfilled' ? tRes.value : [];
+          topMatchesRes = (tRes.status === 'fulfilled' ? tRes.value : []) as Record<string, unknown>[];
         } catch (err) {
           console.error('Data fetch error:', err);
           setError('Đã xảy ra lỗi khi kết nối với máy chủ.');
@@ -129,19 +129,19 @@ const CareerCompare = () => {
             id,
             _id: id,
             title,
-            description: analysis.overview || c.description || 'Đang cập nhật...',
-            category: c.category || 'Công nghệ',
+            description: String(analysis.overview || c.description || 'Đang cập nhật...'),
+            category: String(c.category || 'Công nghệ'),
             icon: '💼',
-            skills: analysis.keySkills || c.requiredSkills || [],
-            pros: analysis.pros || [],
-            cons: analysis.cons || [],
+            skills: (Array.isArray(analysis.keySkills) ? analysis.keySkills : Array.isArray(c.requiredSkills) ? c.requiredSkills : []) as string[],
+            pros: (Array.isArray(analysis.pros) ? analysis.pros : []) as string[],
+            cons: (Array.isArray(analysis.cons) ? analysis.cons : []) as string[],
             jobOpportunity: analysis.demandLevel === 'Cao' ? 90 : 70,
-            salary: parseInt(analysis.salaryRange?.split('-')[0]) || 20,
-            growth: analysis.trends?.[0] || '+15%',
+            salary: parseInt(String((analysis.salaryRange as string)?.split('-')[0] ?? '20')) || 20,
+            growth: String((analysis.trends as string[])?.[0] || '+15%'),
             growthPct: 15,
             difficultyStars: 3,
             color: '#7c3aed',
-          };
+          } satisfies Career;
         });
 
         setAvailableCareers(mapped);
@@ -155,10 +155,10 @@ const CareerCompare = () => {
 
         // Extract top match ID safely
         const firstMatch = topMatchesRes?.[0];
+        const firstCareerId = firstMatch?.careerId as Record<string, unknown> | string | undefined;
         const topMatchId =
-          firstMatch?.careerId?.id ||
-          firstMatch?.careerId?._id ||
-          (typeof firstMatch?.careerId === 'string' ? firstMatch.careerId : null);
+          (typeof firstCareerId === 'object' && firstCareerId !== null ? String(firstCareerId.id || firstCareerId._id || '') : null) ||
+          (typeof firstCareerId === 'string' ? firstCareerId : null);
 
         if (urlIds.length > 0) {
           if (urlIds.length === 1 && topMatchId && topMatchId !== urlIds[0]) {
@@ -168,10 +168,10 @@ const CareerCompare = () => {
           }
         } else if (topMatchId) {
           const secondMatch = topMatchesRes?.[1];
+          const secondCareerId = secondMatch?.careerId as Record<string, unknown> | string | undefined;
           const secondMatchId =
-            secondMatch?.careerId?.id ||
-            secondMatch?.careerId?._id ||
-            (typeof secondMatch?.careerId === 'string' ? secondMatch.careerId : null);
+            (typeof secondCareerId === 'object' && secondCareerId !== null ? String(secondCareerId.id || secondCareerId._id || '') : null) ||
+            (typeof secondCareerId === 'string' ? secondCareerId : null);
 
           if (secondMatchId && secondMatchId !== topMatchId) {
             setSelectedIds([topMatchId, secondMatchId]);
