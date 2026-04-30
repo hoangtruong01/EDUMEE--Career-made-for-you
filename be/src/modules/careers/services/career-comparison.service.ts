@@ -96,8 +96,8 @@ export class CareerComparisonService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .exec(),
-      this.careerComparisonModel.countDocuments(query),
+        .exec() as Promise<CareerComparison[]>,
+      this.careerComparisonModel.countDocuments(query).exec(),
     ]);
 
     return { data, total, page, limit };
@@ -203,33 +203,43 @@ export class CareerComparisonService {
 
     const quantitativeComparison = this.generateSideBySideComparison(careers);
 
+    const careersInfo = careers.map(c => `- ID: ${c._id?.toString() || ''}, Tên: ${c.title}, Kỹ năng yêu cầu: ${c.requiredSkills?.join(', ') || ''}`).join('\n');
+    
     const aiPrompt = `
-      So sánh chi tiết các nghề nghiệp sau đây cho một người có tính cách: ${personalityTraits.join(', ')}.
-      Các nghề nghiệp: ${careers.map((c) => c.title).join(', ')}.
+      Bạn là một chuyên gia hướng nghiệp. Hãy so sánh chi tiết các nghề nghiệp sau đây cho một người có tính cách: ${personalityTraits.join(', ')}.
+      
+      Danh sách nghề nghiệp:
+      ${careersInfo}
       
       Hãy cung cấp phân tích sâu về:
-      1. Sự phù hợp kỹ năng (skills alignment).
-      2. Lộ trình thăng tiến (career progression).
-      3. Nhu cầu thị trường (market demand).
-      4. Độ tương thích cá nhân (compatibility).
+      1. Sự phù hợp kỹ năng.
+      2. Lộ trình thăng tiến.
+      3. Nhu cầu thị trường.
+      4. Độ tương thích cá nhân.
       
-      Trả về JSON với cấu trúc:
+      QUAN TRỌNG: Hãy chắc chắn đưa ra các đánh giá (điểm số từ 0-100, mức độ, lý do) KHÁC NHAU phản ánh đúng đặc điểm riêng biệt của từng nghề nghiệp. Không trả về dữ liệu giống nhau cho các nghề.
+      
+      Trả về JSON ĐÚNG cấu trúc sau (chỉ trả về JSON, KHÔNG thêm Markdown hay giải thích):
       {
         "detailedAnalysis": {
-          "skillsAlignment": { "overlapPercentage": number, "transferableSkills": string[], "gapAnalysis": [{ "careerId": string, "missingSkills": string[] }] },
-          "careerProgression": [{ "careerId": string, "progressionPath": any, "timeToAdvancement": string, "seniorityLevels": string[] }],
-          "marketDemand": [{ "careerId": string, "demandLevel": string, "jobGrowthRate": string, "competitionLevel": string }],
-          "compatibility": { "personalityFit": string, "skillsCompatibility": string, "lifestyleAlignment": string, "longTermViability": string }
+          "skillsAlignment": { 
+             "overlapPercentage": number, 
+             "transferableSkills": ["skill1"], 
+             "gapAnalysis": [{ "careerId": "ID tương ứng từ danh sách trên", "missingSkills": ["skill1"] }] 
+          },
+          "careerProgression": [{ "careerId": "ID tương ứng", "progressionPath": ["bước 1"], "timeToAdvancement": "số năm", "seniorityLevels": ["level 1"] }],
+          "marketDemand": [{ "careerId": "ID tương ứng", "demandLevel": "Cao/Trung bình/Thấp", "jobGrowthRate": "Tăng trưởng x%", "competitionLevel": "Cao/Trung bình/Thấp" }],
+          "compatibility": { "personalityFit": "Mức độ", "skillsCompatibility": "Mức độ", "lifestyleAlignment": "Mức độ", "longTermViability": "Mức độ" }
         },
         "recommendations": {
-          "bestMatch": "career_id",
-          "reasonsForRecommendation": string[],
-          "alternativeOptions": string[],
-          "developmentSuggestions": string[]
+          "bestMatch": "ID nghề nghiệp phù hợp nhất",
+          "reasonsForRecommendation": ["lý do 1"],
+          "alternativeOptions": ["ID nghề nghiệp thay thế"],
+          "developmentSuggestions": ["lời khuyên 1"]
         },
         "scoreBreakdown": [{
-          "careerId": string,
-          "careerTitle": string,
+          "careerId": "ID tương ứng",
+          "careerTitle": "Tên nghề nghiệp",
           "overallScore": number,
           "criteriaScores": { "skillMatch": number, "salaryPotential": number, "workLifeBalance": number, "growthPotential": number }
         }]
@@ -420,17 +430,21 @@ export class CareerComparisonService {
   }
 
   private calculateScoreBreakdown(careers: Career[]): AIAnalysisResult['scoreBreakdown'] {
-    return careers.map(career => ({
-      careerId: career._id?.toString() || '',
-      careerTitle: career.title,
-      overallScore: 85,
-      criteriaScores: {
-        skillMatch: 90,
-        salaryPotential: 80,
-        workLifeBalance: 85,
-        growthPotential: 88,
-      },
-    }));
+    return careers.map((career, index) => {
+      // Create variation based on index so fallback data is distinguishable
+      const modifier = index * 5;
+      return {
+        careerId: career._id?.toString() || '',
+        careerTitle: career.title,
+        overallScore: Math.min(100, Math.max(0, 85 - modifier)),
+        criteriaScores: {
+          skillMatch: Math.min(100, Math.max(0, 90 - modifier)),
+          salaryPotential: Math.min(100, Math.max(0, 80 + modifier)),
+          workLifeBalance: Math.min(100, Math.max(0, 85 - (index * 2))),
+          growthPotential: Math.min(100, Math.max(0, 88 + (index * 2))),
+        },
+      };
+    });
   }
 
   private findCommonSkills(careers: Career[]): string[] {
@@ -470,28 +484,32 @@ export class CareerComparisonService {
     return {
       overlapPercentage: 75,
       transferableSkills: ['Giao tiếp', 'Giải quyết vấn đề'],
-      gapAnalysis: careers.map(c => ({
+      gapAnalysis: careers.map((c, index) => ({
         careerId: c._id?.toString() || '',
-        missingSkills: ['Lãnh đạo', 'Quản lý dự án'],
+        missingSkills: index === 0 ? ['Lãnh đạo', 'Quản lý dự án'] : ['Kỹ năng chuyên sâu', 'Tư duy chiến lược'],
       })),
     };
   }
 
   private analyzeCareerProgression(careers: Career[]): AIAnalysisResult['detailedAnalysis']['careerProgression'] {
-    return careers.map(career => ({
+    return careers.map((career, index) => ({
       careerId: career._id?.toString() || '',
       progressionPath: career.careerLevels || [],
-      timeToAdvancement: '2-3 năm',
+      timeToAdvancement: index === 0 ? '2-3 năm' : (index === 1 ? '3-5 năm' : '4-6 năm'),
       seniorityLevels: ['Junior', 'Mid-level', 'Senior', 'Lead'],
     }));
   }
 
   private analyzeMarketDemand(careers: Career[]): AIAnalysisResult['detailedAnalysis']['marketDemand'] {
-    return careers.map(career => ({
+    const demandLevels = ['Cao', 'Rất cao', 'Trung bình'];
+    const growths = ['15%', '25%', '10%'];
+    const competitions = ['Trung bình', 'Cao', 'Thấp'];
+    
+    return careers.map((career, index) => ({
       careerId: career._id?.toString() || '',
-      demandLevel: career.marketInfo?.demandLevel || 'High',
-      jobGrowthRate: career.marketInfo?.growthProjection || '15%',
-      competitionLevel: career.marketInfo?.competitionLevel || 'Moderate',
+      demandLevel: career.marketInfo?.demandLevel || demandLevels[index % 3],
+      jobGrowthRate: career.marketInfo?.growthProjection || growths[index % 3],
+      competitionLevel: career.marketInfo?.competitionLevel || competitions[index % 3],
     }));
   }
 

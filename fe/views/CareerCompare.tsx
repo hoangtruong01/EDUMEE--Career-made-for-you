@@ -1,8 +1,16 @@
 'use client';
 
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, TrendingUp, X, Brain, Loader2 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { apiClient } from '@/lib/api-client';
+import {
+  careerComparisonService,
+  type Career,
+  type CareerComparisonResponse,
+} from '@/lib/career-comparison.service';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Brain, CheckCircle2, Loader2, TrendingUp, X } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -17,10 +25,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useSearchParams } from 'next/navigation';
-import { useAuth } from '@/context/auth-context';
-import { careerComparisonService, type Career, type CareerComparisonResponse } from '@/lib/career-comparison.service';
-import { apiClient } from '@/lib/api-client';
 
 /* ─── Table row ─── */
 const TableRow = ({
@@ -45,7 +49,7 @@ const TableRow = ({
 const renderValue = (val: unknown): string => {
   if (val === null || val === undefined) return '';
   if (typeof val === 'string' || typeof val === 'number') return String(val);
-  if (Array.isArray(val)) return val.map(v => renderValue(v)).join(', ');
+  if (Array.isArray(val)) return val.map((v) => renderValue(v)).join(', ');
   if (typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     if (obj.description) return String(obj.description);
@@ -79,9 +83,9 @@ const CareerCompare = () => {
         try {
           const [cRes, tRes] = await Promise.allSettled([
             apiClient.get<unknown[]>('/career-fit-results/insights', accessToken),
-            apiClient.get<unknown[]>('/career-fit-results/top-matches?limit=3', accessToken)
+            apiClient.get<unknown[]>('/career-fit-results/top-matches?limit=3', accessToken),
           ]);
-          
+
           if (cRes.status === 'fulfilled') {
             careersRes = cRes.value;
           } else {
@@ -115,57 +119,60 @@ const CareerCompare = () => {
         setDebugInfo(`Dữ liệu từ ${careersArray.length} nghề nghiệp`);
 
         // Map CareerInsight or Career to our UI Career interface
-        const mapped: Career[] = careersArray.map(cObj => {
+        const mapped: Career[] = careersArray.map((cObj) => {
           const c = cObj as Record<string, unknown>;
           const analysis = (c.analysis as Record<string, unknown>) || {};
           const title = String(c.careerTitle || c.title || '');
           const id = String(c._id || c.id || '');
-          
+
           return {
             id,
             _id: id,
             title,
-            description: String(analysis.overview || c.description || 'Đang cập nhật...'),
-            category: String(c.category || 'Công nghệ'),
+            description: analysis.overview || c.description || 'Đang cập nhật...',
+            category: c.category || 'Công nghệ',
             icon: '💼',
-            skills: (Array.isArray(analysis.keySkills) ? analysis.keySkills : Array.isArray(c.requiredSkills) ? c.requiredSkills : []) as string[],
-            pros: (Array.isArray(analysis.pros) ? analysis.pros : []) as string[],
-            cons: (Array.isArray(analysis.cons) ? analysis.cons : []) as string[],
+            skills: analysis.keySkills || c.requiredSkills || [],
+            pros: analysis.pros || [],
+            cons: analysis.cons || [],
             jobOpportunity: analysis.demandLevel === 'Cao' ? 90 : 70,
-            salary: parseInt(String(analysis.salaryRange || '').split('-')[0]) || 20,
-            growth: String((Array.isArray(analysis.trends) ? analysis.trends[0] : analysis.trends) || '+15%'),
+            salary: parseInt(analysis.salaryRange?.split('-')[0]) || 20,
+            growth: analysis.trends?.[0] || '+15%',
             growthPct: 15,
             difficultyStars: 3,
             color: '#7c3aed',
           };
         });
-        
-        setAvailableCareers(mapped);
-        
-        // Handle selection from URL or AI top match
-        const urlIds = searchParams.get('ids')?.split(',').filter(id => id.length > 0) || [];
-        
-        // Extract top match ID safely
-        const tMatches = (Array.isArray(topMatchesRes) ? topMatchesRes : []) as Record<string, unknown>[];
-        
-        const getCareerId = (match: Record<string, unknown> | undefined): string | null => {
-          if (!match || !match.careerId) return null;
-          if (typeof match.careerId === 'string') return match.careerId;
-          const cId = match.careerId as Record<string, unknown>;
-          return cId.id ? String(cId.id) : cId._id ? String(cId._id) : null;
-        };
 
-        const topMatchId = getCareerId(tMatches[0]);
-        
+        setAvailableCareers(mapped);
+
+        // Handle selection from URL or AI top match
+        const urlIds =
+          searchParams
+            .get('ids')
+            ?.split(',')
+            .filter((id) => id.length > 0) || [];
+
+        // Extract top match ID safely
+        const firstMatch = topMatchesRes?.[0];
+        const topMatchId =
+          firstMatch?.careerId?.id ||
+          firstMatch?.careerId?._id ||
+          (typeof firstMatch?.careerId === 'string' ? firstMatch.careerId : null);
+
         if (urlIds.length > 0) {
           if (urlIds.length === 1 && topMatchId && topMatchId !== urlIds[0]) {
-             setSelectedIds([urlIds[0], topMatchId]);
+            setSelectedIds([urlIds[0], topMatchId]);
           } else {
-             setSelectedIds(urlIds);
+            setSelectedIds(urlIds);
           }
         } else if (topMatchId) {
-          const secondMatchId = getCareerId(tMatches[1]);
-          
+          const secondMatch = topMatchesRes?.[1];
+          const secondMatchId =
+            secondMatch?.careerId?.id ||
+            secondMatch?.careerId?._id ||
+            (typeof secondMatch?.careerId === 'string' ? secondMatch.careerId : null);
+
           if (secondMatchId && secondMatchId !== topMatchId) {
             setSelectedIds([topMatchId, secondMatchId]);
           } else {
@@ -193,20 +200,25 @@ const CareerCompare = () => {
   }, [accessToken, searchParams]);
 
   // Fetch comparison analysis
-  const fetchAnalysis = useCallback(async (ids: string[]) => {
-    if (ids.length < 2) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await careerComparisonService.generateDetailedAnalysis(ids, accessToken);
-      setComparisonData(data);
-    } catch (err: unknown) {
-      console.error('Failed to fetch analysis:', err);
-      setError((err as Error)?.message || 'Không thể thực hiện phân tích chuyên sâu. Vui lòng thử lại.');
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
+  const fetchAnalysis = useCallback(
+    async (ids: string[]) => {
+      if (ids.length < 2) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await careerComparisonService.generateDetailedAnalysis(ids, accessToken);
+        setComparisonData(data);
+      } catch (err: unknown) {
+        console.error('Failed to fetch analysis:', err);
+        setError(
+          (err as Error)?.message || 'Không thể thực hiện phân tích chuyên sâu. Vui lòng thử lại.',
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [accessToken],
+  );
 
   useEffect(() => {
     if (selectedIds.length >= 2) {
@@ -228,39 +240,46 @@ const CareerCompare = () => {
   const unselected = availableCareers.filter((c) => !selectedIds.includes(c.id));
 
   /* Radar data */
-  const radarData = comparisonData?.scoreBreakdown.reduce((acc: { subject: string; [key: string]: string | number }[], score) => {
-    const metrics = [
-      { subject: 'Kỹ năng', key: 'skillMatch' },
-      { subject: 'Lương', key: 'salaryPotential' },
-      { subject: 'Cân bằng', key: 'workLifeBalance' },
-      { subject: 'Tăng trưởng', key: 'growthPotential' },
-    ];
+  const radarData =
+    comparisonData?.scoreBreakdown.reduce(
+      (acc: { subject: string; [key: string]: string | number }[], score) => {
+        const metrics = [
+          { subject: 'Kỹ năng', key: 'skillMatch' },
+          { subject: 'Lương', key: 'salaryPotential' },
+          { subject: 'Cân bằng', key: 'workLifeBalance' },
+          { subject: 'Tăng trưởng', key: 'growthPotential' },
+        ];
 
-    metrics.forEach(m => {
-      let entry = acc.find(a => a.subject === m.subject);
-      if (!entry) {
-        entry = { subject: m.subject };
-        acc.push(entry);
-      }
-      entry[score.careerTitle] = (score.criteriaScores as Record<string, number>)[m.key];
-    });
-    return acc;
-  }, []) || [];
+        metrics.forEach((m) => {
+          let entry = acc.find((a) => a.subject === m.subject);
+          if (!entry) {
+            entry = { subject: m.subject };
+            acc.push(entry);
+          }
+          entry[score.careerTitle] = (score.criteriaScores as Record<string, number>)[m.key];
+        });
+        return acc;
+      },
+      [],
+    ) || [];
 
   /* Bar data */
-  const barData = comparisonData?.scoreBreakdown.map(score => ({
-    name: score.careerTitle,
-    'Điểm tổng quát': score.overallScore,
-    'Kỹ năng': score.criteriaScores.skillMatch,
-    'Lương': score.criteriaScores.salaryPotential,
-    'Tăng trưởng': score.criteriaScores.growthPotential,
-  })) || [];
+  const barData =
+    comparisonData?.scoreBreakdown.map((score) => ({
+      name: score.careerTitle,
+      'Điểm tổng quát': score.overallScore,
+      'Kỹ năng': score.criteriaScores.skillMatch,
+      Lương: score.criteriaScores.salaryPotential,
+      'Tăng trưởng': score.criteriaScores.growthPotential,
+    })) || [];
 
   if (fetchingList) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4">
         <Loader2 className="text-primary h-8 w-8 animate-spin" />
-        <p className="text-muted-foreground animate-pulse text-sm">Đang tải thư viện nghề nghiệp...</p>
+        <p className="text-muted-foreground animate-pulse text-sm">
+          Đang tải thư viện nghề nghiệp...
+        </p>
       </div>
     );
   }
@@ -274,7 +293,9 @@ const CareerCompare = () => {
             <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
               Phân tích bằng AI
             </span>
-            <h1 className="font-display text-3xl font-bold md:text-4xl">So sánh nghề nghiệp chuyên sâu</h1>
+            <h1 className="font-display text-3xl font-bold md:text-4xl">
+              So sánh nghề nghiệp chuyên sâu
+            </h1>
             <p className="text-muted-foreground mt-2">
               Dựa trên hồ sơ năng lực và tính cách của bạn, AI sẽ phân tích đâu là lựa chọn tối ưu
             </p>
@@ -284,15 +305,15 @@ const CareerCompare = () => {
 
       <div className="container mt-6 space-y-8">
         {error && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-destructive/10 border-destructive/20 text-destructive flex items-center justify-between rounded-xl border p-4 text-sm font-medium"
           >
             <span>{error}</span>
-            <button 
+            <button
               onClick={() => window.location.reload()}
-              className="bg-destructive text-white rounded-lg px-3 py-1 text-xs hover:opacity-80"
+              className="bg-destructive rounded-lg px-3 py-1 text-xs text-white hover:opacity-80"
             >
               Thử lại
             </button>
@@ -305,14 +326,14 @@ const CareerCompare = () => {
             <p className="text-muted-foreground text-sm font-medium">
               Chọn nghề để so sánh ({selectedIds.length}/3):
             </p>
-            <span className="text-[10px] text-muted-foreground opacity-50">{debugInfo}</span>
+            <span className="text-muted-foreground text-[10px] opacity-50">{debugInfo}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {selectedCareers.map((c) => (
               <button
                 key={c.id}
                 onClick={() => toggle(c.id)}
-                className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-80"
+                className="bg-primary flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-80"
               >
                 {c.icon} {renderValue(c.title)} <X className="h-3.5 w-3.5" />
               </button>
@@ -337,10 +358,12 @@ const CareerCompare = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="bg-primary/5 flex items-center justify-center gap-3 rounded-2xl p-8 border border-primary/20"
+              className="bg-primary/5 border-primary/20 flex items-center justify-center gap-3 rounded-2xl border p-8"
             >
               <Brain className="text-primary h-6 w-6 animate-pulse" />
-              <p className="font-medium text-primary animate-pulse">AI đang phân tích sự tương thích của bạn với các nghề nghiệp này...</p>
+              <p className="text-primary animate-pulse font-medium">
+                AI đang phân tích sự tương thích của bạn với các nghề nghiệp này...
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -349,7 +372,7 @@ const CareerCompare = () => {
         {selectedCareers.length > 0 && (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {selectedCareers.map((career, idx) => {
-              const score = comparisonData?.scoreBreakdown.find(s => s.careerId === career.id);
+              const score = comparisonData?.scoreBreakdown.find((s) => s.careerId === career.id);
               return (
                 <motion.div
                   key={career.id}
@@ -358,7 +381,7 @@ const CareerCompare = () => {
                   transition={{ delay: idx * 0.1 }}
                   className="glass-card overflow-hidden rounded-2xl"
                 >
-                  <div className="h-1.5 w-full bg-primary" />
+                  <div className="bg-primary h-1.5 w-full" />
                   <div className="space-y-4 p-5">
                     <div>
                       <div className="mb-1 flex items-center gap-2">
@@ -366,11 +389,11 @@ const CareerCompare = () => {
                         <h3 className="font-display font-semibold">{renderValue(career.title)}</h3>
                       </div>
                       {score ? (
-                        <span className="inline-block rounded-full bg-mint/20 px-2.5 py-0.5 text-xs font-semibold text-mint">
+                        <span className="bg-mint/20 text-mint inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold">
                           {score.overallScore}% phù hợp
                         </span>
                       ) : (
-                        <span className="inline-block rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground italic">
+                        <span className="bg-muted text-muted-foreground inline-block rounded-full px-2.5 py-0.5 text-[10px] font-medium italic">
                           Đang tính toán độ phù hợp...
                         </span>
                       )}
@@ -384,12 +407,17 @@ const CareerCompare = () => {
 
                     <div className="text-mint flex items-center gap-1.5 text-sm">
                       <TrendingUp className="h-4 w-4" />
-                      <span className="font-medium">{renderValue(career.growth) || 'Phát triển ổn định'}</span>
+                      <span className="font-medium">
+                        {renderValue(career.growth) || 'Phát triển ổn định'}
+                      </span>
                     </div>
 
                     <div className="flex flex-wrap gap-1.5">
                       {career.skills.slice(0, 4).map((s) => (
-                        <span key={s} className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium">
+                        <span
+                          key={s}
+                          className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        >
                           {renderValue(s)}
                         </span>
                       ))}
@@ -413,44 +441,75 @@ const CareerCompare = () => {
         {/* Charts */}
         {!loading && comparisonData && (
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="glass-card rounded-2xl p-5">
-              <h3 className="font-display mb-4 font-semibold">Tương quan năng lực</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="hsl(var(--border))" />
+            <div className="glass-card rounded-2xl p-6 border border-border/50 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -ml-10 -mt-10 pointer-events-none"></div>
+              <h3 className="font-display mb-6 font-semibold flex items-center gap-2 relative z-10">
+                <span className="w-1.5 h-5 bg-indigo-500 rounded-full inline-block"></span>
+                Tương quan năng lực
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                  <PolarGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
                   <PolarAngleAxis
                     dataKey="subject"
-                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))', fontWeight: 500 }}
                   />
-                  {comparisonData.careers.map((c, i) => (
-                    <Radar
-                      key={c._id || c.id || i}
-                      name={c.title}
-                      dataKey={c.title}
-                      stroke={i === 0 ? '#7c3aed' : i === 1 ? '#0ea5e9' : '#f43f5e'}
-                      fill={i === 0 ? '#7c3aed' : i === 1 ? '#0ea5e9' : '#f43f5e'}
-                      fillOpacity={0.18}
-                      strokeWidth={2}
-                    />
-                  ))}
-                  <Legend formatter={(v) => <span className="text-xs">{v}</span>} />
-                  <Tooltip contentStyle={{ borderRadius: '0.75rem', fontSize: 12 }} />
+                  {comparisonData.careers.map((c, i) => {
+                    const colors = ['#6366f1', '#0ea5e9', '#f43f5e']; // Indigo, Sky, Rose
+                    const color = colors[i % colors.length];
+                    return (
+                      <Radar
+                        key={c._id || c.id || i}
+                        name={c.title}
+                        dataKey={c.title}
+                        stroke={color}
+                        fill={color}
+                        fillOpacity={0.2}
+                        strokeWidth={2.5}
+                        dot={{ r: 4, strokeWidth: 2, fill: color, stroke: '#fff' }}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                      />
+                    );
+                  })}
+                  <Legend formatter={(v) => <span className="text-xs font-medium">{v}</span>} wrapperStyle={{ paddingTop: '10px' }} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', fontSize: 12, border: '1px solid hsl(var(--border))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                  />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="glass-card rounded-2xl p-5">
-              <h3 className="font-display mb-4 font-semibold">So sánh chỉ số chi tiết</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={barData} margin={{ left: -10, right: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: '0.75rem', fontSize: 12 }} />
-                  <Legend formatter={(v) => <span className="text-xs">{v}</span>} />
-                  <Bar dataKey="Điểm tổng quát" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={15} />
-                  <Bar dataKey="Kỹ năng" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={15} />
-                  <Bar dataKey="Tăng trưởng" fill="#10b981" radius={[4, 4, 0, 0]} barSize={15} />
+            <div className="glass-card rounded-2xl p-6 border border-border/50 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+              <h3 className="font-display mb-6 font-semibold flex items-center gap-2 relative z-10">
+                <span className="w-1.5 h-5 bg-sky-500 rounded-full inline-block"></span>
+                So sánh chỉ số chi tiết
+              </h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={barData} margin={{ left: -10, right: 10, top: 10 }}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border))"
+                    vertical={false}
+                    opacity={0.5}
+                  />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    dx={-10}
+                  />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', fontSize: 12, border: '1px solid hsl(var(--border))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                    cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+                  />
+                  <Legend formatter={(v) => <span className="text-xs font-medium">{v}</span>} wrapperStyle={{ paddingTop: '10px' }} />
+                  <Bar dataKey="Điểm tổng quát" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={12} />
+                  <Bar dataKey="Kỹ năng" fill="#0ea5e9" radius={[6, 6, 0, 0]} barSize={12} />
+                  <Bar dataKey="Lương" fill="#f59e0b" radius={[6, 6, 0, 0]} barSize={12} />
+                  <Bar dataKey="Tăng trưởng" fill="#10b981" radius={[6, 6, 0, 0]} barSize={12} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -468,60 +527,113 @@ const CareerCompare = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-border border-b">
-                    <th className="text-muted-foreground w-40 py-3 pr-4 text-left text-sm font-semibold">Tiêu chí</th>
+                    <th className="text-muted-foreground w-40 py-3 pr-4 text-left text-sm font-semibold">
+                      Tiêu chí
+                    </th>
                     {comparisonData.careers.map((c, i) => (
-                      <th key={c._id || c.id || i} className="px-4 py-3 text-center text-sm font-semibold">{c.title}</th>
+                      <th
+                        key={c._id || c.id || i}
+                        className="px-4 py-3 text-center text-sm font-semibold"
+                      >
+                        {c.title}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-border divide-y">
                   <TableRow
-                    label="Lộ trình thăng tiến"
-                    values={comparisonData.detailedAnalysis.careerProgression.map((p, idx) => (
-                      <div key={idx} className="flex flex-col gap-1">
-                        <span className="font-semibold">{renderValue(p.seniorityLevels)}</span>
-                        {!!p.progressionPath && Array.isArray(p.progressionPath) && (
-                          <div className="mt-1 space-y-1 text-left text-[10px] text-muted-foreground">
-                            {p.progressionPath.slice(0, 2).map((step: unknown, sIdx: number) => (
-                              <div key={sIdx} className="flex gap-1">
-                                <span>•</span>
-                                <span>{renderValue(step)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    label="Lương TB"
+                    values={comparisonData.careers.map((c, idx) => {
+                      const careerFromList = selectedCareers.find(sc => sc.id === c.id || sc._id === c.id || sc.id === c._id);
+                      const score = comparisonData.scoreBreakdown.find((s) => s.careerId === (c._id || c.id));
+                      const fallbackSalary = score?.criteriaScores.salaryPotential ? `> ${score.criteriaScores.salaryPotential}tr` : 'Đang cập nhật';
+                      const salaryStr = careerFromList?.salary ? `${careerFromList.salary}tr/tháng` : fallbackSalary;
+                      return (
+                        <span key={idx} className="font-semibold text-emerald-500">
+                          {salaryStr}
+                        </span>
+                      );
+                    })}
                   />
                   <TableRow
-                    label="Nhu cầu thị trường"
+                    label="Tầm nhìn 5 năm"
                     values={comparisonData.detailedAnalysis.marketDemand.map((d, idx) => (
                       <div key={idx} className="flex flex-col gap-1">
-                        <span className="text-mint">{renderValue(d.demandLevel)}</span>
-                        <span className="text-muted-foreground text-[10px]">{renderValue(d.jobGrowthRate)}</span>
+                        <span className="font-medium text-foreground">{renderValue(d.jobGrowthRate) || 'Phát triển tốt'}</span>
                       </div>
                     ))}
                     highlight
                   />
                   <TableRow
-                    label="Lỗ hổng kỹ năng"
-                    values={comparisonData.detailedAnalysis.skillsAlignment.gapAnalysis.map((g, idx) => (
-                      <div key={idx} className="flex flex-wrap justify-center gap-1">
-                        {g.missingSkills.slice(0, 3).map((s, sIdx) => (
-                          <span key={sIdx} className="bg-destructive/10 text-destructive rounded-full px-1.5 py-0.5 text-[9px]">{renderValue(s)}</span>
-                        ))}
+                    label="Cơ hội việc làm"
+                    values={comparisonData.detailedAnalysis.marketDemand.map((d, idx) => (
+                      <div key={idx} className="flex flex-col gap-1">
+                        <span className="font-semibold text-sky-500">{renderValue(d.demandLevel) || 'Cao'}</span>
+                        <span className="text-muted-foreground text-[10px]">
+                          Cạnh tranh: {renderValue(d.competitionLevel) || 'Trung bình'}
+                        </span>
                       </div>
                     ))}
                   />
                   <TableRow
+                    label="Số năm đào tạo TB"
+                    values={comparisonData.careers.map((c, idx) => {
+                      const careerFromList = selectedCareers.find(sc => sc.id === c.id || sc._id === c.id || sc.id === c._id);
+                      let years = careerFromList?.yearsStudy ? `${careerFromList.yearsStudy} năm` : '';
+                      if (!years) {
+                         const t = renderValue(c.title).toLowerCase();
+                         years = t.includes('bác sĩ') || t.includes('y khoa') ? '6-8 năm' : (t.includes('kỹ sư') || t.includes('chuyên gia') || t.includes('phân tích') ? '4-5 năm' : '3-4 năm');
+                      }
+                      return (
+                        <span key={idx} className="font-medium text-amber-500">
+                          {years}
+                        </span>
+                      );
+                    })}
+                    highlight
+                  />
+                  <TableRow
+                    label="Lỗ hổng kỹ năng"
+                    values={comparisonData.detailedAnalysis.skillsAlignment.gapAnalysis.map(
+                      (g, idx) => (
+                        <div key={idx} className="flex flex-wrap justify-center gap-1">
+                          {g.missingSkills.slice(0, 3).map((s, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="bg-destructive/10 text-destructive rounded-full px-2 py-0.5 text-[10px] font-medium"
+                            >
+                              {renderValue(s)}
+                            </span>
+                          ))}
+                        </div>
+                      ),
+                    )}
+                  />
+                  <TableRow
                     label="Lời khuyên AI"
-                    values={comparisonData.careers.map((c, cIdx) => (
-                      <div key={cIdx} className="flex flex-col gap-1">
-                        {cIdx === 0 && comparisonData.recommendations.reasonsForRecommendation.slice(0, 2).map((r, idx) => (
-                          <p key={idx} className="text-left text-xs font-normal italic text-mint">{renderValue(r)}</p>
-                        ))}
+                    values={comparisonData.careers.map((c, cIdx) => {
+                      const isBestMatch = comparisonData.recommendations.bestMatch === (c._id || c.id) || cIdx === 0;
+                      
+                      return (
+                      <div key={cIdx} className="flex flex-col gap-1.5">
+                        {isBestMatch ? 
+                          comparisonData.recommendations.reasonsForRecommendation
+                            .slice(0, 2)
+                            .map((r, idx) => (
+                              <p
+                                key={idx}
+                                className="text-indigo-500/90 text-left text-xs font-medium italic"
+                              >
+                                &ldquo;{renderValue(r)}&rdquo;
+                              </p>
+                            ))
+                          : (
+                            <p className="text-muted-foreground text-left text-xs font-medium italic">
+                              Cần cải thiện thêm kỹ năng chuyên môn.
+                            </p>
+                          )}
                       </div>
-                    ))}
+                    )})}
                     highlight
                   />
                 </tbody>
