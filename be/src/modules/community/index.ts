@@ -1,7 +1,24 @@
 // Community Module Exports
 export { CareerReview, CareerReviewSchema } from './schemas/career-review.schema';
-export type { CareerReviewDocument, ReviewCategory, ReviewStatus as CommunityReviewStatus, ReviewerBackground } from './schemas/career-review.schema';
-export { ReviewVote, ReviewVoteSchema } from './schemas/review-interactions.schema';
-export type { ReviewVoteDocument, VoteType } from './schemas/review-interactions.schema';
-export { ReviewReport, ReviewReportSchema } from './schemas/review-interactions.schema';
-export type { ReviewReportDocument, ReportReason, ReportStatus, ReportSeverity } from './schemas/review-interactions.schema';
+export type {
+  CareerReviewDocument,
+  ReviewStatus as CommunityReviewStatus,
+  ReviewCategory,
+  ReviewerBackground,
+} from './schemas/career-review.schema';
+export { CommunityPost, CommunityPostSchema } from './schemas/community-post.schema';
+export type { CommunityPostDocument } from './schemas/community-post.schema';
+export {
+  ReviewReport,
+  ReviewReportSchema,
+  ReviewVote,
+  ReviewVoteSchema,
+} from './schemas/review-interactions.schema';
+export type {
+  ReportReason,
+  ReportSeverity,
+  ReportStatus,
+  ReviewReportDocument,
+  ReviewVoteDocument,
+  VoteType,
+} from './schemas/review-interactions.schema';

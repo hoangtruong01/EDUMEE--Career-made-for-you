@@ -1,11 +1,13 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/auth-context';
+import { communityService, type CommunityPost } from '@/lib/community.service';
 import { motion } from 'framer-motion';
-import { ArrowUp, Bookmark, MessageCircle, Search, Send, Share2, Users } from 'lucide-react';
-import { useState } from 'react';
+import { Bookmark, Hash, Heart, MessageCircle, Search, Send, Share2, Users, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
-/* ─── Data ─── */
 const CATEGORIES = [
   'Tất cả',
   'Review ngành',
@@ -15,96 +17,21 @@ const CATEGORIES = [
   'Tuyển dụng',
 ];
 
-const posts = [
-  {
-    id: 1,
-    category: 'Review ngành',
-    categoryColor: 'bg-sky-light text-primary',
-    author: 'Nguyễn Minh Khôi',
-    authorTitle: 'Kỹ sư Senior tại FPT Software',
-    authorInitials: 'NK',
-    authorBg: 'bg-violet-500',
-    timeAgo: '3 giờ trước',
-    title: 'Review thực tế ngành Kỹ sư Phần mềm sau 5 năm đi làm',
-    preview:
-      'Sau 5 năm làm việc tại các công ty lớn như FPT, VNG và startup, mình muốn chia sẻ thực tế về ngành này. Lương thì tốt, Remote rất phổ biến nhưng đôi khi tỷ lệ as công...',
-    tags: ['Software Engineer', 'Review', 'Career Path'],
-    upvotes: 234,
-    comments: 45,
-  },
-  {
-    id: 2,
-    category: 'Chia sẻ kinh nghiệm',
-    categoryColor: 'bg-mint-light text-mint',
-    author: 'Trần Thu Hà',
-    authorTitle: 'Data Scientist tại VinAI',
-    authorInitials: 'TH',
-    authorBg: 'bg-cyan-500',
-    timeAgo: '5 giờ trước',
-    title: 'Hành trình chuyển ngành từ Kế toán sang Data Science của mình',
-    preview:
-      'Nhiều người hỏi mình có học gì để chuyển sang Data Science mà không cần lý thuyết máy tính. Mình từng là kế toán 3 năm trước khi quyết định định hướng. Đây là những gì mình đã học...',
-    tags: ['Data Science', 'Career Change', 'Bootcamp'],
-    upvotes: 189,
-    comments: 67,
-  },
-  {
-    id: 3,
-    category: 'Hỏi đáp',
-    categoryColor: 'bg-gold-light text-gold',
-    author: 'Lê Văn Đức',
-    authorTitle: 'Sinh viên ĐHBK Hà Nội',
-    authorInitials: 'VD',
-    authorBg: 'bg-orange-500',
-    timeAgo: '1 ngày trước',
-    title: 'Nên chọn Frontend hay Backend khi mới bắt đầu học lập trình?',
-    preview:
-      'Mình đang học năm 2 CNTT và đang phân vân giữa Frontend và Backend. Anh chị nào có kinh nghiệm cho mình lời khuyên với? Mình tạm thời biết HTML/CSS và Python cơ bản...',
-    tags: ['Frontend', 'Backend', 'Career Advice'],
-    upvotes: 95,
-    comments: 88,
-  },
-  {
-    id: 4,
-    category: 'Review ngành',
-    categoryColor: 'bg-sky-light text-primary',
-    author: 'Phạm Quỳnh Anh',
-    authorTitle: 'UX Lead tại Tiki',
-    authorInitials: 'QA',
-    authorBg: 'bg-pink-500',
-    timeAgo: '2 ngày trước',
-    title: 'UX Design ở Việt Nam: Thực tế vs Kỳ vọng — Review thẳng thắn',
-    preview:
-      'Nhiều bạn romanticise ngành UX thấy đẹp và sáng tạo. Nhưng thực tế có những điều ít người nói tới. Từ việc convince stakeholder, justify design decision đến deadline gắp...',
-    tags: ['UX Design', 'Career Review', 'Tiki'],
-    upvotes: 312,
-    comments: 72,
-  },
-  {
-    id: 5,
-    category: 'Tài nguyên',
-    categoryColor: 'bg-lavender text-secondary',
-    author: 'Hoàng Minh Tuấn',
-    authorTitle: 'Product Manager tại Shopee',
-    authorInitials: 'MT',
-    authorBg: 'bg-emerald-500',
-    timeAgo: '3 ngày trước',
-    title: 'Tổng hợp tài nguyên học Product Management miễn phí tốt nhất 2026',
-    preview:
-      'Mình đã tổng hợp list các course, sách và community tốt nhất để học PM. Bao gồm cả tiếng Việt và tiếng Anh. Hy vọng hữu ích cho các bạn đang muốn vào ngành...',
-    tags: ['Product Management', 'Resources', 'Free'],
-    upvotes: 456,
-    comments: 93,
-  },
-];
+const CATEGORY_STYLES: Record<string, string> = {
+  'Review ngành': 'bg-sky-light text-primary',
+  'Hỏi đáp': 'bg-gold-light text-gold',
+  'Chia sẻ kinh nghiệm': 'bg-mint-light text-mint',
+  'Tài nguyên': 'bg-lavender text-secondary',
+  'Tuyển dụng': 'bg-coral-light text-coral',
+};
 
 const trending = [
-  '#KỹSưPhầnMềm',
-  '#DataScience',
-  '#UXDesign',
-  '#CareerChange',
-  '#Internship2026',
-  '#RemoteWork',
+  '#kysuphanmem',
+  '#datascience',
+  '#uxdesign',
+  '#careerchange',
+  '#internship2026',
+  '#remotework',
 ];
 
 const topContributors = [
@@ -119,81 +46,268 @@ const topContributors = [
   { name: 'Nguyễn Minh Khôi', role: 'Senior Dev', posts: 32, initials: 'NK', bg: 'bg-violet-500' },
 ];
 
-/* ─── Post card ─── */
-const PostCard = ({ post, index }: { post: (typeof posts)[number]; index: number }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 15 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: index * 0.07 }}
-    className="glass-card hover:shadow-elevated cursor-pointer rounded-2xl p-5 transition-shadow"
-  >
-    <div className="mb-3 flex flex-wrap items-start justify-between gap-y-2">
-      <div className="flex items-center gap-2.5">
-        <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${post.authorBg}`}
-        >
-          {post.authorInitials}
+const avatarColors = [
+  'bg-violet-500',
+  'bg-cyan-500',
+  'bg-emerald-500',
+  'bg-rose-500',
+  'bg-amber-500',
+];
+
+const getInitials = (name: string) => {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? 'U';
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
+const getAvatarColor = (name: string) => {
+  const sum = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return avatarColors[sum % avatarColors.length];
+};
+
+const getCategoryBadgeClass = (category: string) =>
+  CATEGORY_STYLES[category] || 'bg-muted text-muted-foreground';
+
+const formatTimeAgo = (timestamp?: string) => {
+  if (!timestamp) return 'Vừa xong';
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'Vừa xong';
+  if (minutes < 60) return `${minutes} phút trước`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ngày trước`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks} tuần trước`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} tháng trước`;
+  const years = Math.floor(days / 365);
+  return `${years} năm trước`;
+};
+
+const PostCard = ({
+  post,
+  index,
+  onOpen,
+}: {
+  post: CommunityPost;
+  index: number;
+  onOpen: (postId: string) => void;
+}) => {
+  const postId = post.id || post._id || '';
+  const authorName = post.authorName || 'Thành viên EDUMEE';
+  const initials = getInitials(authorName);
+  const avatarBg = getAvatarColor(authorName);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07 }}
+      onClick={() => postId && onOpen(postId)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && postId) onOpen(postId);
+      }}
+      role="button"
+      tabIndex={0}
+      className="glass-card hover:shadow-elevated cursor-pointer rounded-2xl p-5 transition-shadow"
+    >
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-y-2">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${avatarBg}`}
+          >
+            {initials}
+          </div>
+          <div>
+            <p className="text-sm font-semibold">{authorName}</p>
+            <p className="text-muted-foreground text-xs">
+              {post.authorTitle || 'Thành viên cộng đồng'}
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold">{post.author}</p>
-          <p className="text-muted-foreground text-xs">{post.authorTitle}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryBadgeClass(post.category)}`}
+          >
+            {post.category}
+          </span>
+          <span className="text-muted-foreground text-xs">{formatTimeAgo(post.createdAt)}</span>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${post.categoryColor}`}>
-          {post.category}
-        </span>
-        <span className="text-muted-foreground text-xs">{post.timeAgo}</span>
+
+      <h3 className="font-display mb-1.5 leading-snug font-semibold">{post.title}</h3>
+      <p className="text-muted-foreground mb-3 line-clamp-2 text-sm">{post.content}</p>
+
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {post.hashtags?.slice(0, 4).map((tag) => (
+          <span
+            key={tag}
+            className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs"
+          >
+            {tag}
+          </span>
+        ))}
       </div>
-    </div>
 
-    <h3 className="font-display mb-1.5 leading-snug font-semibold">{post.title}</h3>
-    <p className="text-muted-foreground mb-3 line-clamp-2 text-sm">{post.preview}</p>
-
-    <div className="mb-4 flex flex-wrap gap-1.5">
-      {post.tags.map((t) => (
-        <span key={t} className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs">
-          {t}
-        </span>
-      ))}
-    </div>
-
-    <div className="flex items-center justify-between">
-      <div className="text-muted-foreground flex items-center gap-4 text-sm">
-        <button className="hover:text-primary flex items-center gap-1.5 transition-colors">
-          <ArrowUp className="h-4 w-4" />
-          <span className="font-medium">{post.upvotes}</span>
-        </button>
-        <button className="hover:text-primary flex items-center gap-1.5 transition-colors">
-          <MessageCircle className="h-4 w-4" />
-          <span>{post.comments}</span>
-        </button>
+      <div className="flex items-center justify-between">
+        <div className="text-muted-foreground flex items-center gap-4 text-sm">
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="hover:text-primary flex items-center gap-1.5 transition-colors"
+          >
+            <Heart className="h-4 w-4" />
+            <span className="font-medium">{post.likeCount ?? 0}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (postId) onOpen(postId);
+            }}
+            className="hover:text-primary flex items-center gap-1.5 transition-colors"
+          >
+            <MessageCircle className="h-4 w-4" />
+            <span>{post.commentCount ?? 0}</span>
+          </button>
+        </div>
+        <div className="text-muted-foreground flex items-center gap-2">
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="hover:text-primary p-1 transition-colors"
+          >
+            <Bookmark className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="hover:text-primary p-1 transition-colors"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div className="text-muted-foreground flex items-center gap-2">
-        <button className="hover:text-primary p-1 transition-colors">
-          <Bookmark className="h-4 w-4" />
-        </button>
-        <button className="hover:text-primary p-1 transition-colors">
-          <Share2 className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
-/* ─── Main component ─── */
 const Community = () => {
+  const router = useRouter();
+  const { accessToken } = useAuth();
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [search, setSearch] = useState('');
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = posts.filter((p) => {
-    const matchCat = activeCategory === 'Tất cả' || p.category === activeCategory;
-    const matchSearch =
-      !search.trim() ||
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.author.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
-  });
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('Review ngành');
+  const [authorName, setAuthorName] = useState('');
+  const [authorTitle, setAuthorTitle] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(true);
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+
+  const postCategories = useMemo(() => CATEGORIES.filter((cat) => cat !== 'Tất cả'), []);
+
+  const loadPosts = useCallback(async () => {
+    if (!accessToken) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await communityService.listPosts(accessToken, {
+        category: activeCategory === 'Tất cả' ? undefined : activeCategory,
+        q: search.trim() || undefined,
+        limit: 20,
+      });
+      setPosts(res.data || []);
+    } catch {
+      setError('Không thể tải bài viết. Vui lòng thử lại sau.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken, activeCategory, search]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    const timer = setTimeout(() => {
+      void loadPosts();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [accessToken, loadPosts]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setIsLoading(false);
+    }
+  }, [accessToken]);
+
+  const handleAddTag = (raw: string) => {
+    const trimmed = raw.trim().replace(/^#+/, '');
+    if (!trimmed) return;
+    const normalized = `#${trimmed.toLowerCase()}`;
+    if (hashtags.some((tag) => tag.toLowerCase() === normalized)) return;
+    setHashtags((prev) => [...prev, normalized].slice(0, 10));
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setHashtags((prev) => prev.filter((t) => t !== tag));
+  };
+
+  const resetForm = () => {
+    setTitle('');
+    setContent('');
+    setCategory('Review ngành');
+    setAuthorName('');
+    setAuthorTitle('');
+    setIsAnonymous(true);
+    setHashtags([]);
+    setTagInput('');
+    setFormError(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!accessToken) return;
+
+    if (!title.trim() || !content.trim()) {
+      setFormError('Vui lòng nhập tiêu đề và nội dung bài viết.');
+      return;
+    }
+
+    const displayName = isAnonymous ? 'Ẩn danh' : authorName.trim() || 'Thành viên EDUMEE';
+
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      await communityService.createPost(accessToken, {
+        title: title.trim(),
+        content: content.trim(),
+        category,
+        hashtags,
+        authorName: displayName,
+        authorTitle: isAnonymous ? undefined : authorTitle.trim() || undefined,
+      });
+      resetForm();
+      setIsFormOpen(false);
+      await loadPosts();
+    } catch {
+      setFormError('Không thể đăng bài lúc này. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenPost = (postId: string) => {
+    router.push(`/community/${postId}`);
+  };
+
+  const filteredPosts = posts;
 
   return (
     <div className="min-h-screen pb-20">
@@ -224,10 +338,148 @@ const Community = () => {
                   className="border-input bg-background focus:ring-ring h-10 w-full rounded-xl border pr-4 pl-9 text-sm outline-none focus:ring-2"
                 />
               </div>
-              <Button variant="hero" size="sm" className="shrink-0 gap-1.5">
-                <Send className="h-4 w-4" /> Đăng bài
+              <Button
+                variant="hero"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => setIsFormOpen((prev) => !prev)}
+              >
+                <Send className="h-4 w-4" /> {isFormOpen ? 'Đóng' : 'Đăng bài'}
               </Button>
             </div>
+
+            {isFormOpen && (
+              <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-display text-base font-semibold">Tạo bài viết mới</h3>
+                    <p className="text-muted-foreground text-xs">
+                      Chia sẻ trải nghiệm hoặc đặt câu hỏi cho cộng đồng.
+                    </p>
+                  </div>
+                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <input
+                      id="anonymous-toggle"
+                      type="checkbox"
+                      checked={isAnonymous}
+                      onChange={(e) => setIsAnonymous(e.target.checked)}
+                      className="accent-primary h-4 w-4"
+                    />
+                    <label htmlFor="anonymous-toggle">Ẩn danh</label>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-muted-foreground text-xs font-medium">Chủ đề</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                    >
+                      {postCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-muted-foreground text-xs font-medium">Tiêu đề</label>
+                    <input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Nhập tiêu đề bài viết"
+                      className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {!isAnonymous && (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs font-medium">
+                        Tên hiển thị
+                      </label>
+                      <input
+                        value={authorName}
+                        onChange={(e) => setAuthorName(e.target.value)}
+                        placeholder="Ví dụ: Nguyễn Văn A"
+                        className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs font-medium">Chức danh</label>
+                      <input
+                        value={authorTitle}
+                        onChange={(e) => setAuthorTitle(e.target.value)}
+                        placeholder="Ví dụ: Data Analyst"
+                        className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-1">
+                  <label className="text-muted-foreground text-xs font-medium">Hashtag</label>
+                  <div className="border-input bg-background flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
+                    <Hash className="text-muted-foreground h-4 w-4" />
+                    {hashtags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                      >
+                        {tag}
+                        <button type="button" onClick={() => handleRemoveTag(tag)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          handleAddTag(tagInput);
+                        }
+                      }}
+                      placeholder="Gõ hashtag và Enter"
+                      className="min-w-[140px] flex-1 bg-transparent text-sm outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddTag(tagInput)}
+                      className="text-primary text-xs font-medium"
+                    >
+                      Thêm
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-1">
+                  <label className="text-muted-foreground text-xs font-medium">Nội dung</label>
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Chia sẻ chi tiết để cộng đồng dễ hỗ trợ bạn hơn"
+                    rows={5}
+                    className="border-input bg-background w-full rounded-xl border px-3 py-2 text-sm"
+                  />
+                </div>
+
+                {formError && <p className="mt-3 text-xs font-medium text-rose-500">{formError}</p>}
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Button type="submit" variant="hero" size="sm" disabled={isSubmitting}>
+                    {isSubmitting ? 'Đang đăng...' : 'Đăng bài'}
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
+                    Làm mới
+                  </Button>
+                </div>
+              </form>
+            )}
 
             <div className="flex gap-2 overflow-x-auto pb-1">
               {CATEGORIES.map((cat) => (
@@ -245,11 +497,34 @@ const Community = () => {
               ))}
             </div>
 
+            {error && (
+              <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm">
+                {error}
+              </div>
+            )}
+
+            {!accessToken && (
+              <div className="border-border bg-muted/40 text-muted-foreground rounded-xl border px-4 py-3 text-sm">
+                Vui lòng đăng nhập để xem và đăng bài viết.
+              </div>
+            )}
+
             <div className="space-y-4">
-              {filtered.map((post, i) => (
-                <PostCard key={post.id} post={post} index={i} />
-              ))}
-              {filtered.length === 0 && (
+              {isLoading ? (
+                <div className="py-16 text-center">
+                  <p className="text-muted-foreground text-sm">Đang tải bài viết...</p>
+                </div>
+              ) : (
+                filteredPosts.map((post, i) => (
+                  <PostCard
+                    key={post.id || post._id || i}
+                    post={post}
+                    index={i}
+                    onOpen={handleOpenPost}
+                  />
+                ))
+              )}
+              {!isLoading && filteredPosts.length === 0 && (
                 <div className="py-16 text-center">
                   <MessageCircle className="text-muted-foreground/30 mx-auto mb-4 h-12 w-12" />
                   <p className="text-muted-foreground font-medium">Chưa có bài viết nào</p>
