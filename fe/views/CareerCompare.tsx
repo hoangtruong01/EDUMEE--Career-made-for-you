@@ -669,7 +669,7 @@ const CareerCompare = () => {
                           {g.missingSkills.slice(0, 3).map((s, sIdx) => (
                             <span
                               key={sIdx}
-                              className="bg-destructive/10 text-destructive rounded-full px-2 py-0.5 text-[10px] font-medium"
+                              className="rounded-full bg-amber-100/60 px-2 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-amber-200/60 dark:bg-amber-800/35 dark:text-amber-100 dark:ring-amber-500/30"
                             >
                               {renderValue(s)}
                             </span>
@@ -692,13 +692,13 @@ const CareerCompare = () => {
                               .map((r, idx) => (
                                 <p
                                   key={idx}
-                                  className="text-left text-xs font-medium text-indigo-500/90 italic"
+                                  className="rounded-md bg-sky-50/80 px-2 py-1 text-left text-xs font-medium text-sky-700 italic ring-1 ring-sky-200/60 dark:bg-sky-800/35 dark:text-sky-100 dark:ring-sky-500/30"
                                 >
                                   &ldquo;{renderValue(r)}&rdquo;
                                 </p>
                               ))
                           ) : (
-                            <p className="text-muted-foreground text-left text-xs font-medium italic">
+                            <p className="bg-muted/60 text-muted-foreground rounded-md px-2 py-1 text-left text-xs font-medium italic dark:bg-slate-800/60 dark:text-slate-200">
                               Cần cải thiện thêm kỹ năng chuyên môn.
                             </p>
                           )}
