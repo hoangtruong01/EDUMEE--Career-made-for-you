@@ -90,4 +90,8 @@ export const communityService = {
       accessToken,
     );
   },
+
+  async deletePost(accessToken: string, postId: string): Promise<CommunityPost> {
+    return apiClient.delete<CommunityPost>(`/community-posts/${postId}`, accessToken);
+  },
 };

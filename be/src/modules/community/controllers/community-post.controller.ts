@@ -1,7 +1,17 @@
-import { Body, Controller, Get, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthUserLike } from '../../../common/auth';
-import { getAuthUserId } from '../../../common/auth';
+import { getAuthUserId, isAdmin } from '../../../common/auth';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CreateCommunityCommentDto, CreateCommunityPostDto } from '../dto/community-post.dto';
@@ -57,5 +67,12 @@ export class CommunityPostController {
     @CurrentUser() user: AuthUserLike,
   ) {
     return this.communityPostService.addComment(id, getAuthUserId(user), body);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a community post' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Post deleted successfully' })
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    return this.communityPostService.remove(id, getAuthUserId(user), isAdmin(user));
   }
 }

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { CreateCommunityCommentDto, CreateCommunityPostDto } from '../dto/community-post.dto';
@@ -146,5 +151,29 @@ export class CommunityPostService {
     }
 
     return updated;
+  }
+
+  async remove(postId: string, userId: string, isAdmin: boolean): Promise<CommunityPostDocument> {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid postId');
+    }
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    const post = await this.communityPostModel.findById(postId).exec();
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    if (!isAdmin && post.authorId.toString() !== userId) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    const deleted = await this.communityPostModel.findByIdAndDelete(postId).exec();
+    if (!deleted) {
+      throw new NotFoundException('Post not found');
+    }
+    return deleted;
   }
 }

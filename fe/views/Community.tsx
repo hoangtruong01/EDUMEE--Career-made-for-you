@@ -2,9 +2,21 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
+import { ApiError } from '@/lib/api-client';
 import { communityService, type CommunityPost } from '@/lib/community.service';
 import { motion } from 'framer-motion';
-import { Bookmark, Hash, Heart, MessageCircle, Search, Send, Share2, Users, X } from 'lucide-react';
+import {
+  Bookmark,
+  Hash,
+  Heart,
+  MessageCircle,
+  MoreVertical,
+  Search,
+  Send,
+  Share2,
+  Users,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
@@ -91,10 +103,16 @@ const PostCard = ({
   post,
   index,
   onOpen,
+  onToggleMenu,
+  onDelete,
+  isMenuOpen,
 }: {
   post: CommunityPost;
   index: number;
   onOpen: (postId: string) => void;
+  onToggleMenu: (postId: string) => void;
+  onDelete: (postId: string) => void;
+  isMenuOpen: boolean;
 }) => {
   const postId = post.id || post._id || '';
   const authorName = post.authorName || 'Thành viên EDUMEE';
@@ -135,6 +153,33 @@ const PostCard = ({
             {post.category}
           </span>
           <span className="text-muted-foreground text-xs">{formatTimeAgo(post.createdAt)}</span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (postId) onToggleMenu(postId);
+              }}
+              className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
+              aria-label="Mo tuy chon"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {isMenuOpen && (
+              <div
+                className="border-border bg-popover text-foreground shadow-card absolute right-0 z-20 mt-2 w-36 rounded-xl border p-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => postId && onDelete(postId)}
+                  className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                >
+                  Xóa bài viết
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -211,6 +256,7 @@ const Community = () => {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
+  const [menuPostId, setMenuPostId] = useState<string | null>(null);
 
   const postCategories = useMemo(() => CATEGORIES.filter((cat) => cat !== 'Tất cả'), []);
 
@@ -271,12 +317,32 @@ const Community = () => {
     setFormError(null);
   };
 
+  const validateForm = () => {
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+
+    if (!trimmedTitle) return 'Vui lòng nhập tiêu đề bài viết.';
+    if (trimmedTitle.length < 3) return 'Tiêu đề cần tối thiểu 3 ký tự.';
+    if (!trimmedContent) return 'Vui lòng nhập nội dung bài viết.';
+    if (trimmedContent.length < 10) return 'Nội dung cần tối thiểu 10 ký tự.';
+    if (!category.trim()) return 'Vui lòng chọn chủ đề.';
+    if (!isAnonymous && authorName.trim().length < 2) {
+      return 'Tên hiển thị cần tối thiểu 2 ký tự.';
+    }
+    if (hashtags.length > 10) return 'Tối đa 10 hashtag.';
+    return null;
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!accessToken) return;
+    if (!accessToken) {
+      setFormError('Vui lòng đăng nhập để đăng bài.');
+      return;
+    }
 
-    if (!title.trim() || !content.trim()) {
-      setFormError('Vui lòng nhập tiêu đề và nội dung bài viết.');
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
@@ -296,8 +362,12 @@ const Community = () => {
       resetForm();
       setIsFormOpen(false);
       await loadPosts();
-    } catch {
-      setFormError('Không thể đăng bài lúc này. Vui lòng thử lại.');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setFormError(err.message || 'Không thể đăng bài lúc này. Vui lòng thử lại.');
+      } else {
+        setFormError('Không thể đăng bài lúc này. Vui lòng thử lại.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -305,6 +375,32 @@ const Community = () => {
 
   const handleOpenPost = (postId: string) => {
     router.push(`/community/${postId}`);
+  };
+
+  const handleToggleMenu = (postId: string) => {
+    setMenuPostId((prev) => (prev === postId ? null : postId));
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!accessToken) {
+      setError('Vui lòng đăng nhập để xoá bài viết.');
+      return;
+    }
+
+    const ok = window.confirm('Bạn chắc chắn muốn xoá bài viết này?');
+    if (!ok) return;
+
+    try {
+      await communityService.deletePost(accessToken, postId);
+      setPosts((prev) => prev.filter((post) => (post.id || post._id) !== postId));
+      setMenuPostId(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message || 'Không thể xoá bài viết.');
+      } else {
+        setError('Không thể xoá bài viết.');
+      }
+    }
   };
 
   const filteredPosts = posts;
@@ -521,6 +617,9 @@ const Community = () => {
                     post={post}
                     index={i}
                     onOpen={handleOpenPost}
+                    onToggleMenu={handleToggleMenu}
+                    onDelete={handleDeletePost}
+                    isMenuOpen={menuPostId === (post.id || post._id)}
                   />
                 ))
               )}
