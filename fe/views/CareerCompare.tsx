@@ -36,7 +36,7 @@ const TableRow = ({
   values: (string | number | React.ReactNode)[];
   highlight?: boolean;
 }) => (
-  <tr className={highlight ? 'bg-primary/5' : ''}>
+  <tr className={highlight ? 'bg-primary/5 dark:bg-primary/10' : ''}>
     <td className="text-muted-foreground py-3 pr-4 text-sm font-medium">{label}</td>
     {values.map((v, i) => (
       <td key={i} className="px-4 py-3 text-center text-sm font-semibold">
@@ -98,7 +98,10 @@ const CareerCompare = () => {
             }
           }
 
-          topMatchesRes = (tRes.status === 'fulfilled' ? tRes.value : []) as Record<string, unknown>[];
+          topMatchesRes = (tRes.status === 'fulfilled' ? tRes.value : []) as Record<
+            string,
+            unknown
+          >[];
         } catch (err) {
           console.error('Data fetch error:', err);
           setError('Đã xảy ra lỗi khi kết nối với máy chủ.');
@@ -132,7 +135,11 @@ const CareerCompare = () => {
             description: String(analysis.overview || c.description || 'Đang cập nhật...'),
             category: String(c.category || 'Công nghệ'),
             icon: '💼',
-            skills: (Array.isArray(analysis.keySkills) ? analysis.keySkills : Array.isArray(c.requiredSkills) ? c.requiredSkills : []) as string[],
+            skills: (Array.isArray(analysis.keySkills)
+              ? analysis.keySkills
+              : Array.isArray(c.requiredSkills)
+                ? c.requiredSkills
+                : []) as string[],
             pros: (Array.isArray(analysis.pros) ? analysis.pros : []) as string[],
             cons: (Array.isArray(analysis.cons) ? analysis.cons : []) as string[],
             jobOpportunity: analysis.demandLevel === 'Cao' ? 90 : 70,
@@ -157,8 +164,9 @@ const CareerCompare = () => {
         const firstMatch = topMatchesRes?.[0];
         const firstCareerId = firstMatch?.careerId as Record<string, unknown> | string | undefined;
         const topMatchId =
-          (typeof firstCareerId === 'object' && firstCareerId !== null ? String(firstCareerId.id || firstCareerId._id || '') : null) ||
-          (typeof firstCareerId === 'string' ? firstCareerId : null);
+          (typeof firstCareerId === 'object' && firstCareerId !== null
+            ? String(firstCareerId.id || firstCareerId._id || '')
+            : null) || (typeof firstCareerId === 'string' ? firstCareerId : null);
 
         if (urlIds.length > 0) {
           if (urlIds.length === 1 && topMatchId && topMatchId !== urlIds[0]) {
@@ -168,10 +176,14 @@ const CareerCompare = () => {
           }
         } else if (topMatchId) {
           const secondMatch = topMatchesRes?.[1];
-          const secondCareerId = secondMatch?.careerId as Record<string, unknown> | string | undefined;
+          const secondCareerId = secondMatch?.careerId as
+            | Record<string, unknown>
+            | string
+            | undefined;
           const secondMatchId =
-            (typeof secondCareerId === 'object' && secondCareerId !== null ? String(secondCareerId.id || secondCareerId._id || '') : null) ||
-            (typeof secondCareerId === 'string' ? secondCareerId : null);
+            (typeof secondCareerId === 'object' && secondCareerId !== null
+              ? String(secondCareerId.id || secondCareerId._id || '')
+              : null) || (typeof secondCareerId === 'string' ? secondCareerId : null);
 
           if (secondMatchId && secondMatchId !== topMatchId) {
             setSelectedIds([topMatchId, secondMatchId]);
@@ -285,9 +297,9 @@ const CareerCompare = () => {
   }
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="bg-background text-foreground min-h-screen pb-20">
       {/* Header */}
-      <div className="bg-gradient-card">
+      <div className="bg-gradient-card border-border/60 border-b">
         <div className="container py-10 text-center">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
@@ -321,7 +333,7 @@ const CareerCompare = () => {
         )}
 
         {/* Selector */}
-        <div className="glass-card rounded-2xl p-5">
+        <div className="glass-card border-border/70 bg-card/80 dark:bg-card/60 rounded-2xl border p-5">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-muted-foreground text-sm font-medium">
               Chọn nghề để so sánh ({selectedIds.length}/3):
@@ -379,7 +391,7 @@ const CareerCompare = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.1 }}
-                  className="glass-card overflow-hidden rounded-2xl"
+                  className="glass-card border-border/70 bg-card/80 dark:bg-card/60 overflow-hidden rounded-2xl border"
                 >
                   <div className="bg-primary h-1.5 w-full" />
                   <div className="space-y-4 p-5">
@@ -441,10 +453,10 @@ const CareerCompare = () => {
         {/* Charts */}
         {!loading && comparisonData && (
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="glass-card rounded-2xl p-6 border border-border/50 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -ml-10 -mt-10 pointer-events-none"></div>
-              <h3 className="font-display mb-6 font-semibold flex items-center gap-2 relative z-10">
-                <span className="w-1.5 h-5 bg-indigo-500 rounded-full inline-block"></span>
+            <div className="glass-card border-border/70 bg-card/80 shadow-card dark:bg-card/60 relative overflow-hidden rounded-2xl border p-6">
+              <div className="bg-primary/5 pointer-events-none absolute top-0 left-0 -mt-10 -ml-10 h-32 w-32 rounded-full blur-3xl"></div>
+              <h3 className="font-display relative z-10 mb-6 flex items-center gap-2 font-semibold">
+                <span className="inline-block h-5 w-1.5 rounded-full bg-indigo-500"></span>
                 Tương quan năng lực
               </h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -471,18 +483,32 @@ const CareerCompare = () => {
                       />
                     );
                   })}
-                  <Legend formatter={(v) => <span className="text-xs font-medium">{v}</span>} wrapperStyle={{ paddingTop: '10px' }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '1rem', fontSize: 12, border: '1px solid hsl(var(--border))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                  <Legend
+                    formatter={(v) => (
+                      <span className="text-muted-foreground text-xs font-medium">{v}</span>
+                    )}
+                    wrapperStyle={{ paddingTop: '10px' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '1rem',
+                      fontSize: 12,
+                      border: '1px solid hsl(var(--border))',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--foreground))',
+                    }}
+                    labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="glass-card rounded-2xl p-6 border border-border/50 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-              <h3 className="font-display mb-6 font-semibold flex items-center gap-2 relative z-10">
-                <span className="w-1.5 h-5 bg-sky-500 rounded-full inline-block"></span>
+            <div className="glass-card border-border/70 bg-card/80 shadow-card dark:bg-card/60 relative overflow-hidden rounded-2xl border p-6">
+              <div className="bg-primary/5 pointer-events-none absolute top-0 right-0 -mt-10 -mr-10 h-32 w-32 rounded-full blur-3xl"></div>
+              <h3 className="font-display relative z-10 mb-6 flex items-center gap-2 font-semibold">
+                <span className="inline-block h-5 w-1.5 rounded-full bg-sky-500"></span>
                 So sánh chỉ số chi tiết
               </h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -493,19 +519,39 @@ const CareerCompare = () => {
                     vertical={false}
                     opacity={0.5}
                   />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} dy={10} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fontWeight: 500, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    tickLine={false}
+                    dy={10}
+                  />
                   <YAxis
                     domain={[0, 100]}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                     axisLine={false}
                     tickLine={false}
                     dx={-10}
                   />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '1rem', fontSize: 12, border: '1px solid hsl(var(--border))', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '1rem',
+                      fontSize: 12,
+                      border: '1px solid hsl(var(--border))',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--foreground))',
+                    }}
+                    labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                     cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
                   />
-                  <Legend formatter={(v) => <span className="text-xs font-medium">{v}</span>} wrapperStyle={{ paddingTop: '10px' }} />
+                  <Legend
+                    formatter={(v) => (
+                      <span className="text-muted-foreground text-xs font-medium">{v}</span>
+                    )}
+                    wrapperStyle={{ paddingTop: '10px' }}
+                  />
                   <Bar dataKey="Điểm tổng quát" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={12} />
                   <Bar dataKey="Kỹ năng" fill="#0ea5e9" radius={[6, 6, 0, 0]} barSize={12} />
                   <Bar dataKey="Lương" fill="#f59e0b" radius={[6, 6, 0, 0]} barSize={12} />
@@ -518,15 +564,15 @@ const CareerCompare = () => {
 
         {/* Detailed AI Analysis Table */}
         {!loading && comparisonData && (
-          <div className="glass-card overflow-hidden rounded-2xl">
+          <div className="glass-card border-border/70 bg-card/80 dark:bg-card/60 overflow-hidden rounded-2xl border">
             <div className="border-border flex items-center gap-2 border-b px-6 py-4">
               <Brain className="text-primary h-5 w-5" />
               <h3 className="font-display font-semibold">Phân tích sâu từ AI</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="text-foreground w-full text-sm">
                 <thead>
-                  <tr className="border-border border-b">
+                  <tr className="border-border bg-muted/40 border-b">
                     <th className="text-muted-foreground w-40 py-3 pr-4 text-left text-sm font-semibold">
                       Tiêu chí
                     </th>
@@ -544,10 +590,18 @@ const CareerCompare = () => {
                   <TableRow
                     label="Lương TB"
                     values={comparisonData.careers.map((c, idx) => {
-                      const careerFromList = selectedCareers.find(sc => sc.id === c.id || sc._id === c.id || sc.id === c._id);
-                      const score = comparisonData.scoreBreakdown.find((s) => s.careerId === (c._id || c.id));
-                      const fallbackSalary = score?.criteriaScores.salaryPotential ? `> ${score.criteriaScores.salaryPotential}tr` : 'Đang cập nhật';
-                      const salaryStr = careerFromList?.salary ? `${careerFromList.salary}tr/tháng` : fallbackSalary;
+                      const careerFromList = selectedCareers.find(
+                        (sc) => sc.id === c.id || sc._id === c.id || sc.id === c._id,
+                      );
+                      const score = comparisonData.scoreBreakdown.find(
+                        (s) => s.careerId === (c._id || c.id),
+                      );
+                      const fallbackSalary = score?.criteriaScores.salaryPotential
+                        ? `> ${score.criteriaScores.salaryPotential}tr`
+                        : 'Đang cập nhật';
+                      const salaryStr = careerFromList?.salary
+                        ? `${careerFromList.salary}tr/tháng`
+                        : fallbackSalary;
                       return (
                         <span key={idx} className="font-semibold text-emerald-500">
                           {salaryStr}
@@ -559,7 +613,9 @@ const CareerCompare = () => {
                     label="Tầm nhìn 5 năm"
                     values={comparisonData.detailedAnalysis.marketDemand.map((d, idx) => (
                       <div key={idx} className="flex flex-col gap-1">
-                        <span className="font-medium text-foreground">{renderValue(d.jobGrowthRate) || 'Phát triển tốt'}</span>
+                        <span className="text-foreground font-medium">
+                          {renderValue(d.jobGrowthRate) || 'Phát triển tốt'}
+                        </span>
                       </div>
                     ))}
                     highlight
@@ -568,7 +624,9 @@ const CareerCompare = () => {
                     label="Cơ hội việc làm"
                     values={comparisonData.detailedAnalysis.marketDemand.map((d, idx) => (
                       <div key={idx} className="flex flex-col gap-1">
-                        <span className="font-semibold text-sky-500">{renderValue(d.demandLevel) || 'Cao'}</span>
+                        <span className="font-semibold text-sky-500">
+                          {renderValue(d.demandLevel) || 'Cao'}
+                        </span>
                         <span className="text-muted-foreground text-[10px]">
                           Cạnh tranh: {renderValue(d.competitionLevel) || 'Trung bình'}
                         </span>
@@ -578,11 +636,22 @@ const CareerCompare = () => {
                   <TableRow
                     label="Số năm đào tạo TB"
                     values={comparisonData.careers.map((c, idx) => {
-                      const careerFromList = selectedCareers.find(sc => sc.id === c.id || sc._id === c.id || sc.id === c._id);
-                      let years = careerFromList?.yearsStudy ? `${careerFromList.yearsStudy} năm` : '';
+                      const careerFromList = selectedCareers.find(
+                        (sc) => sc.id === c.id || sc._id === c.id || sc.id === c._id,
+                      );
+                      let years = careerFromList?.yearsStudy
+                        ? `${careerFromList.yearsStudy} năm`
+                        : '';
                       if (!years) {
-                         const t = renderValue(c.title).toLowerCase();
-                         years = t.includes('bác sĩ') || t.includes('y khoa') ? '6-8 năm' : (t.includes('kỹ sư') || t.includes('chuyên gia') || t.includes('phân tích') ? '4-5 năm' : '3-4 năm');
+                        const t = renderValue(c.title).toLowerCase();
+                        years =
+                          t.includes('bác sĩ') || t.includes('y khoa')
+                            ? '6-8 năm'
+                            : t.includes('kỹ sư') ||
+                                t.includes('chuyên gia') ||
+                                t.includes('phân tích')
+                              ? '4-5 năm'
+                              : '3-4 năm';
                       }
                       return (
                         <span key={idx} className="font-medium text-amber-500">
@@ -612,28 +681,30 @@ const CareerCompare = () => {
                   <TableRow
                     label="Lời khuyên AI"
                     values={comparisonData.careers.map((c, cIdx) => {
-                      const isBestMatch = comparisonData.recommendations.bestMatch === (c._id || c.id) || cIdx === 0;
-                      
+                      const isBestMatch =
+                        comparisonData.recommendations.bestMatch === (c._id || c.id) || cIdx === 0;
+
                       return (
-                      <div key={cIdx} className="flex flex-col gap-1.5">
-                        {isBestMatch ? 
-                          comparisonData.recommendations.reasonsForRecommendation
-                            .slice(0, 2)
-                            .map((r, idx) => (
-                              <p
-                                key={idx}
-                                className="text-indigo-500/90 text-left text-xs font-medium italic"
-                              >
-                                &ldquo;{renderValue(r)}&rdquo;
-                              </p>
-                            ))
-                          : (
+                        <div key={cIdx} className="flex flex-col gap-1.5">
+                          {isBestMatch ? (
+                            comparisonData.recommendations.reasonsForRecommendation
+                              .slice(0, 2)
+                              .map((r, idx) => (
+                                <p
+                                  key={idx}
+                                  className="text-left text-xs font-medium text-indigo-500/90 italic"
+                                >
+                                  &ldquo;{renderValue(r)}&rdquo;
+                                </p>
+                              ))
+                          ) : (
                             <p className="text-muted-foreground text-left text-xs font-medium italic">
                               Cần cải thiện thêm kỹ năng chuyên môn.
                             </p>
                           )}
-                      </div>
-                    )})}
+                        </div>
+                      );
+                    })}
                     highlight
                   />
                 </tbody>
