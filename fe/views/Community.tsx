@@ -351,8 +351,6 @@ const Community = () => {
     setTitle('');
     setContent('');
     setCategory('Review ngành');
-    setAuthorName('');
-    setAuthorTitle('');
     setIsAnonymous(true);
     setHashtags([]);
     setTagInput('');
@@ -388,7 +386,7 @@ const Community = () => {
       return;
     }
 
-    const displayName = isAnonymous ? 'Ẩn danh' : (profile?.full_name || 'Thành viên EDUMEE');
+    const displayName = isAnonymous ? 'Ẩn danh' : (profile?.userId?.name || 'Thành viên EDUMEE');
 
     setIsSubmitting(true);
     setFormError(null);
@@ -399,7 +397,7 @@ const Community = () => {
         category,
         hashtags,
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : (profile?.target_career || undefined),
+        authorTitle: isAnonymous ? undefined : (profile?.educationLevel || undefined),
       });
       resetForm();
       setIsFormOpen(false);
@@ -753,7 +751,7 @@ const Community = () => {
                     onDelete={handleDeletePost}
                     isMenuOpen={menuPostId === (post.id || post._id)}
                     onLike={handleLike}
-                    currentUserId={profile?.userId}
+                    currentUserId={profile?.userId?.id}
                   />
                 ))
               )}

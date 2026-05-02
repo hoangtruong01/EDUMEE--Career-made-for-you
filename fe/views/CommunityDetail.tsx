@@ -110,12 +110,13 @@ const CommunityDetail = () => {
 
     setIsSubmitting(true);
     try {
-      const displayName = isAnonymous ? 'Ẩn danh' : (profile?.full_name || 'Thành viên EDUMEE');
+      const displayName = isAnonymous ? 'Ẩn danh' : (profile?.userId?.name || 'Thành viên EDUMEE');
+      const authorTitle = isAnonymous ? undefined : (profile?.educationLevel || undefined);
       
       const updated = await communityService.addComment(accessToken, postId, {
         content: commentInput.trim(),
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : (profile?.target_career || undefined),
+        authorTitle,
       });
       setPost(updated);
       setComments(updated.comments || []);
@@ -215,10 +216,10 @@ const CommunityDetail = () => {
               <div className="text-muted-foreground flex items-center gap-6">
                 <button
                   onClick={handleLike}
-                  className={`flex items-center gap-2 transition-colors ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'text-rose-500' : 'hover:text-rose-500'}`}
+                  className={`flex items-center gap-2 transition-colors ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'text-rose-500' : 'hover:text-rose-500'}`}
                 >
-                  <div className={`rounded-full p-2 ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'bg-rose-500/10' : 'bg-muted/50'}`}>
-                    <Heart className={`h-4 w-4 ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'fill-current' : ''}`} />
+                  <div className={`rounded-full p-2 ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'bg-rose-500/10' : 'bg-muted/50'}`}>
+                    <Heart className={`h-4 w-4 ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'fill-current' : ''}`} />
                   </div>
                   <span className="text-sm font-black">{post.likeCount ?? 0}</span>
                 </button>
@@ -323,11 +324,11 @@ const CommunityDetail = () => {
                   animate={{ opacity: 1, height: 'auto' }}
                   className="mb-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
                 >
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.full_name)}`}>
-                    {getInitials(profile.full_name)}
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.userId?.name || '')}`}>
+                    {getInitials(profile.userId?.name || '')}
                   </div>
                   <div>
-                    <p className="text-xs font-bold">{profile.full_name}</p>
+                    <p className="text-xs font-bold">{profile.userId?.name}</p>
                     <p className="text-[10px] text-muted-foreground font-medium">Bình luận công khai</p>
                   </div>
                 </motion.div>
