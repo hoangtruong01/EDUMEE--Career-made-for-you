@@ -613,11 +613,11 @@ const Community = () => {
                         animate={{ opacity: 1, height: 'auto' }}
                         className="mt-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
                       >
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.full_name)}`}>
-                          {getInitials(profile.full_name)}
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.userId?.name || '')}`}>
+                          {getInitials(profile.userId?.name || '')}
                         </div>
                         <div>
-                          <p className="text-xs font-bold">{profile.full_name}</p>
+                          <p className="text-xs font-bold">{profile.userId?.name}</p>
                           <p className="text-[10px] text-muted-foreground font-medium">Tên hiển thị công khai</p>
                         </div>
                       </motion.div>
