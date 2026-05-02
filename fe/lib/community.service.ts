@@ -19,6 +19,7 @@ export interface CommunityPost {
   hashtags: string[];
   likeCount: number;
   commentCount: number;
+  likedUserIds?: string[];
   comments?: CommunityComment[];
   createdAt?: string;
   updatedAt?: string;
