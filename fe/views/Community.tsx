@@ -284,8 +284,6 @@ const Community = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('Review ngành');
-  const [authorName, setAuthorName] = useState('');
-  const [authorTitle, setAuthorTitle] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -370,8 +368,8 @@ const Community = () => {
     if (!trimmedContent) return 'Vui lòng nhập nội dung bài viết.';
     if (trimmedContent.length < 10) return 'Nội dung cần tối thiểu 10 ký tự.';
     if (!category.trim()) return 'Vui lòng chọn chủ đề.';
-    if (!isAnonymous && authorName.trim().length < 2) {
-      return 'Tên hiển thị cần tối thiểu 2 ký tự.';
+    if (!isAnonymous && !profile) {
+      return 'Vui lòng chờ thông tin cá nhân được tải...';
     }
     if (hashtags.length > 10) return 'Tối đa 10 hashtag.';
     return null;
@@ -390,7 +388,7 @@ const Community = () => {
       return;
     }
 
-    const displayName = isAnonymous ? 'Ẩn danh' : authorName.trim() || 'Thành viên EDUMEE';
+    const displayName = isAnonymous ? 'Ẩn danh' : (profile?.full_name || 'Thành viên EDUMEE');
 
     setIsSubmitting(true);
     setFormError(null);
@@ -401,7 +399,7 @@ const Community = () => {
         category,
         hashtags,
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : authorTitle.trim() || undefined,
+        authorTitle: isAnonymous ? undefined : (profile?.target_career || undefined),
       });
       resetForm();
       setIsFormOpen(false);
@@ -630,33 +628,11 @@ const Community = () => {
                     <AnimatePresence>
                       {!isAnonymous && !profile && (
                         <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="mt-5 grid gap-5 md:grid-cols-2"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="mt-5 text-muted-foreground text-xs font-medium italic"
                         >
-                          <div className="space-y-1.5">
-                            <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
-                              Tên hiển thị
-                            </label>
-                            <input
-                              value={authorName}
-                              onChange={(e) => setAuthorName(e.target.value)}
-                              placeholder="Tên của bạn"
-                              className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
-                              Chức danh / Nghề nghiệp
-                            </label>
-                            <input
-                              value={authorTitle}
-                              onChange={(e) => setAuthorTitle(e.target.value)}
-                              placeholder="Ví dụ: Senior Frontend"
-                              className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
-                            />
-                          </div>
+                          Đang tải thông tin cá nhân...
                         </motion.div>
                       )}
                     </AnimatePresence>

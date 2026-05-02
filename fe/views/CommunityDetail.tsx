@@ -107,14 +107,12 @@ const CommunityDetail = () => {
 
     setIsSubmitting(true);
     try {
-      const displayName = isAnonymous
-        ? 'Ẩn danh'
-        : (profile?.full_name || commentName.trim() || 'Thành viên EDUMEE');
+      const displayName = isAnonymous ? 'Ẩn danh' : (profile?.full_name || 'Thành viên EDUMEE');
       
       const updated = await communityService.addComment(accessToken, postId, {
         content: commentInput.trim(),
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : (commentTitle.trim() || undefined),
+        authorTitle: isAnonymous ? undefined : (profile?.target_career || undefined),
       });
       setPost(updated);
       setComments(updated.comments || []);
@@ -332,26 +330,17 @@ const CommunityDetail = () => {
                 </motion.div>
               )}
 
-              {!isAnonymous && !profile && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="mb-5 grid gap-4 sm:grid-cols-2"
-                >
-                  <input
-                    value={commentName}
-                    onChange={(e) => setCommentName(e.target.value)}
-                    placeholder="Tên của bạn"
-                    className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-bold outline-none focus:ring-4"
-                  />
-                  <input
-                    value={commentTitle}
-                    onChange={(e) => setCommentTitle(e.target.value)}
-                    placeholder="Chức danh"
-                    className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-bold outline-none focus:ring-4"
-                  />
-                </motion.div>
-              )}
+              <AnimatePresence>
+                {!isAnonymous && !profile && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mb-5 text-muted-foreground text-xs font-medium italic"
+                  >
+                    Đang tải thông tin cá nhân...
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div className="flex flex-col gap-4">
                 <textarea
