@@ -105,6 +105,11 @@ const CommunityDetail = () => {
   const handleAddComment = async () => {
     if (!accessToken || !postId || !commentInput.trim()) return;
 
+    if (!isAnonymous && !profile) {
+      setError('Vui lòng chờ thông tin cá nhân được tải...');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const displayName = isAnonymous ? 'Ẩn danh' : (profile?.full_name || 'Thành viên EDUMEE');
