@@ -106,6 +106,12 @@ export class CreateUserProfileDto {
   @IsOptional()
   @IsObject()
   constraintsJson?: Record<string, any>;
+
+  @ApiPropertyOptional({ example: 'I am a passionate developer...' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  bio?: string;
 }
 
 export class UpdateUserProfileDto extends PartialType(CreateUserProfileDto) {}
@@ -150,6 +156,9 @@ export class UserProfileResponseDto {
     } 
   })
   constraintsJson?: Record<string, any>;
+
+  @ApiPropertyOptional({ example: 'I am a passionate developer...' })
+  bio?: string;
 
   @ApiProperty({ example: new Date().toISOString() })
   createdAt!: Date;

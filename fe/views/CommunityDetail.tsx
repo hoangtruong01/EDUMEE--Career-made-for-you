@@ -63,8 +63,6 @@ const CommunityDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');
-  const [commentName, setCommentName] = useState('');
-  const [commentTitle, setCommentTitle] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
