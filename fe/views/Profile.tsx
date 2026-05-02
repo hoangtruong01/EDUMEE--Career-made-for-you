@@ -156,7 +156,22 @@ const Profile = () => {
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        // Critical: Strip modern color functions before rendering
+        onclone: (clonedDoc) => {
+          const elements = clonedDoc.getElementsByTagName('*');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i] as HTMLElement;
+            // Force basic colors for anything that might have oklch/lab from Tailwind 4
+            const computedStyle = window.getComputedStyle(el);
+            if (computedStyle.color.includes('lab') || computedStyle.color.includes('oklch')) {
+              el.style.color = '#000000';
+            }
+            if (computedStyle.backgroundColor.includes('lab') || computedStyle.backgroundColor.includes('oklch')) {
+              el.style.backgroundColor = 'transparent';
+            }
+          }
+        }
       });
       
       const imgData = canvas.toDataURL('image/png');
@@ -170,7 +185,9 @@ const Profile = () => {
       setActiveModal(null);
     } catch (err) {
       console.error('PDF Export Error:', err);
-      toast.error('Lỗi khi xuất PDF');
+      toast.error('Lỗi khi xuất PDF. Đang mở chế độ in an toàn...');
+      // Fallback: Print current view if canvas fails
+      window.print();
     } finally {
       setIsExporting(false);
     }
