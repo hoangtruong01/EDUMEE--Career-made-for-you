@@ -75,4 +75,11 @@ export class CommunityPostController {
   remove(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     return this.communityPostService.remove(id, getAuthUserId(user), isAdmin(user));
   }
+
+  @Post(':id/like')
+  @ApiOperation({ summary: 'Toggle like on a community post' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Like toggled successfully' })
+  toggleLike(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    return this.communityPostService.toggleLike(id, getAuthUserId(user));
+  }
 }

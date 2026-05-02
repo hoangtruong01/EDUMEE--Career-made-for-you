@@ -176,4 +176,41 @@ export class CommunityPostService {
     }
     return deleted;
   }
+
+  async toggleLike(postId: string, userId: string): Promise<CommunityPostDocument> {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid postId');
+    }
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    const post = await this.communityPostModel.findById(postId).exec();
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    const uId = new Types.ObjectId(userId);
+    const hasLiked = post.likedUserIds?.some((id) => id.toString() === userId);
+
+    if (hasLiked) {
+      // Unlike
+      return (await this.communityPostModel
+        .findByIdAndUpdate(
+          postId,
+          { $pull: { likedUserIds: uId }, $inc: { likeCount: -1 } },
+          { new: true },
+        )
+        .exec())!;
+    } else {
+      // Like
+      return (await this.communityPostModel
+        .findByIdAndUpdate(
+          postId,
+          { $addToSet: { likedUserIds: uId }, $inc: { likeCount: 1 } },
+          { new: true },
+        )
+        .exec())!;
+    }
+  }
 }

@@ -4,16 +4,19 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
 import { communityService, type CommunityPost } from '@/lib/community.service';
-import { motion } from 'framer-motion';
+import { profileService, type UserProfile } from '@/lib/profile.service';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bookmark,
   Hash,
   Heart,
   MessageCircle,
   MoreVertical,
+  Plus,
   Search,
   Send,
   Share2,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react';
@@ -106,15 +109,20 @@ const PostCard = ({
   onToggleMenu,
   onDelete,
   isMenuOpen,
+  onLike,
+  currentUserId,
 }: {
   post: CommunityPost;
   index: number;
   onOpen: (postId: string) => void;
   onToggleMenu: (postId: string) => void;
   onDelete: (postId: string) => void;
+  onLike: (postId: string) => void;
   isMenuOpen: boolean;
+  currentUserId?: string;
 }) => {
   const postId = post.id || post._id || '';
+  const isLiked = post.likedUserIds?.some((id) => String(id) === currentUserId);
   const authorName = post.authorName || 'Thành viên EDUMEE';
   const initials = getInitials(authorName);
   const avatarBg = getAvatarColor(authorName);
@@ -122,37 +130,40 @@ const PostCard = ({
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.07 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: index * 0.05 }}
       onClick={() => postId && onOpen(postId)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && postId) onOpen(postId);
       }}
       role="button"
       tabIndex={0}
-      className="glass-card hover:shadow-elevated cursor-pointer rounded-2xl p-5 transition-shadow"
+      className="bento-card-v2 hover:shadow-elevated cursor-pointer p-5 transition-all"
     >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-y-2">
-        <div className="flex items-center gap-2.5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
+        <div className="flex items-center gap-3">
           <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${avatarBg}`}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
           >
             {initials}
           </div>
           <div>
-            <p className="text-sm font-semibold">{authorName}</p>
-            <p className="text-muted-foreground text-xs">
-              {post.authorTitle || 'Thành viên cộng đồng'}
+            <p className="text-sm font-bold tracking-tight">{authorName}</p>
+            <p className="text-muted-foreground text-[11px] font-medium uppercase tracking-wider">
+              {post.authorTitle || 'Thành viên'}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryBadgeClass(post.category)}`}
+            className={`tag-pill ${getCategoryBadgeClass(post.category)} border-none bg-opacity-10`}
           >
             {post.category}
           </span>
-          <span className="text-muted-foreground text-xs">{formatTimeAgo(post.createdAt)}</span>
+          <span className="text-muted-foreground text-xs font-medium">
+            {formatTimeAgo(post.createdAt)}
+          </span>
           <div className="relative">
             <button
               type="button"
@@ -160,73 +171,94 @@ const PostCard = ({
                 e.stopPropagation();
                 if (postId) onToggleMenu(postId);
               }}
-              className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-full p-1.5 transition-colors"
               aria-label="Mo tuy chon"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
-            {isMenuOpen && (
-              <div
-                className="border-border bg-popover text-foreground shadow-card absolute right-0 z-20 mt-2 w-36 rounded-xl border p-1"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => postId && onDelete(postId)}
-                  className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm"
+            <AnimatePresence>
+              {isMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                  className="border-border bg-popover/90 text-foreground shadow-elevated absolute right-0 z-30 mt-2 w-40 rounded-2xl border p-1.5 backdrop-blur-md"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  Xóa bài viết
-                </button>
-              </div>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => postId && onDelete(postId)}
+                    className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors"
+                  >
+                    Xóa bài viết
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
-      <h3 className="font-display mb-1.5 leading-snug font-semibold">{post.title}</h3>
-      <p className="text-muted-foreground mb-3 line-clamp-2 text-sm">{post.content}</p>
+      <h3 className="font-display mb-2 text-lg font-bold leading-tight tracking-tight">
+        {post.title}
+      </h3>
+      <p className="text-muted-foreground/90 mb-4 line-clamp-3 text-sm leading-relaxed">
+        {post.content}
+      </p>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
+      <div className="mb-5 flex flex-wrap gap-2">
         {post.hashtags?.slice(0, 4).map((tag) => (
           <span
             key={tag}
-            className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs"
+            className="bg-muted/50 text-muted-foreground hover:bg-muted rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
           >
             {tag}
           </span>
         ))}
+        {post.hashtags && post.hashtags.length > 4 && (
+          <span className="text-muted-foreground self-center text-[10px] font-bold">
+            +{post.hashtags.length - 4}
+          </span>
+        )}
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="text-muted-foreground flex items-center gap-4 text-sm">
+      <div className="flex items-center justify-between border-t border-dashed border-border/50 pt-4">
+        <div className="flex items-center gap-5">
           <button
-            onClick={(e) => e.stopPropagation()}
-            className="hover:text-primary flex items-center gap-1.5 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (postId) onLike(postId);
+            }}
+            className={`${isLiked ? 'text-rose-500' : 'text-muted-foreground'} hover:text-rose-500 group flex items-center gap-2 transition-colors`}
           >
-            <Heart className="h-4 w-4" />
-            <span className="font-medium">{post.likeCount ?? 0}</span>
+            <div className={`${isLiked ? 'bg-rose-500/10' : 'group-hover:bg-rose-500/10'} rounded-full p-1.5 transition-colors`}>
+              <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
+            </div>
+            <span className="text-xs font-bold">{post.likeCount ?? 0}</span>
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               if (postId) onOpen(postId);
             }}
-            className="hover:text-primary flex items-center gap-1.5 transition-colors"
+            className="text-muted-foreground hover:text-primary group flex items-center gap-2 transition-colors"
           >
-            <MessageCircle className="h-4 w-4" />
-            <span>{post.commentCount ?? 0}</span>
+            <div className="group-hover:bg-primary/10 rounded-full p-1.5 transition-colors">
+              <MessageCircle className="h-4 w-4" />
+            </div>
+            <span className="text-xs font-bold">{post.commentCount ?? 0}</span>
           </button>
         </div>
-        <div className="text-muted-foreground flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={(e) => e.stopPropagation()}
-            className="hover:text-primary p-1 transition-colors"
+            className="text-muted-foreground hover:bg-muted hover:text-primary rounded-full p-2 transition-colors"
           >
             <Bookmark className="h-4 w-4" />
           </button>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="hover:text-primary p-1 transition-colors"
+            className="text-muted-foreground hover:bg-muted hover:text-primary rounded-full p-2 transition-colors"
           >
             <Share2 className="h-4 w-4" />
           </button>
@@ -244,6 +276,7 @@ const Community = () => {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -283,6 +316,17 @@ const Community = () => {
     const timer = setTimeout(() => {
       void loadPosts();
     }, 250);
+
+    const fetchProfile = async () => {
+      try {
+        const p = await profileService.getMyProfile(accessToken);
+        setProfile(p);
+      } catch (err) {
+        console.error('Failed to fetch profile', err);
+      }
+    };
+    void fetchProfile();
+
     return () => clearTimeout(timer);
   }, [accessToken, loadPosts]);
 
@@ -373,6 +417,21 @@ const Community = () => {
     }
   };
 
+  const handleLike = async (postId: string) => {
+    if (!accessToken) {
+      setError('Vui lòng đăng nhập để thích bài viết.');
+      return;
+    }
+    try {
+      const updatedPost = await communityService.likePost(accessToken, postId);
+      setPosts((prev) =>
+        prev.map((p) => ((p.id || p._id) === (updatedPost.id || updatedPost._id) ? updatedPost : p)),
+      );
+    } catch (err) {
+      console.error('Like failed', err);
+    }
+  };
+
   const handleOpenPost = (postId: string) => {
     router.push(`/community/${postId}`);
   };
@@ -406,209 +465,306 @@ const Community = () => {
   const filteredPosts = posts;
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="bg-gradient-card">
-        <div className="container py-10 text-center">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
-              <Users className="h-4 w-4" /> 50,000+ thành viên
+    <div className="aurora-bg min-h-screen pb-20">
+      <div className="relative overflow-hidden pt-16 pb-12 text-center">
+        <div className="container relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <span className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
+              <Users className="h-3.5 w-3.5" /> 50,000+ thành viên đang kết nối
             </span>
-            <h1 className="font-display text-3xl font-bold md:text-4xl">Cộng đồng nghề nghiệp</h1>
-            <p className="text-muted-foreground mt-2">
-              Nơi sinh viên và người đi làm chia sẻ kinh nghiệm thực tế về các ngành nghề
+            <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl font-extrabold tracking-tight md:text-6xl leading-[1.2]">
+              Cộng đồng CareerAI
+            </h1>
+            <p className="text-muted-foreground mx-auto max-w-2xl text-base font-medium leading-relaxed md:text-lg">
+              Không gian chia sẻ kinh nghiệm thực tế, kết nối mentor và kiến tạo tương lai nghề nghiệp
+              cho Gen Z.
             </p>
           </motion.div>
         </div>
+        <div className="gradient-orb bg-primary/20 top-0 left-1/4 h-64 w-64 opacity-50 blur-[100px]" />
+        <div className="gradient-orb bg-secondary/20 right-1/4 bottom-0 h-64 w-64 opacity-50 blur-[100px]" />
       </div>
 
-      <div className="container mt-6">
-        <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-          <div className="space-y-4">
-            <div className="flex gap-3">
-              <div className="relative flex-1">
-                <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Tìm kiếm bài viết..."
-                  className="border-input bg-background focus:ring-ring h-10 w-full rounded-xl border pr-4 pl-9 text-sm outline-none focus:ring-2"
-                />
-              </div>
-              <Button
-                variant="hero"
-                size="sm"
-                className="shrink-0 gap-1.5"
-                onClick={() => setIsFormOpen((prev) => !prev)}
-              >
-                <Send className="h-4 w-4" /> {isFormOpen ? 'Đóng' : 'Đăng bài'}
-              </Button>
-            </div>
-
-            {isFormOpen && (
-              <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-5">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-display text-base font-semibold">Tạo bài viết mới</h3>
-                    <p className="text-muted-foreground text-xs">
-                      Chia sẻ trải nghiệm hoặc đặt câu hỏi cho cộng đồng.
-                    </p>
-                  </div>
-                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                    <input
-                      id="anonymous-toggle"
-                      type="checkbox"
-                      checked={isAnonymous}
-                      onChange={(e) => setIsAnonymous(e.target.checked)}
-                      className="accent-primary h-4 w-4"
-                    />
-                    <label htmlFor="anonymous-toggle">Ẩn danh</label>
-                  </div>
+      <div className="container relative z-10 mt-2">
+        <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-6">
+            {/* Quick Post & Search Section */}
+            <div className="flex flex-col gap-4">
+              <div className="glass-card flex items-center gap-3 rounded-2xl p-3 shadow-soft">
+                <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary">
+                  <Plus className="h-5 w-5" />
                 </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-muted-foreground text-xs font-medium">Chủ đề</label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
-                    >
-                      {postCategories.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-muted-foreground text-xs font-medium">Tiêu đề</label>
-                    <input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Nhập tiêu đề bài viết"
-                      className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {!isAnonymous && (
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <label className="text-muted-foreground text-xs font-medium">
-                        Tên hiển thị
-                      </label>
-                      <input
-                        value={authorName}
-                        onChange={(e) => setAuthorName(e.target.value)}
-                        placeholder="Ví dụ: Nguyễn Văn A"
-                        className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-muted-foreground text-xs font-medium">Chức danh</label>
-                      <input
-                        value={authorTitle}
-                        onChange={(e) => setAuthorTitle(e.target.value)}
-                        placeholder="Ví dụ: Data Analyst"
-                        className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 space-y-1">
-                  <label className="text-muted-foreground text-xs font-medium">Hashtag</label>
-                  <div className="border-input bg-background flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
-                    <Hash className="text-muted-foreground h-4 w-4" />
-                    {hashtags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                      >
-                        {tag}
-                        <button type="button" onClick={() => handleRemoveTag(tag)}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                    <input
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                          e.preventDefault();
-                          handleAddTag(tagInput);
-                        }
-                      }}
-                      placeholder="Gõ hashtag và Enter"
-                      className="min-w-[140px] flex-1 bg-transparent text-sm outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddTag(tagInput)}
-                      className="text-primary text-xs font-medium"
-                    >
-                      Thêm
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-1">
-                  <label className="text-muted-foreground text-xs font-medium">Nội dung</label>
-                  <textarea
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="Chia sẻ chi tiết để cộng đồng dễ hỗ trợ bạn hơn"
-                    rows={5}
-                    className="border-input bg-background w-full rounded-xl border px-3 py-2 text-sm"
+                <button
+                  onClick={() => setIsFormOpen(true)}
+                  className="text-muted-foreground hover:bg-muted flex-1 rounded-xl px-4 py-2 text-left text-sm font-medium transition-colors"
+                >
+                  Bạn đang nghĩ gì? Chia sẻ ngay...
+                </button>
+                <div className="h-6 w-[1px] bg-border/50" />
+                <div className="relative flex-[0.8]">
+                  <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Tìm nội dung..."
+                    className="bg-muted/50 focus:ring-primary/30 h-10 w-full rounded-xl pr-4 pl-9 text-sm font-medium outline-none transition-all focus:ring-4"
                   />
                 </div>
+              </div>
 
-                {formError && <p className="mt-3 text-xs font-medium text-rose-500">{formError}</p>}
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Button type="submit" variant="hero" size="sm" disabled={isSubmitting}>
-                    {isSubmitting ? 'Đang đăng...' : 'Đăng bài'}
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-                    Làm mới
-                  </Button>
-                </div>
-              </form>
-            )}
-
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                    activeCategory === cat
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`shrink-0 rounded-xl px-5 py-2 text-xs font-bold tracking-wide transition-all ${
+                      activeCategory === cat
+                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105'
+                        : 'bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
 
+            <AnimatePresence>
+              {isFormOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <form onSubmit={handleSubmit} className="bento-card-v2 mb-6 p-6">
+                    <div className="mb-6 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-primary/20 rounded-xl p-2 text-primary">
+                          <Sparkles className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold">Tạo bài viết mới</h3>
+                          <p className="text-muted-foreground text-[11px] font-medium uppercase tracking-wider">
+                            Góp ý kiến, nhận chia sẻ
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsFormOpen(false)}
+                        className="text-muted-foreground hover:bg-muted rounded-full p-2 transition-colors"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                          Chủ đề thảo luận
+                        </label>
+                        <select
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
+                        >
+                          {postCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                          Tiêu đề bài viết
+                        </label>
+                        <input
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Tiêu đề ấn tượng..."
+                          className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="anonymous-toggle"
+                          type="checkbox"
+                          checked={isAnonymous}
+                          onChange={(e) => setIsAnonymous(e.target.checked)}
+                          className="accent-primary h-4 w-4 rounded-md"
+                        />
+                        <label
+                          htmlFor="anonymous-toggle"
+                          className="text-xs font-bold leading-none select-none"
+                        >
+                          Đăng bài ẩn danh
+                        </label>
+                      </div>
+                    </div>
+
+                    {!isAnonymous && profile && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="mt-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
+                      >
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.full_name)}`}>
+                          {getInitials(profile.full_name)}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold">{profile.full_name}</p>
+                          <p className="text-[10px] text-muted-foreground font-medium">Tên hiển thị công khai</p>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    <AnimatePresence>
+                      {!isAnonymous && !profile && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="mt-5 grid gap-5 md:grid-cols-2"
+                        >
+                          <div className="space-y-1.5">
+                            <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                              Tên hiển thị
+                            </label>
+                            <input
+                              value={authorName}
+                              onChange={(e) => setAuthorName(e.target.value)}
+                              placeholder="Tên của bạn"
+                              className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                              Chức danh / Nghề nghiệp
+                            </label>
+                            <input
+                              value={authorTitle}
+                              onChange={(e) => setAuthorTitle(e.target.value)}
+                              placeholder="Ví dụ: Senior Frontend"
+                              className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-medium outline-none focus:ring-4"
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="mt-5 space-y-1.5">
+                      <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                        Hashtags
+                      </label>
+                      <div className="bg-muted focus-within:ring-primary/20 flex flex-wrap items-center gap-2 rounded-xl px-4 py-3 transition-all focus-within:ring-4">
+                        <Hash className="text-muted-foreground h-4 w-4" />
+                        {hashtags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-primary/10 text-primary flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTag(tag)}
+                              className="hover:bg-primary/20 rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                              e.preventDefault();
+                              handleAddTag(tagInput);
+                            }
+                          }}
+                          placeholder="Gõ tag và Enter..."
+                          className="min-w-[120px] flex-1 bg-transparent text-sm font-medium outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 space-y-1.5">
+                      <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                        Nội dung chia sẻ
+                      </label>
+                      <textarea
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        placeholder="Kể lại câu chuyện của bạn hoặc đặt câu hỏi..."
+                        rows={6}
+                        className="bg-muted focus:ring-primary/20 w-full resize-none rounded-xl border-none px-4 py-3 text-sm font-medium outline-none focus:ring-4"
+                      />
+                    </div>
+
+                    {formError && (
+                      <motion.p
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="mt-4 text-xs font-bold text-rose-500"
+                      >
+                        ⚠️ {formError}
+                      </motion.p>
+                    )}
+
+                    <div className="mt-6 flex items-center justify-end gap-3">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={resetForm}
+                        className="text-xs font-bold tracking-wide uppercase"
+                      >
+                        Làm mới
+                      </Button>
+                      <Button
+                        type="submit"
+                        variant="hero"
+                        size="default"
+                        disabled={isSubmitting}
+                        className="gap-2 px-8 font-bold tracking-wide uppercase shadow-lg shadow-primary/25"
+                      >
+                        {isSubmitting ? 'Đang gửi...' : 'Đăng bài viết'}
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {error && (
-              <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm">
-                {error}
+              <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-2xl border px-4 py-4 text-sm font-bold">
+                ⚠️ {error}
               </div>
             )}
 
             {!accessToken && (
-              <div className="border-border bg-muted/40 text-muted-foreground rounded-xl border px-4 py-3 text-sm">
-                Vui lòng đăng nhập để xem và đăng bài viết.
+              <div className="border-border bg-muted/40 text-muted-foreground rounded-2xl border px-4 py-4 text-center text-sm font-medium backdrop-blur-sm">
+                Chào mừng bạn! Vui lòng đăng nhập để tham gia thảo luận cùng cộng đồng.
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               {isLoading ? (
-                <div className="py-16 text-center">
-                  <p className="text-muted-foreground text-sm">Đang tải bài viết...</p>
+                <div className="flex flex-col items-center py-20">
+                  <div className="bg-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+                  <p className="text-muted-foreground mt-4 text-sm font-bold uppercase tracking-widest">
+                    Đang tải dữ liệu...
+                  </p>
                 </div>
               ) : (
                 filteredPosts.map((post, i) => (
@@ -620,53 +776,67 @@ const Community = () => {
                     onToggleMenu={handleToggleMenu}
                     onDelete={handleDeletePost}
                     isMenuOpen={menuPostId === (post.id || post._id)}
+                    onLike={handleLike}
+                    currentUserId={profile?.userId}
                   />
                 ))
               )}
               {!isLoading && filteredPosts.length === 0 && (
-                <div className="py-16 text-center">
-                  <MessageCircle className="text-muted-foreground/30 mx-auto mb-4 h-12 w-12" />
-                  <p className="text-muted-foreground font-medium">Chưa có bài viết nào</p>
-                  <p className="text-muted-foreground/70 mt-1 text-sm">
-                    Hãy thử chọn chủ đề khác hoặc là người đầu tiên chia sẻ!
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="py-20 text-center"
+                >
+                  <div className="bg-muted/50 mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full">
+                    <MessageCircle className="text-muted-foreground/30 h-10 w-10" />
+                  </div>
+                  <h3 className="text-lg font-bold">Chưa có bài viết nào</h3>
+                  <p className="text-muted-foreground mt-2 text-sm font-medium">
+                    Hãy là người đầu tiên khơi dậy cuộc thảo luận trong chủ đề này!
                   </p>
-                </div>
+                </motion.div>
               )}
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div className="glass-card rounded-2xl p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-base">🔥</span>
-                <h3 className="font-display font-semibold">Xu hướng hôm nay</h3>
+          <aside className="space-y-6">
+            <div className="bento-card-v2 p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="bg-amber-500/20 rounded-lg p-2 text-amber-500">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <h3 className="text-lg font-bold">Xu hướng 🔥</h3>
               </div>
-              <ol className="space-y-2">
+              <ul className="space-y-4">
                 {trending.map((tag, i) => (
-                  <li key={tag} className="flex items-center gap-3">
-                    <span className="text-muted-foreground w-5 text-sm font-bold">{i + 1}</span>
-                    <button className="text-primary text-sm font-medium hover:underline">
+                  <li key={tag} className="group flex items-center gap-4">
+                    <span className="bg-muted text-muted-foreground flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:bg-primary group-hover:text-white">
+                      {i + 1}
+                    </span>
+                    <button className="text-foreground hover:text-primary text-sm font-bold transition-colors">
                       {tag}
                     </button>
                   </li>
                 ))}
-              </ol>
+              </ul>
             </div>
 
-            <div className="glass-card rounded-2xl p-5">
-              <h3 className="font-display mb-4 font-semibold">Cộng đồng CareerAI</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Thành viên</span>
-                  <span className="text-primary font-bold">90,234</span>
+            <div className="bento-card-v2 bg-primary/5 border-primary/20 p-6">
+              <h3 className="mb-5 text-lg font-bold">Hoạt động sôi nổi</h3>
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-primary/20 h-2 w-2 animate-pulse rounded-full" />
+                    <span className="text-muted-foreground text-sm font-bold">Thành viên</span>
+                  </div>
+                  <span className="stat-number text-xl font-black">90.2K</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Bài viết hôm nay</span>
-                  <span className="font-bold">127</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Ngành được review</span>
-                  <span className="font-bold">89</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-500/20 h-2 w-2 rounded-full" />
+                    <span className="text-muted-foreground text-sm font-bold">Thảo luận mới</span>
+                  </div>
+                  <span className="stat-number text-xl font-black">127</span>
                 </div>
               </div>
               <Button
@@ -674,35 +844,40 @@ const Community = () => {
                   window.open('https://www.facebook.com/profile.php?id=61586675294663', '_blank')
                 }
                 variant="hero"
-                size="sm"
-                className="mt-4 w-full"
+                className="shimmer-btn mt-6 w-full font-bold uppercase tracking-wider"
               >
-                Tham gia ngay
+                Gia nhập ngay
               </Button>
             </div>
 
-            <div className="glass-card rounded-2xl p-5">
-              <h3 className="font-display mb-4 font-semibold">Top đóng góp</h3>
-              <div className="space-y-3">
+            <div className="bento-card-v2 p-6">
+              <div className="mb-6 flex items-center justify-between">
+                <h3 className="text-lg font-bold">Cây bút nổi bật</h3>
+                <Sparkles className="text-primary h-4 w-4" />
+              </div>
+              <div className="space-y-6">
                 {topContributors.map((c) => (
-                  <div key={c.name} className="flex items-center gap-3">
+                  <div key={c.name} className="flex items-center gap-4">
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${c.bg}`}
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${c.bg}`}
                     >
                       {c.initials}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{c.name}</p>
-                      <p className="text-muted-foreground truncate text-xs">{c.role}</p>
+                      <p className="truncate text-sm font-bold tracking-tight">{c.name}</p>
+                      <p className="text-muted-foreground truncate text-[10px] font-bold uppercase tracking-widest">
+                        {c.role}
+                      </p>
                     </div>
-                    <span className="text-primary shrink-0 text-xs font-semibold">
-                      {c.posts} bài
-                    </span>
+                    <div className="text-right">
+                      <p className="text-primary text-xs font-black">{c.posts}</p>
+                      <p className="text-muted-foreground text-[9px] font-bold uppercase">Bài</p>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>

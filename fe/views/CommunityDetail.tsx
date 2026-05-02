@@ -7,8 +7,9 @@ import {
   type CommunityComment,
   type CommunityPost,
 } from '@/lib/community.service';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Hash, Heart, MessageCircle, Send } from 'lucide-react';
+import { profileService, type UserProfile } from '@/lib/profile.service';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Hash, Heart, MessageCircle, Send, Sparkles } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -57,6 +58,7 @@ const CommunityDetail = () => {
   const { accessToken } = useAuth();
 
   const [post, setPost] = useState<CommunityPost | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [comments, setComments] = useState<CommunityComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,18 +90,31 @@ const CommunityDetail = () => {
       return;
     }
     void loadPost();
-  }, [loadPost]);
+
+    const fetchProfile = async () => {
+      try {
+        const p = await profileService.getMyProfile(accessToken);
+        setProfile(p);
+      } catch (err) {
+        console.error('Failed to fetch profile', err);
+      }
+    };
+    void fetchProfile();
+  }, [loadPost, accessToken]);
 
   const handleAddComment = async () => {
     if (!accessToken || !postId || !commentInput.trim()) return;
 
     setIsSubmitting(true);
     try {
-      const displayName = isAnonymous ? 'Ẩn danh' : commentName.trim() || 'Thành viên EDUMEE';
+      const displayName = isAnonymous
+        ? 'Ẩn danh'
+        : (profile?.full_name || commentName.trim() || 'Thành viên EDUMEE');
+      
       const updated = await communityService.addComment(accessToken, postId, {
         content: commentInput.trim(),
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : commentTitle.trim() || undefined,
+        authorTitle: isAnonymous ? undefined : (commentTitle.trim() || undefined),
       });
       setPost(updated);
       setComments(updated.comments || []);
@@ -108,6 +123,16 @@ const CommunityDetail = () => {
       setError('Không thể gửi bình luận. Vui lòng thử lại sau.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleLike = async () => {
+    if (!accessToken || !postId) return;
+    try {
+      const updated = await communityService.likePost(accessToken, postId);
+      setPost(updated);
+    } catch (err) {
+      console.error('Like failed', err);
     }
   };
 
@@ -132,179 +157,266 @@ const CommunityDetail = () => {
   const initials = getInitials(authorName);
 
   return (
-    <div className="bg-background min-h-screen pb-24">
-      <div className="border-border/60 bg-gradient-card border-b">
-        <div className="container py-6">
+    <div className="aurora-bg min-h-screen pb-24">
+      <div className="relative overflow-hidden pt-12 pb-10">
+        <div className="container relative z-10">
           <button
             onClick={() => router.back()}
-            className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-2 text-sm"
+            className="text-muted-foreground hover:text-primary mb-6 flex items-center gap-2 text-sm font-bold transition-colors"
           >
             <ArrowLeft className="h-4 w-4" /> Quay lại cộng đồng
           </button>
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="font-display text-2xl font-bold md:text-3xl">{post.title}</h1>
-            <p className="text-muted-foreground mt-2 text-sm">
-              {formatTimeAgo(post.createdAt)} • {post.category}
-            </p>
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-4xl"
+          >
+            <h1 className="font-display py-2 text-3xl font-extrabold tracking-tight md:text-5xl leading-[1.2]">
+              {post.title}
+            </h1>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span className="tag-pill bg-primary/10 text-primary border-none font-bold">
+                {post.category}
+              </span>
+              <span className="text-muted-foreground text-sm font-medium">
+                Đăng bởi <span className="text-foreground font-bold">{authorName}</span> •{' '}
+                {formatTimeAgo(post.createdAt)}
+              </span>
+            </div>
           </motion.div>
         </div>
+        <div className="gradient-orb bg-primary/10 -top-20 -left-20 h-80 w-80 opacity-40 blur-[120px]" />
       </div>
 
-      <div className="container mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
+      <div className="container relative z-10 mt-2 grid gap-8 lg:grid-cols-[1fr_340px]">
+        <div className="space-y-8">
           {error && (
-            <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-xl border px-4 py-3 text-sm">
-              {error}
+            <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-2xl border px-4 py-4 text-sm font-bold">
+              ⚠️ {error}
             </div>
           )}
 
-          <div className="glass-card rounded-2xl p-6">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+          <div className="bento-card-v2 p-8">
+            <div className="mb-8 flex items-start justify-between gap-6 border-b border-dashed border-border/50 pb-6">
+              <div className="flex items-center gap-4">
                 <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${avatarBg}`}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-black text-white shadow-lg ${avatarBg}`}
                 >
                   {initials}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">{authorName}</p>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-base font-bold tracking-tight">{authorName}</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">
                     {post.authorTitle || 'Thành viên cộng đồng'}
                   </p>
                 </div>
               </div>
-              <div className="text-muted-foreground flex items-center gap-3 text-sm">
-                <span className="flex items-center gap-1">
-                  <Heart className="h-4 w-4" /> {post.likeCount ?? 0}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MessageCircle className="h-4 w-4" /> {post.commentCount ?? 0}
-                </span>
+              <div className="text-muted-foreground flex items-center gap-6">
+                <button
+                  onClick={handleLike}
+                  className={`flex items-center gap-2 transition-colors ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'text-rose-500' : 'hover:text-rose-500'}`}
+                >
+                  <div className={`rounded-full p-2 ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'bg-rose-500/10' : 'bg-muted/50'}`}>
+                    <Heart className={`h-4 w-4 ${post.likedUserIds?.some((id) => String(id) === profile?.userId) ? 'fill-current' : ''}`} />
+                  </div>
+                  <span className="text-sm font-black">{post.likeCount ?? 0}</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <div className="bg-primary/10 rounded-full p-2 text-primary">
+                    <MessageCircle className="h-4 w-4" />
+                  </div>
+                  <span className="text-sm font-black">{post.commentCount ?? 0}</span>
+                </div>
               </div>
             </div>
 
-            <p className="text-foreground/90 leading-relaxed whitespace-pre-line">{post.content}</p>
+            <p className="text-foreground/90 leading-relaxed whitespace-pre-line text-lg font-medium">
+              {post.content}
+            </p>
 
             {post.hashtags?.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-8 flex flex-wrap gap-3">
                 {post.hashtags.map((tag) => (
                   <span
                     key={tag}
-                    className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs"
+                    className="bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-xl px-3 py-1.5 text-xs font-bold transition-colors"
                   >
-                    <Hash className="h-3 w-3" /> {tag}
+                    <Hash className="h-3.5 w-3.5 inline mr-1" /> {tag}
                   </span>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="glass-card rounded-2xl p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <MessageCircle className="text-primary h-4 w-4" />
-              <h3 className="font-display font-semibold">Bình luận</h3>
+          <div className="bento-card-v2 p-8">
+            <div className="mb-8 flex items-center gap-3">
+              <div className="bg-primary/20 rounded-xl p-2 text-primary">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <h3 className="text-xl font-extrabold tracking-tight">Thảo luận cộng đồng</h3>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               {comments.length === 0 && (
-                <p className="text-muted-foreground text-sm">Chưa có bình luận nào.</p>
+                <div className="bg-muted/30 rounded-2xl py-12 text-center">
+                  <MessageCircle className="text-muted-foreground/20 mx-auto mb-4 h-10 w-10" />
+                  <p className="text-muted-foreground text-sm font-bold">Chưa có bình luận nào.</p>
+                  <p className="text-muted-foreground/60 mt-1 text-xs font-medium">
+                    Hãy là người đầu tiên đưa ra ý kiến!
+                  </p>
+                </div>
               )}
-              {comments.map((comment, idx) => {
-                const cName = comment.authorName || 'Thành viên EDUMEE';
-                const cInitials = getInitials(cName);
-                const cAvatarBg = getAvatarColor(cName);
-                return (
-                  <div
-                    key={`${comment.id || idx}`}
-                    className="border-border/60 rounded-xl border p-3"
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <div
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${cAvatarBg}`}
-                      >
-                        {cInitials}
+              <AnimatePresence mode="popLayout">
+                {comments.map((comment, idx) => {
+                  const cName = comment.authorName || 'Thành viên EDUMEE';
+                  const cInitials = getInitials(cName);
+                  const cAvatarBg = getAvatarColor(cName);
+                  return (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      key={`${comment.id || idx}`}
+                      className="border-border/60 bg-muted/20 hover:bg-muted/40 rounded-2xl border p-5 transition-colors"
+                    >
+                      <div className="mb-3 flex items-center gap-3">
+                        <div
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm ${cAvatarBg}`}
+                        >
+                          {cInitials}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold tracking-tight">{cName}</p>
+                          <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+                            {comment.authorTitle || 'Thành viên'} •{' '}
+                            {formatTimeAgo(comment.createdAt)}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold">{cName}</p>
-                        <p className="text-muted-foreground text-[10px]">
-                          {comment.authorTitle || 'Thành viên cộng đồng'} •{' '}
-                          {formatTimeAgo(comment.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-muted-foreground text-sm whitespace-pre-line">
-                      {comment.content}
-                    </p>
-                  </div>
-                );
-              })}
+                      <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-line font-medium">
+                        {comment.content}
+                      </p>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
             </div>
 
-            <div className="border-border/60 mt-5 border-t pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-muted-foreground text-xs font-medium">Viết bình luận</p>
-                <label className="text-muted-foreground flex items-center gap-2 text-xs">
+            <div className="mt-10 border-t border-dashed border-border/60 pt-8">
+              <div className="mb-5 flex items-center justify-between">
+                <h4 className="text-sm font-black uppercase tracking-widest">Viết bình luận</h4>
+                <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={isAnonymous}
                     onChange={(e) => setIsAnonymous(e.target.checked)}
-                    className="accent-primary h-4 w-4"
+                    className="accent-primary h-4 w-4 rounded-md"
                   />
-                  Ẩn danh
-                </label>
+                  <span className="text-xs font-bold select-none">Bình luận ẩn danh</span>
+                </div>
               </div>
 
-              {!isAnonymous && (
-                <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              {!isAnonymous && profile && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
+                >
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.full_name)}`}>
+                    {getInitials(profile.full_name)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold">{profile.full_name}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Bình luận công khai</p>
+                  </div>
+                </motion.div>
+              )}
+
+              {!isAnonymous && !profile && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5 grid gap-4 sm:grid-cols-2"
+                >
                   <input
                     value={commentName}
                     onChange={(e) => setCommentName(e.target.value)}
-                    placeholder="Tên hiển thị"
-                    className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                    placeholder="Tên của bạn"
+                    className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-bold outline-none focus:ring-4"
                   />
                   <input
                     value={commentTitle}
                     onChange={(e) => setCommentTitle(e.target.value)}
                     placeholder="Chức danh"
-                    className="border-input bg-background h-10 w-full rounded-xl border px-3 text-sm"
+                    className="bg-muted focus:ring-primary/20 h-11 w-full rounded-xl border-none px-4 text-sm font-bold outline-none focus:ring-4"
                   />
-                </div>
+                </motion.div>
               )}
 
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-4">
                 <textarea
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
-                  rows={3}
-                  placeholder="Nhập bình luận của bạn..."
-                  className="border-input bg-background w-full rounded-xl border px-3 py-2 text-sm"
+                  rows={4}
+                  placeholder="Chia sẻ suy nghĩ của bạn..."
+                  className="bg-muted focus:ring-primary/20 w-full resize-none rounded-2xl border-none px-5 py-4 text-sm font-medium outline-none focus:ring-4"
                 />
-                <Button
-                  type="button"
-                  variant="hero"
-                  size="sm"
-                  disabled={isSubmitting || !commentInput.trim()}
-                  onClick={handleAddComment}
-                  className="h-fit shrink-0 gap-1.5"
-                >
-                  <Send className="h-4 w-4" />
-                  {isSubmitting ? 'Đang gửi...' : 'Gửi'}
-                </Button>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="hero"
+                    size="default"
+                    disabled={isSubmitting || !commentInput.trim()}
+                    onClick={handleAddComment}
+                    className="gap-2 px-8 font-bold tracking-wide uppercase shadow-lg shadow-primary/25"
+                  >
+                    {isSubmitting ? 'Đang gửi...' : 'Gửi bình luận'}
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="space-y-5">
-          <div className="glass-card rounded-2xl p-5">
-            <h3 className="font-display mb-3 font-semibold">Lưu ý cộng đồng</h3>
-            <ul className="text-muted-foreground space-y-2 text-sm">
-              <li>• Tôn trọng và hỗ trợ nhau khi chia sẻ.</li>
-              <li>• Không đăng thông tin cá nhân nhạy cảm.</li>
-              <li>• Bình luận đúng chủ đề bài viết.</li>
+        <aside className="space-y-6">
+          <div className="bento-card-v2 p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="bg-primary/20 rounded-lg p-2 text-primary">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <h3 className="text-lg font-bold">Lưu ý cộng đồng</h3>
+            </div>
+            <ul className="space-y-4">
+              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+                <span className="text-primary font-black">•</span>
+                <span>Tôn trọng và hỗ trợ nhau khi chia sẻ kinh nghiệm.</span>
+              </li>
+              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+                <span className="text-primary font-black">•</span>
+                <span>Không đăng thông tin cá nhân nhạy cảm của bản thân hoặc người khác.</span>
+              </li>
+              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+                <span className="text-primary font-black">•</span>
+                <span>Bình luận văn minh, đúng chủ đề thảo luận.</span>
+              </li>
             </ul>
           </div>
-        </div>
+
+          <div className="bento-card-v2 bg-gradient-mint/10 border-mint/20 p-6">
+            <h3 className="mb-4 text-lg font-bold">Cần hỗ trợ từ Mentor?</h3>
+            <p className="text-muted-foreground mb-6 text-sm font-medium leading-relaxed">
+              Bạn đang gặp khó khăn trong định hướng? Kết nối ngay với các Mentor giàu kinh nghiệm.
+            </p>
+            <Button
+              onClick={() => router.push('/mentor-matching')}
+              variant="hero"
+              className="w-full font-bold uppercase tracking-wider"
+            >
+              Tìm Mentor ngay
+            </Button>
+          </div>
+        </aside>
       </div>
     </div>
   );

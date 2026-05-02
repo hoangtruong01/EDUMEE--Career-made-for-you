@@ -66,6 +66,9 @@ export class CommunityPost {
   @Prop({ type: Number, default: 0 })
   commentCount!: number;
 
+  @Prop({ type: [Types.ObjectId], default: [], ref: 'User' })
+  likedUserIds!: Types.ObjectId[];
+
   @Prop({ type: [CommunityCommentSchema], default: [] })
   comments!: CommunityComment[];
 

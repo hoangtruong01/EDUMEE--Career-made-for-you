@@ -94,4 +94,8 @@ export const communityService = {
   async deletePost(accessToken: string, postId: string): Promise<CommunityPost> {
     return apiClient.delete<CommunityPost>(`/community-posts/${postId}`, accessToken);
   },
+
+  async likePost(accessToken: string, postId: string): Promise<CommunityPost> {
+    return apiClient.post<CommunityPost>(`/community-posts/${postId}/like`, {}, accessToken);
+  },
 };
