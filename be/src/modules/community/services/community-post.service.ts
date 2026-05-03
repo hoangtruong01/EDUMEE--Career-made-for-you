@@ -131,6 +131,7 @@ export class CommunityPostService {
     }
 
     const comment = {
+      _id: new Types.ObjectId(),
       authorId: new Types.ObjectId(userId),
       authorName: dto.authorName.trim(),
       authorTitle: dto.authorTitle?.trim() || undefined,
