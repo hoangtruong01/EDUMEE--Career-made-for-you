@@ -31,6 +31,13 @@ export class CommunityPostController {
     return this.communityPostService.create(getAuthUserId(user), body);
   }
 
+  @Get('trending-hashtags')
+  @ApiOperation({ summary: 'Get trending hashtags' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Trending hashtags retrieved successfully' })
+  getTrendingHashtags(@Query('limit') limit?: number) {
+    return this.communityPostService.getTrendingHashtags(limit);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get community posts' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Posts retrieved successfully' })
@@ -82,4 +89,16 @@ export class CommunityPostController {
   toggleLike(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     return this.communityPostService.toggleLike(id, getAuthUserId(user));
   }
+
+  @Delete(':id/comments/:commentId')
+  @ApiOperation({ summary: 'Delete a comment from a post' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Comment deleted successfully' })
+  removeComment(
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.communityPostService.removeComment(id, commentId, getAuthUserId(user), isAdmin(user));
+  }
+
 }

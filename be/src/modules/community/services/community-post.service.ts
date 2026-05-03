@@ -213,4 +213,56 @@ export class CommunityPostService {
         .exec())!;
     }
   }
+
+  async removeComment(
+    postId: string,
+    commentId: string,
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<CommunityPostDocument> {
+    if (!Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid postId');
+    }
+    if (!Types.ObjectId.isValid(commentId)) {
+      throw new BadRequestException('Invalid commentId');
+    }
+
+    const post = await this.communityPostModel.findById(postId).exec();
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const comment = post.comments.find((c: any) => c._id.toString() === commentId);
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const isPostAuthor = post.authorId.toString() === userId;
+    const isCommentAuthor = comment.authorId.toString() === userId;
+
+    if (!isAdmin && !isPostAuthor && !isCommentAuthor) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    return (await this.communityPostModel
+      .findByIdAndUpdate(
+        postId,
+        { $pull: { comments: { _id: new Types.ObjectId(commentId) } }, $inc: { commentCount: -1 } },
+        { new: true },
+      )
+      .exec())!;
+  }
+
+  async getTrendingHashtags(limit = 10): Promise<{ tag: string; count: number }[]> {
+    const result = await this.communityPostModel.aggregate([
+      { $unwind: '$hashtags' },
+      { $group: { _id: '$hashtags', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit },
+      { $project: { tag: '$_id', count: 1, _id: 0 } },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return result as any;
+  }
 }

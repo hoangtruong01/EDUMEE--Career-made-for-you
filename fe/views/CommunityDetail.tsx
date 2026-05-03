@@ -9,7 +9,7 @@ import {
 } from '@/lib/community.service';
 import { profileService, type UserProfile } from '@/lib/profile.service';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Hash, Heart, MessageCircle, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bookmark, Hash, Heart, MessageCircle, MoreVertical, Send, Share2, Sparkles } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -65,6 +65,7 @@ const CommunityDetail = () => {
   const [commentInput, setCommentInput] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeCommentMenu, setActiveCommentMenu] = useState<string | null>(null);
 
   const loadPost = useCallback(async () => {
     if (!accessToken || !postId) return;
@@ -138,6 +139,22 @@ const CommunityDetail = () => {
     }
   };
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (!accessToken || !postId) return;
+    const ok = window.confirm('Bạn có chắc chắn muốn xoá bình luận này?');
+    if (!ok) return;
+
+    try {
+      const updated = await communityService.deleteComment(accessToken, postId, commentId);
+      setPost(updated);
+      setComments(updated.comments || []);
+      setActiveCommentMenu(null);
+    } catch (err) {
+      console.error('Delete comment failed', err);
+      setError('Không thể xoá bình luận. Vui lòng thử lại sau.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
@@ -157,6 +174,25 @@ const CommunityDetail = () => {
   const authorName = post.authorName || 'Thành viên EDUMEE';
   const avatarBg = getAvatarColor(authorName);
   const initials = getInitials(authorName);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let decodedToken: any = null;
+  if (accessToken) {
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length === 3) {
+         
+        decodedToken = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentUserId = profile?.userId?.id || (profile?.userId as any)?._id || decodedToken?.user_id || decodedToken?.id;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userRole = (profile?.userId as any)?.role || decodedToken?.role;
 
   return (
     <div className="aurora-bg min-h-screen pb-24">
@@ -213,13 +249,30 @@ const CommunityDetail = () => {
                   </p>
                 </div>
               </div>
-              <div className="text-muted-foreground flex items-center gap-6">
+              <div className="flex items-center gap-6 text-muted-foreground">
                 <button
                   onClick={handleLike}
-                  className={`flex items-center gap-2 transition-colors ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'text-rose-500' : 'hover:text-rose-500'}`}
+                  className={`flex items-center gap-2 transition-colors ${
+                    post.likedUserIds?.some((id) => String(id) === String(currentUserId))
+                      ? 'text-rose-500'
+                      : 'hover:text-rose-500'
+                  }`}
                 >
-                  <div className={`rounded-full p-2 ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'bg-rose-500/10' : 'bg-muted/50'}`}>
-                    <Heart className={`h-4 w-4 ${post.likedUserIds?.some((id) => String(id) === profile?.userId?.id) ? 'fill-current' : ''}`} />
+                  <div
+                    className={`rounded-full p-2 ${
+                      post.likedUserIds?.some((id) => String(id) === String(currentUserId))
+                        ? 'bg-rose-500/10'
+                        : 'bg-muted/50'
+                    }`}
+                  >
+                    <Heart
+                      className={`h-4 w-4 ${
+                        post.likedUserIds?.some((id) => String(id) === String(currentUserId))
+                          ? 'fill-current'
+                          : ''
+                      }`}
+
+                    />
                   </div>
                   <span className="text-sm font-black">{post.likeCount ?? 0}</span>
                 </button>
@@ -228,6 +281,41 @@ const CommunityDetail = () => {
                     <MessageCircle className="h-4 w-4" />
                   </div>
                   <span className="text-sm font-black">{post.commentCount ?? 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Logic for bookmark
+                    }}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    title="Lưu bài viết"
+                  >
+                    <div className="bg-muted/50 hover:bg-primary/10 rounded-full p-2 transition-colors">
+                      <Bookmark className="h-4 w-4" />
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (navigator.share) {
+                        navigator.share({
+                          title: post.title,
+                          text: post.content,
+                          url: window.location.href,
+                        }).catch(() => {});
+                      } else {
+                        void navigator.clipboard.writeText(window.location.href);
+                        alert('Đã sao chép liên kết vào bộ nhớ tạm!');
+                      }
+                    }}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    title="Chia sẻ"
+                  >
+                    <div className="bg-muted/50 hover:bg-primary/10 rounded-full p-2 transition-colors">
+                      <Share2 className="h-4 w-4" />
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -279,21 +367,64 @@ const CommunityDetail = () => {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       key={`${comment.id || idx}`}
-                      className="border-border/60 bg-muted/20 hover:bg-muted/40 rounded-2xl border p-5 transition-colors"
+                      className="border-border/60 bg-muted/20 hover:bg-muted/40 relative rounded-2xl border p-5 transition-colors"
                     >
-                      <div className="mb-3 flex items-center gap-3">
-                        <div
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm ${cAvatarBg}`}
-                        >
-                          {cInitials}
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm ${cAvatarBg}`}
+                          >
+                            {cInitials}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold tracking-tight">{cName}</p>
+                            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+                              {comment.authorTitle || 'Thành viên'} •{' '}
+                              {formatTimeAgo(comment.createdAt)}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs font-bold tracking-tight">{cName}</p>
-                          <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
-                            {comment.authorTitle || 'Thành viên'} •{' '}
-                            {formatTimeAgo(comment.createdAt)}
-                          </p>
-                        </div>
+
+                        {(() => {
+                          const isCommentAuthor = currentUserId && comment.authorId && String(currentUserId) === String(comment.authorId);
+                          const isPostAuthor = currentUserId && post.authorId && String(currentUserId) === String(post.authorId);
+                          const isAdmin = userRole === 'admin';
+                          
+                          return (isCommentAuthor || isPostAuthor || isAdmin) && (
+                            <div className="relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const cId = comment.id || comment._id;
+                                if (cId) setActiveCommentMenu(activeCommentMenu === cId ? null : cId);
+                              }}
+                              className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            <AnimatePresence>
+                              {activeCommentMenu === (comment.id || comment._id) && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                                  className="border-border bg-popover shadow-elevated absolute right-0 z-10 mt-1 w-28 rounded-xl border p-1"
+                                >
+                                  <button
+                                    onClick={() => {
+                                      const cId = comment.id || comment._id;
+                                      if (cId) handleDeleteComment(cId);
+                                    }}
+                                    className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors"
+                                  >
+                                    Xóa
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-line font-medium">
                         {comment.content}

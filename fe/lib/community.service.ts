@@ -2,6 +2,8 @@ import { apiClient } from '@/lib/api-client';
 
 export interface CommunityComment {
   id?: string;
+  _id?: string;
+  authorId?: string;
   authorName: string;
   authorTitle?: string;
   content: string;
@@ -11,6 +13,7 @@ export interface CommunityComment {
 export interface CommunityPost {
   id?: string;
   _id?: string;
+  authorId?: string;
   authorName: string;
   authorTitle?: string;
   title: string;
@@ -98,5 +101,22 @@ export const communityService = {
 
   async likePost(accessToken: string, postId: string): Promise<CommunityPost> {
     return apiClient.post<CommunityPost>(`/community-posts/${postId}/like`, {}, accessToken);
+  },
+
+  async deleteComment(accessToken: string, postId: string, commentId: string): Promise<CommunityPost> {
+    return apiClient.delete<CommunityPost>(
+      `/community-posts/${postId}/comments/${commentId}`,
+      accessToken,
+    );
+  },
+
+  async getTrendingHashtags(
+    accessToken: string,
+    limit = 10,
+  ): Promise<{ tag: string; count: number }[]> {
+    return apiClient.get<{ tag: string; count: number }[]>(
+      `/community-posts/trending-hashtags?limit=${limit}`,
+      accessToken,
+    );
   },
 };

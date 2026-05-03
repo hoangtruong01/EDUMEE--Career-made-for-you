@@ -40,7 +40,8 @@ const CATEGORY_STYLES: Record<string, string> = {
   'Tuyển dụng': 'bg-coral-light text-coral',
 };
 
-const trending = [
+// Initial mock tags, will be replaced by real data
+const initialTrending = [
   '#kysuphanmem',
   '#datascience',
   '#uxdesign',
@@ -164,6 +165,38 @@ const PostCard = ({
           <span className="text-muted-foreground text-xs font-medium">
             {formatTimeAgo(post.createdAt)}
           </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Logic for bookmark
+              }}
+              className="text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full p-2 transition-colors"
+              title="Lưu bài viết"
+            >
+              <Bookmark className="h-4 w-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Logic for share
+                if (navigator.share) {
+                  navigator.share({
+                    title: post.title,
+                    text: post.content,
+                    url: `${window.location.origin}/community/${postId}`,
+                  }).catch(console.error);
+                } else {
+                  void navigator.clipboard.writeText(`${window.location.origin}/community/${postId}`);
+                  alert('Đã sao chép liên kết vào bộ nhớ tạm!');
+                }
+              }}
+              className="text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-full p-2 transition-colors"
+              title="Chia sẻ"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+          </div>
           <div className="relative">
             <button
               type="button"
@@ -249,19 +282,10 @@ const PostCard = ({
             <span className="text-xs font-bold">{post.commentCount ?? 0}</span>
           </button>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="text-muted-foreground hover:bg-muted hover:text-primary rounded-full p-2 transition-colors"
-          >
-            <Bookmark className="h-4 w-4" />
-          </button>
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="text-muted-foreground hover:bg-muted hover:text-primary rounded-full p-2 transition-colors"
-          >
-            <Share2 className="h-4 w-4" />
-          </button>
+        <div className="flex items-center gap-3">
+          <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+            {post.category}
+          </span>
         </div>
       </div>
     </motion.div>
@@ -288,6 +312,7 @@ const Community = () => {
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [menuPostId, setMenuPostId] = useState<string | null>(null);
+  const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([]);
 
   const postCategories = useMemo(() => CATEGORIES.filter((cat) => cat !== 'Tất cả'), []);
 
@@ -324,6 +349,16 @@ const Community = () => {
       }
     };
     void fetchProfile();
+
+    const fetchTrending = async () => {
+      try {
+        const tags = await communityService.getTrendingHashtags(accessToken);
+        setTrendingTags(tags);
+      } catch (err) {
+        console.error('Failed to fetch trending hashtags', err);
+      }
+    };
+    void fetchTrending();
 
     return () => clearTimeout(timer);
   }, [accessToken, loadPosts]);
@@ -459,6 +494,23 @@ const Community = () => {
   };
 
   const filteredPosts = posts;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let decodedToken: any = null;
+  if (accessToken) {
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length === 3) {
+         
+        decodedToken = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentUserId = profile?.userId?.id || (profile?.userId as any)?._id || decodedToken?.user_id || decodedToken?.id;
 
   return (
     <div className="aurora-bg min-h-screen pb-20">
@@ -751,7 +803,7 @@ const Community = () => {
                     onDelete={handleDeletePost}
                     isMenuOpen={menuPostId === (post.id || post._id)}
                     onLike={handleLike}
-                    currentUserId={profile?.userId?.id}
+                    currentUserId={currentUserId}
                   />
                 ))
               )}
@@ -782,16 +834,25 @@ const Community = () => {
                 <h3 className="text-lg font-bold">Xu hướng 🔥</h3>
               </div>
               <ul className="space-y-4">
-                {trending.map((tag, i) => (
-                  <li key={tag} className="group flex items-center gap-4">
-                    <span className="bg-muted text-muted-foreground flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:bg-primary group-hover:text-white">
-                      {i + 1}
-                    </span>
-                    <button className="text-foreground hover:text-primary text-sm font-bold transition-colors">
-                      {tag}
-                    </button>
-                  </li>
-                ))}
+                {(trendingTags.length > 0 ? trendingTags : initialTrending.map(t => ({ tag: t, count: 0 }))).map((item, i) => {
+                  const tag = typeof item === 'string' ? item : item.tag;
+                  return (
+                    <li key={tag} className="group flex items-center gap-4">
+                      <span className="bg-muted text-muted-foreground flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:bg-primary group-hover:text-white">
+                        {i + 1}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          setSearch(tag);
+                          setActiveCategory('Tất cả');
+                        }}
+                        className="text-foreground hover:text-primary text-sm font-bold transition-colors"
+                      >
+                        {tag}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 

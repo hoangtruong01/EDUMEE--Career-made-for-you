@@ -3,7 +3,7 @@ import { Document, Types } from 'mongoose';
 
 export type CommunityPostDocument = CommunityPost & Document;
 
-@Schema({ _id: false })
+@Schema()
 class CommunityComment {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   authorId!: Types.ObjectId;
@@ -22,6 +22,20 @@ class CommunityComment {
 }
 
 const CommunityCommentSchema = SchemaFactory.createForClass(CommunityComment);
+
+CommunityCommentSchema.set('toJSON', {
+  virtuals: true,
+  transform: (_doc: any, ret: any): any => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    ret.id = ret._id;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    delete ret._id;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    delete ret.__v;
+     
+    return ret;
+  },
+});
 
 @Schema({
   timestamps: true,
