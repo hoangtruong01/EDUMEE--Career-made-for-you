@@ -213,54 +213,55 @@ const Profile = () => {
     switch (activeModal) {
       case 'Thông tin tài khoản':
         return (
-          <div className="space-y-4 text-zinc-900 dark:text-white">
+          <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Họ và tên</label>
+              <label className="text-foreground text-sm font-medium">Họ và tên</label>
               <input
                 type="text"
                 value={formData.fullName}
                 readOnly
-                className="w-full cursor-not-allowed rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm opacity-70 outline-none dark:border-zinc-700 dark:bg-zinc-800"
+                className="border-input bg-muted text-muted-foreground w-full cursor-not-allowed rounded-xl border px-4 py-2 text-sm outline-none"
               />
               <p className="text-muted-foreground text-[10px] italic">
                 * Tên được quản lý bởi hệ thống đăng ký
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-foreground text-sm font-medium">Email</label>
               <input
                 type="email"
                 value={profile?.userId?.email || ''}
                 readOnly
-                className="w-full cursor-not-allowed rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm opacity-70 outline-none dark:border-zinc-700 dark:bg-zinc-800"
+                className="border-input bg-muted text-muted-foreground w-full cursor-not-allowed rounded-xl border px-4 py-2 text-sm outline-none"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Số điện thoại</label>
+              <label className="text-foreground text-sm font-medium">Số điện thoại</label>
               <input
                 type="text"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 placeholder="VD: 0987654321"
-                className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Thành phố</label>
+              <label className="text-foreground text-sm font-medium">Thành phố</label>
               <input
                 type="text"
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                 placeholder="VD: Hà Nội"
-                className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Trình độ học vấn</label>
+              <label className="text-foreground text-sm font-medium">Trình độ học vấn</label>
               <select
                 value={formData.educationLevel}
                 onChange={(e) => setFormData({ ...formData, educationLevel: e.target.value })}
-                className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
+                className="border-input bg-background text-foreground w-full appearance-none rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
               >
                 <option value="">Chọn trình độ</option>
                 <option value="elementary">Tiểu học</option>
@@ -276,13 +277,13 @@ const Profile = () => {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Giới thiệu bản thân</label>
+              <label className="text-foreground text-sm font-medium">Giới thiệu bản thân</label>
               <textarea
                 value={formData.bio || ''}
                 onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                 rows={3}
                 placeholder="Chia sẻ một chút về đam mê của bạn..."
-                className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
+                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full resize-none rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
               />
             </div>
             <Button
