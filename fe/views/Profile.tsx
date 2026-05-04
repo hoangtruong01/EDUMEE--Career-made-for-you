@@ -3,13 +3,20 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
+import { assessmentService, CareerFitResult } from '@/lib/assessment.service';
+import { profileService, UserProfile } from '@/lib/profile.service';
+import { userService } from '@/lib/user.service';
 import { motion } from 'framer-motion';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import {
   Award,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Download,
   FileText,
+  Loader2,
   LogOut,
   Palette,
   Settings,
@@ -17,32 +24,26 @@ import {
   Target,
   User,
   X,
-  Loader2,
-  Download
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
-import { profileService, UserProfile } from '@/lib/profile.service';
-import { assessmentService, CareerFitResult } from '@/lib/assessment.service';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 const Profile = () => {
   const router = useRouter();
   const { logout, accessToken } = useAuth();
   const { setTheme } = useTheme();
-  
+
   const [mounted, setMounted] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [results, setResults] = useState<CareerFitResult[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Form states
   const [formData, setFormData] = useState({
     fullName: '',
@@ -66,17 +67,18 @@ const Profile = () => {
         return;
       }
       try {
-        const [profData, resData] = await Promise.all([
+        const [profData, resData, userData] = await Promise.all([
           profileService.getMyProfile(accessToken),
-          assessmentService.getMyResults(accessToken)
+          assessmentService.getMyResults(accessToken),
+          userService.getMe(accessToken),
         ]);
         console.log('Profile Data Loaded:', profData);
         setProfile(profData);
         setResults(resData);
         if (profData && typeof profData === 'object') {
           setFormData({
-            fullName: profData?.userId?.name || '',
-            phone: profData?.phone || '',
+            fullName: userData?.name || profData?.userId?.name || '',
+            phone: userData?.phone_number || profData?.phone || '',
             city: profData?.city || '',
             educationLevel: profData?.educationLevel || '',
             bio: profData?.bio || '',
@@ -105,7 +107,7 @@ const Profile = () => {
   const handleThemeChange = (newTheme: string) => {
     setCurrentTheme(newTheme);
     if (setTheme) setTheme(newTheme);
-    
+
     if (typeof window !== 'undefined') {
       const root = window.document.documentElement;
       if (newTheme === 'dark') {
@@ -129,17 +131,28 @@ const Profile = () => {
     if (!accessToken) return;
     setIsSaving(true);
     try {
-      await profileService.updateMyProfile(accessToken, {
-        phone: formData.phone,
-        city: formData.city,
-        educationLevel: formData.educationLevel,
-        bio: formData.bio,
-      });
+      await Promise.all([
+        profileService.updateMyProfile(accessToken, {
+          phone: formData.phone,
+          city: formData.city,
+          educationLevel: formData.educationLevel,
+          bio: formData.bio,
+        }),
+        userService.updateMe(accessToken, { phone_number: formData.phone }),
+      ]);
       toast.success('Cập nhật hồ sơ thành công');
       setActiveModal(null);
       // Refresh data
-      const updated = await profileService.getMyProfile(accessToken);
-      setProfile(updated);
+      const [updatedProfile, updatedUser] = await Promise.all([
+        profileService.getMyProfile(accessToken),
+        userService.getMe(accessToken),
+      ]);
+      setProfile(updatedProfile);
+      setFormData((prev) => ({
+        ...prev,
+        fullName: updatedUser?.name || prev.fullName,
+        phone: updatedUser?.phone_number || prev.phone,
+      }));
     } catch (err) {
       toast.error('Cập nhật thất bại');
       console.error(err);
@@ -167,18 +180,21 @@ const Profile = () => {
             if (computedStyle.color.includes('lab') || computedStyle.color.includes('oklch')) {
               el.style.color = '#000000';
             }
-            if (computedStyle.backgroundColor.includes('lab') || computedStyle.backgroundColor.includes('oklch')) {
+            if (
+              computedStyle.backgroundColor.includes('lab') ||
+              computedStyle.backgroundColor.includes('oklch')
+            ) {
               el.style.backgroundColor = 'transparent';
             }
           }
-        }
+        },
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
+
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`EDUMEE_Report_${profile?.userId?.name?.replace(/\s+/g, '_') || 'User'}.pdf`);
       toast.success('Báo cáo đã được tải về');
@@ -206,7 +222,9 @@ const Profile = () => {
                 readOnly
                 className="w-full cursor-not-allowed rounded-xl border border-zinc-300 bg-zinc-100 px-4 py-2 text-sm opacity-70 outline-none dark:border-zinc-700 dark:bg-zinc-800"
               />
-              <p className="text-[10px] text-muted-foreground italic">* Tên được quản lý bởi hệ thống đăng ký</p>
+              <p className="text-muted-foreground text-[10px] italic">
+                * Tên được quản lý bởi hệ thống đăng ký
+              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Email</label>
@@ -222,7 +240,7 @@ const Profile = () => {
               <input
                 type="text"
                 value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 placeholder="VD: 0987654321"
                 className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
               />
@@ -232,7 +250,7 @@ const Profile = () => {
               <input
                 type="text"
                 value={formData.city}
-                onChange={(e) => setFormData({...formData, city: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                 placeholder="VD: Hà Nội"
                 className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
               />
@@ -241,15 +259,19 @@ const Profile = () => {
               <label className="text-sm font-medium">Trình độ học vấn</label>
               <select
                 value={formData.educationLevel}
-                onChange={(e) => setFormData({...formData, educationLevel: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, educationLevel: e.target.value })}
                 className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
               >
                 <option value="">Chọn trình độ</option>
-                <option value="high_school">Học sinh THPT</option>
-                <option value="college">Sinh viên Cao đẳng</option>
-                <option value="bachelor">Sinh viên Đại học</option>
+                <option value="elementary">Tiểu học</option>
+                <option value="middle_school">THCS</option>
+                <option value="high_school">THPT</option>
+                <option value="college">Cao đẳng</option>
+                <option value="bachelor">Đại học</option>
                 <option value="master">Thạc sĩ</option>
+                <option value="phd">Tiến sĩ</option>
                 <option value="vocational">Trung cấp nghề</option>
+                <option value="certificate">Chứng chỉ</option>
                 <option value="other">Khác</option>
               </select>
             </div>
@@ -257,16 +279,16 @@ const Profile = () => {
               <label className="text-sm font-medium">Giới thiệu bản thân</label>
               <textarea
                 value={formData.bio || ''}
-                onChange={(e) => setFormData({...formData, bio: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                 rows={3}
                 placeholder="Chia sẻ một chút về đam mê của bạn..."
-                className="w-full rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700 resize-none"
+                className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600 dark:border-zinc-700"
               />
             </div>
             <Button
               onClick={handleUpdateProfile}
               disabled={isSaving}
-              className="mt-4 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-700 h-11"
+              className="mt-4 h-11 w-full rounded-xl bg-violet-600 text-white hover:bg-violet-700"
             >
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Lưu thay đổi'}
             </Button>
@@ -277,24 +299,27 @@ const Profile = () => {
         return (
           <div className="space-y-6 py-4 text-center text-zinc-900 dark:text-white">
             <div className="bg-primary/10 mx-auto flex h-20 w-20 items-center justify-center rounded-full">
-              <FileText className="h-10 w-10 text-primary" />
+              <FileText className="text-primary h-10 w-10" />
             </div>
             <div>
               <h3 className="text-lg font-bold">Xuất báo cáo hướng nghiệp</h3>
               <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                Hệ thống sẽ tổng hợp kết quả phân tích AI và thông tin lộ trình của bạn vào một file PDF chuyên nghiệp.
+                Hệ thống sẽ tổng hợp kết quả phân tích AI và thông tin lộ trình của bạn vào một file
+                PDF chuyên nghiệp.
               </p>
             </div>
-            
-            <div className="rounded-xl border border-border bg-muted/30 p-4 text-left">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Thông tin bao gồm:</p>
+
+            <div className="border-border bg-muted/30 rounded-xl border p-4 text-left">
+              <p className="text-muted-foreground mb-2 text-[11px] font-bold tracking-wider uppercase">
+                Thông tin bao gồm:
+              </p>
               <ul className="space-y-1.5">
                 {[
                   'Hồ sơ năng lực cá nhân',
                   'Phân tích Top 3 ngành nghề phù hợp',
                   'Lộ trình học tập chi tiết từ AI',
-                  'Dự báo xu hướng thị trường 2026'
-                ].map(item => (
+                  'Dự báo xu hướng thị trường 2026',
+                ].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-xs">
                     <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                     {item}
@@ -306,7 +331,7 @@ const Profile = () => {
             <Button
               onClick={exportPDF}
               disabled={isExporting || results.length === 0}
-              className="w-full gap-2 rounded-xl bg-violet-600 text-white hover:bg-violet-700 h-11 shadow-lg shadow-violet-500/20"
+              className="h-11 w-full gap-2 rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-500/20 hover:bg-violet-700"
             >
               {isExporting ? (
                 <>
@@ -321,7 +346,9 @@ const Profile = () => {
               )}
             </Button>
             {results.length === 0 && (
-              <p className="text-[10px] text-red-500 italic">Bạn cần thực hiện bài trắc nghiệm để có dữ liệu xuất báo cáo.</p>
+              <p className="text-[10px] text-red-500 italic">
+                Bạn cần thực hiện bài trắc nghiệm để có dữ liệu xuất báo cáo.
+              </p>
             )}
           </div>
         );
@@ -337,10 +364,18 @@ const Profile = () => {
                   onClick={() => handleThemeChange(t)}
                   className={`cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 ${currentTheme === t ? 'border-violet-600 bg-violet-50 dark:bg-violet-900/20' : 'border-zinc-200 hover:border-violet-400 dark:border-zinc-700'}`}
                 >
-                  <div className={`mx-auto mb-2 h-8 w-8 rounded-full border shadow-sm ${
-                    t === 'light' ? 'bg-white' : t === 'dark' ? 'bg-zinc-800' : 'bg-gradient-to-tr from-zinc-200 to-zinc-700'
-                  }`}></div>
-                  <span className={`text-sm font-medium capitalize ${currentTheme === t ? 'text-violet-600' : 'text-zinc-500'}`}>
+                  <div
+                    className={`mx-auto mb-2 h-8 w-8 rounded-full border shadow-sm ${
+                      t === 'light'
+                        ? 'bg-white'
+                        : t === 'dark'
+                          ? 'bg-zinc-800'
+                          : 'bg-linear-to-tr from-zinc-200 to-zinc-700'
+                    }`}
+                  ></div>
+                  <span
+                    className={`text-sm font-medium capitalize ${currentTheme === t ? 'text-violet-600' : 'text-zinc-500'}`}
+                  >
                     {t === 'light' ? 'Sáng' : t === 'dark' ? 'Tối' : 'Hệ thống'}
                   </span>
                 </div>
@@ -356,7 +391,7 @@ const Profile = () => {
               <Settings className="h-10 w-10 text-zinc-400" />
             </div>
             <h3 className="text-lg font-bold">Chức năng đang phát triển</h3>
-            <p className="mt-2 max-w-[250px] text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="mt-2 max-w-62.5 text-sm text-zinc-500 dark:text-zinc-400">
               Tính năng này sẽ sớm được cập nhật trong phiên bản tiếp theo.
             </p>
           </div>
@@ -367,7 +402,7 @@ const Profile = () => {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="text-primary h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -375,61 +410,97 @@ const Profile = () => {
   return (
     <div className="relative min-h-screen pb-20">
       {/* Hidden Report for PDF Export */}
-      <div className="fixed -left-[3000px] top-0 overflow-hidden">
-        <div 
-          ref={reportRef} 
-          className="w-[210mm] min-h-[297mm] p-12 bg-white text-zinc-950 font-sans"
+      <div className="fixed top-0 -left-750 overflow-hidden">
+        <div
+          ref={reportRef}
+          className="min-h-[297mm] w-[210mm] bg-white p-12 font-sans text-zinc-950"
           style={{ colorScheme: 'light', background: '#ffffff', color: '#000000' }}
         >
-          <div className="flex justify-between items-start pb-8 mb-8" style={{ borderBottom: '2px solid #7c3aed' }}>
+          <div
+            className="mb-8 flex items-start justify-between pb-8"
+            style={{ borderBottom: '2px solid #7c3aed' }}
+          >
             <div>
-              <h1 className="text-4xl font-black mb-2" style={{ color: '#7c3aed' }}>EDUMEE</h1>
-              <p className="text-sm font-bold tracking-widest uppercase" style={{ color: '#000000' }}>Career Guidance Analysis Report</p>
+              <h1 className="mb-2 text-4xl font-black" style={{ color: '#7c3aed' }}>
+                EDUMEE
+              </h1>
+              <p
+                className="text-sm font-bold tracking-widest uppercase"
+                style={{ color: '#000000' }}
+              >
+                Career Guidance Analysis Report
+              </p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-bold text-zinc-500">DATE: {new Date().toLocaleDateString('vi-VN')}</p>
-              <p className="text-xs font-bold text-zinc-500">ID: #{profile?.id?.slice(-8).toUpperCase() || 'N/A'}</p>
+              <p className="text-xs font-bold text-zinc-500">
+                DATE: {new Date().toLocaleDateString('vi-VN')}
+              </p>
+              <p className="text-xs font-bold text-zinc-500">
+                ID: #{profile?.id?.slice(-8).toUpperCase() || 'N/A'}
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 mb-12">
-            <div className="p-6 rounded-2xl border border-zinc-200" style={{ background: '#f9fafb' }}>
-              <h3 className="text-lg font-bold mb-4" style={{ color: '#6d28d9' }}>Thông tin cá nhân</h3>
+          <div className="mb-12 grid grid-cols-2 gap-8">
+            <div
+              className="rounded-2xl border border-zinc-200 p-6"
+              style={{ background: '#f9fafb' }}
+            >
+              <h3 className="mb-4 text-lg font-bold" style={{ color: '#6d28d9' }}>
+                Thông tin cá nhân
+              </h3>
               <div className="space-y-2">
-                <p className="text-sm"><strong>Họ tên:</strong> {profile?.userId?.name || 'N/A'}</p>
-                <p className="text-sm"><strong>Email:</strong> {profile?.userId?.email || 'N/A'}</p>
-                <p className="text-sm"><strong>Thành phố:</strong> {profile?.city || 'N/A'}</p>
-                <p className="text-sm"><strong>Trình độ:</strong> {profile?.educationLevel || 'N/A'}</p>
+                <p className="text-sm">
+                  <strong>Họ tên:</strong> {profile?.userId?.name || 'N/A'}
+                </p>
+                <p className="text-sm">
+                  <strong>Email:</strong> {profile?.userId?.email || 'N/A'}
+                </p>
+                <p className="text-sm">
+                  <strong>Thành phố:</strong> {profile?.city || 'N/A'}
+                </p>
+                <p className="text-sm">
+                  <strong>Trình độ:</strong> {profile?.educationLevel || 'N/A'}
+                </p>
               </div>
             </div>
-            <div className="p-6 rounded-2xl text-white shadow-xl" style={{ background: '#7c3aed' }}>
-              <h3 className="text-lg font-bold mb-2">Tổng kết sự nghiệp</h3>
-              <p className="text-xs opacity-90 leading-relaxed italic">
-                &quot;{profile?.bio || 'Hành trình khám phá tương lai bắt đầu từ những lựa chọn đúng đắn hôm nay.'}&quot;
+            <div className="rounded-2xl p-6 text-white shadow-xl" style={{ background: '#7c3aed' }}>
+              <h3 className="mb-2 text-lg font-bold">Tổng kết sự nghiệp</h3>
+              <p className="text-xs leading-relaxed italic opacity-90">
+                &quot;
+                {profile?.bio ||
+                  'Hành trình khám phá tương lai bắt đầu từ những lựa chọn đúng đắn hôm nay.'}
+                &quot;
               </p>
             </div>
           </div>
 
           <div className="mb-12">
-            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+            <h3 className="mb-6 flex items-center gap-2 text-xl font-black">
               <Target className="h-6 w-6" style={{ color: '#7c3aed' }} />
               TOP 3 NGÀNH NGHỀ PHÙ HỢP NHẤT
             </h3>
             <div className="space-y-6">
               {results.slice(0, 3).map((res, i) => (
-                <div key={i} className="pl-6 py-2" style={{ borderLeft: '4px solid #7c3aed' }}>
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-lg font-bold">{i+1}. {res.careerTitle}</h4>
-                    <span className="font-black px-3 py-1 rounded-full text-xs" style={{ background: '#ede9fe', color: '#6d28d9' }}>
+                <div key={i} className="py-2 pl-6" style={{ borderLeft: '4px solid #7c3aed' }}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-lg font-bold">
+                      {i + 1}. {res.careerTitle}
+                    </h4>
+                    <span
+                      className="rounded-full px-3 py-1 text-xs font-black"
+                      style={{ background: '#ede9fe', color: '#6d28d9' }}
+                    >
                       ĐỘ PHÙ HỢP: {Math.round(res.overallFitScore || 0)}%
                     </span>
                   </div>
-                  <p className="text-sm text-zinc-600 leading-relaxed mb-4">
-                    {res.aiExplanation}
-                  </p>
+                  <p className="mb-4 text-sm leading-relaxed text-zinc-600">{res.aiExplanation}</p>
                   <div className="flex flex-wrap gap-2">
-                    {res.strengths?.map(s => (
-                      <span key={s} className="bg-zinc-100 text-[10px] font-bold px-2 py-1 rounded uppercase">
+                    {res.strengths?.map((s) => (
+                      <span
+                        key={s}
+                        className="rounded bg-zinc-100 px-2 py-1 text-[10px] font-bold uppercase"
+                      >
                         ✓ {s}
                       </span>
                     ))}
@@ -439,9 +510,13 @@ const Profile = () => {
             </div>
           </div>
 
-          <div className="mt-auto pt-12 border-t border-zinc-100 text-center">
-            <p className="text-[10px] text-zinc-400 font-medium">Báo cáo được tạo tự động bởi Hệ thống Hướng nghiệp Thông minh Edumee AI</p>
-            <p className="text-[10px] text-zinc-400 italic">© 2026 EDUMEE - Bản quyền thuộc về đội ngũ phát triển Edumee Team</p>
+          <div className="mt-auto border-t border-zinc-100 pt-12 text-center">
+            <p className="text-[10px] font-medium text-zinc-400">
+              Báo cáo được tạo tự động bởi Hệ thống Hướng nghiệp Thông minh Edumee AI
+            </p>
+            <p className="text-[10px] text-zinc-400 italic">
+              © 2026 EDUMEE - Bản quyền thuộc về đội ngũ phát triển Edumee Team
+            </p>
           </div>
         </div>
       </div>
@@ -453,19 +528,21 @@ const Profile = () => {
             animate={{ opacity: 1, y: 0 }}
             className="flex items-center gap-4"
           >
-            <div className="bg-gradient-hero flex h-16 w-16 items-center justify-center rounded-2xl text-2xl shadow-xl shadow-primary/20">
+            <div className="bg-gradient-hero shadow-primary/20 flex h-16 w-16 items-center justify-center rounded-2xl text-2xl shadow-xl">
               {profile?.gender === 'female' ? '👩‍🎓' : '👨‍🎓'}
             </div>
             <div>
-              <h1 className="font-display text-xl font-bold">{profile?.userId?.name || 'Người dùng Edumee'}</h1>
+              <h1 className="font-display text-xl font-bold">
+                {profile?.userId?.name || 'Người dùng Edumee'}
+              </h1>
               <p className="text-muted-foreground text-sm">
                 {profile?.educationLevel || 'Sinh viên'} {profile?.city ? `· ${profile.city}` : ''}
               </p>
               <div className="mt-1 flex gap-2">
-                <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-black uppercase tracking-wider">
+                <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-black tracking-wider uppercase">
                   Nhà Khám Phá
                 </Badge>
-                <Badge className="bg-amber-400/10 text-amber-600 dark:text-amber-400 border-amber-400/20 text-[10px] font-black uppercase tracking-wider">
+                <Badge className="border-amber-400/20 bg-amber-400/10 text-[10px] font-black tracking-wider text-amber-600 uppercase dark:text-amber-400">
                   {results.length > 0 ? 'Đã hoàn thành test' : 'Chưa làm test'}
                 </Badge>
               </div>
@@ -483,12 +560,21 @@ const Profile = () => {
           {[
             { icon: Clock, label: 'Streak', value: '1' },
             { icon: Target, label: 'Lộ trình', value: results.length > 0 ? '1' : '0' },
-            { icon: Award, label: 'Phù hợp', value: results.length > 0 ? `${Math.round(results[0]?.overallFitScore || 0)}%` : '0%' },
+            {
+              icon: Award,
+              label: 'Phù hợp',
+              value: results.length > 0 ? `${Math.round(results[0]?.overallFitScore || 0)}%` : '0%',
+            },
           ].map((stat) => (
-            <div key={stat.label} className="glass-card rounded-xl p-4 text-center border-border/40">
+            <div
+              key={stat.label}
+              className="glass-card border-border/40 rounded-xl p-4 text-center"
+            >
               <stat.icon className="text-primary mx-auto mb-1 h-5 w-5" />
               <div className="text-lg font-black tracking-tight">{stat.value}</div>
-              <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">{stat.label}</div>
+              <div className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+                {stat.label}
+              </div>
             </div>
           ))}
         </motion.div>
@@ -497,7 +583,7 @@ const Profile = () => {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="glass-card rounded-2xl p-4 italic text-sm text-muted-foreground border-l-4 border-primary"
+            className="glass-card text-muted-foreground border-primary rounded-2xl border-l-4 p-4 text-sm italic"
           >
             &quot;{profile.bio}&quot;
           </motion.div>
@@ -507,7 +593,7 @@ const Profile = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="glass-card overflow-hidden rounded-2xl border-border/40"
+          className="glass-card border-border/40 overflow-hidden rounded-2xl"
         >
           {[
             { icon: User, label: 'Thông tin tài khoản' },
@@ -519,7 +605,7 @@ const Profile = () => {
             <button
               key={menuItem.label}
               onClick={() => openModal(menuItem.label)}
-              className={`hover:bg-primary/5 flex w-full items-center gap-4 px-6 py-4 text-left transition-all group ${i > 0 ? 'border-border/50 border-t' : ''}`}
+              className={`hover:bg-primary/5 group flex w-full items-center gap-4 px-6 py-4 text-left transition-all ${i > 0 ? 'border-border/50 border-t' : ''}`}
             >
               <div className="bg-muted group-hover:bg-primary/10 flex h-8 w-8 items-center justify-center rounded-lg transition-colors">
                 <menuItem.icon className="text-muted-foreground group-hover:text-primary h-4 w-4" />
@@ -549,24 +635,22 @@ const Profile = () => {
             onClick={() => setActiveModal(null)}
           ></motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-2xl"
+            className="border-border bg-card relative w-full max-w-md overflow-hidden rounded-3xl border shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
-              <h3 className="font-display text-lg font-black tracking-tight">
-                {activeModal}
-              </h3>
+            <div className="border-border bg-muted/30 flex items-center justify-between border-b px-6 py-4">
+              <h3 className="font-display text-lg font-black tracking-tight">{activeModal}</h3>
               <button
                 onClick={() => setActiveModal(null)}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted"
+                className="text-muted-foreground hover:bg-muted rounded-full p-2 transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <div className="custom-scrollbar max-h-[80vh] overflow-y-auto p-6">
               {renderModalContent()}
             </div>
           </motion.div>

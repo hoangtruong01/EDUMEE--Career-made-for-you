@@ -1,3 +1,4 @@
+import RouteGuard from '@/components/auth/RouteGuard';
 import CompleteProfileView from '@/views/CompleteProfile';
 import { Metadata } from 'next';
 
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function CompleteProfilePage() {
-  return <CompleteProfileView />;
+  return (
+    <RouteGuard>
+      <CompleteProfileView />
+    </RouteGuard>
+  );
 }

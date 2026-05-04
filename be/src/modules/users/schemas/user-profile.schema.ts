@@ -12,19 +12,19 @@ export enum Gender {
 
 export enum EducationLevel {
   // Học sinh
-  ELEMENTARY = 'elementary',     // Tiểu học
+  ELEMENTARY = 'elementary', // Tiểu học
   MIDDLE_SCHOOL = 'middle_school', // THCS
-  HIGH_SCHOOL = 'high_school',    // THPT
+  HIGH_SCHOOL = 'high_school', // THPT
 
   // Sinh viên
-  COLLEGE = 'college',           // Cao đẳng
-  BACHELOR = 'bachelor',         // Đại học
-  MASTER = 'master',            // Thạc sĩ
-  PHD = 'phd',                  // Tiến sĩ
+  COLLEGE = 'college', // Cao đẳng
+  BACHELOR = 'bachelor', // Đại học
+  MASTER = 'master', // Thạc sĩ
+  PHD = 'phd', // Tiến sĩ
 
   // Khác
-  VOCATIONAL = 'vocational',     // Trung cấp nghề
-  CERTIFICATE = 'certificate',   // Chứng chỉ
+  VOCATIONAL = 'vocational', // Trung cấp nghề
+  CERTIFICATE = 'certificate', // Chứng chỉ
   OTHER = 'other',
 }
 
@@ -56,6 +56,18 @@ export class UserProfile {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', unique: true })
   userId!: Types.ObjectId;
 
+  @Prop({ type: Date })
+  dob?: Date;
+
+  @Prop()
+  locale?: string;
+
+  @Prop()
+  city?: string;
+
+  @Prop()
+  phone?: string;
+
   @Prop({ type: String, enum: Gender })
   gender?: Gender;
 
@@ -67,6 +79,12 @@ export class UserProfile {
 
   @Prop()
   currentJob?: string;
+
+  @Prop({ type: Number })
+  weeklyHours?: number;
+
+  @Prop({ type: Object })
+  constraintsJson?: Record<string, any>;
 
   @Prop({ type: Number })
   yearsOfExperience?: number;

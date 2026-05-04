@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAssessment } from '@/context/assessment-context';
 import { useAuth } from '@/context/auth-context';
 import { type AssessmentQuestion, assessmentService } from '@/lib/assessment.service';
+import { userService } from '@/lib/user.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Sparkles, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -39,11 +40,15 @@ const Analyzing = ({ progress = 0 }: { progress?: number }) => {
         <p className="text-muted-foreground text-sm">{progress}%</p>
 
         {progress >= 100 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8"
+          >
             <Button
               variant="hero"
-              onClick={() => window.location.href = '/assessment-result'}
-              className="w-full py-6 text-lg font-bold shadow-xl shadow-primary/20"
+              onClick={() => (window.location.href = '/assessment-result')}
+              className="shadow-primary/20 w-full py-6 text-lg font-bold shadow-xl"
             >
               Xem kết quả ngay <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
@@ -53,7 +58,6 @@ const Analyzing = ({ progress = 0 }: { progress?: number }) => {
     </div>
   );
 };
-
 
 const PersonalityTest = () => {
   const { accessToken, isHydrated, isAuthenticated, setOnboardingCompleted } = useAuth();
@@ -152,13 +156,18 @@ const PersonalityTest = () => {
         throw new Error('AI chua tra ket qua. Vui long thu lai.');
       }
 
-      // Unlock the platform immediately
+      // Persist onboarding completion and unlock the platform immediately
+      try {
+        await userService.updateMe(accessToken, { onboarding_completed: true });
+      } catch (err) {
+        console.error('Failed to update onboarding status:', err);
+      }
+
       setOnboardingCompleted(true);
       setAnalyzingProgress(100);
 
-
       markHasAssessmentResult();
-      
+
       // Delay a bit to show 100% then redirect
       setTimeout(() => {
         router.replace('/assessment-result');
@@ -168,10 +177,8 @@ const PersonalityTest = () => {
       console.error('Submission error:', error);
       setAnalyzing(false);
       setErrorMessage(err.message || 'Không thể phân tích kết quả. Vui lòng thử lại.');
-
     }
   };
-
 
   const next = () => {
     if (isLast) {

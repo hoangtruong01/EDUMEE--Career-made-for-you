@@ -139,7 +139,19 @@ export class UserProfileService {
   ): Promise<UserProfileDocument> {
     const userObjectId = new Types.ObjectId(userId);
     const profile = await this.userProfileModel
-      .findOneAndUpdate({ userId: userObjectId }, updateUserProfileDto, { new: true })
+      .findOneAndUpdate(
+        { userId: userObjectId },
+        {
+          $set: updateUserProfileDto,
+          $setOnInsert: { userId: userObjectId },
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        },
+      )
       .populate('userId', 'name email')
       .exec();
 
