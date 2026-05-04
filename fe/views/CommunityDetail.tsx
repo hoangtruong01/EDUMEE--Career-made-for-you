@@ -8,8 +8,19 @@ import {
   type CommunityPost,
 } from '@/lib/community.service';
 import { profileService, type UserProfile } from '@/lib/profile.service';
+import { userService, type UserMe } from '@/lib/user.service';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Bookmark, Hash, Heart, MessageCircle, MoreVertical, Send, Share2, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bookmark,
+  Hash,
+  Heart,
+  MessageCircle,
+  MoreVertical,
+  Send,
+  Share2,
+  Sparkles,
+} from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -51,6 +62,42 @@ const formatTimeAgo = (timestamp?: string) => {
   return `${years} năm trước`;
 };
 
+type TokenPayload = {
+  user_id?: string;
+  id?: string;
+  role?: string;
+};
+
+const decodeTokenPayload = (token?: string): TokenPayload | null => {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const decoded = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!decoded || typeof decoded !== 'object') return null;
+    const payload = decoded as Record<string, unknown>;
+    return {
+      user_id: typeof payload.user_id === 'string' ? payload.user_id : undefined,
+      id: typeof payload.id === 'string' ? payload.id : undefined,
+      role: typeof payload.role === 'string' ? payload.role : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getProfileUserId = (user: UserProfile['userId'] | undefined): string | undefined => {
+  if (!user) return undefined;
+  const candidate = user as unknown as { id?: string; _id?: string };
+  return candidate.id || candidate._id;
+};
+
+const getProfileUserRole = (user: UserProfile['userId'] | undefined): string | undefined => {
+  if (!user) return undefined;
+  const candidate = user as unknown as { role?: string };
+  return candidate.role;
+};
+
 const CommunityDetail = () => {
   const router = useRouter();
   const params = useParams();
@@ -59,6 +106,7 @@ const CommunityDetail = () => {
 
   const [post, setPost] = useState<CommunityPost | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
   const [comments, setComments] = useState<CommunityComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,21 +147,32 @@ const CommunityDetail = () => {
       }
     };
     void fetchProfile();
+
+    const fetchUser = async () => {
+      try {
+        const me = await userService.getMe(accessToken);
+        setUserMe(me);
+      } catch (err) {
+        console.error('Failed to fetch user', err);
+      }
+    };
+    void fetchUser();
   }, [loadPost, accessToken]);
 
   const handleAddComment = async () => {
     if (!accessToken || !postId || !commentInput.trim()) return;
 
-    if (!isAnonymous && !profile) {
-      setError('Vui lòng chờ thông tin cá nhân được tải...');
+    const publicDisplayName = userMe?.name?.trim() || profile?.userId?.name?.trim() || '';
+    if (!isAnonymous && !publicDisplayName) {
+      setError('Vui lòng chờ thông tin tài khoản được tải...');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const displayName = isAnonymous ? 'Ẩn danh' : (profile?.userId?.name || 'Thành viên EDUMEE');
-      const authorTitle = isAnonymous ? undefined : (profile?.educationLevel || undefined);
-      
+      const displayName = isAnonymous ? 'Ẩn danh' : publicDisplayName;
+      const authorTitle = isAnonymous ? undefined : profile?.educationLevel || undefined;
+
       const updated = await communityService.addComment(accessToken, postId, {
         content: commentInput.trim(),
         authorName: displayName,
@@ -175,29 +234,20 @@ const CommunityDetail = () => {
   const avatarBg = getAvatarColor(authorName);
   const initials = getInitials(authorName);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let decodedToken: any = null;
-  if (accessToken) {
-    try {
-      const parts = accessToken.split('.');
-      if (parts.length === 3) {
-         
-        decodedToken = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-      }
-    } catch {
-      // ignore
-    }
-  }
+  const decodedToken = decodeTokenPayload(accessToken);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentUserId = profile?.userId?.id || (profile?.userId as any)?._id || decodedToken?.user_id || decodedToken?.id;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userRole = (profile?.userId as any)?.role || decodedToken?.role;
+  const currentUserId =
+    getProfileUserId(profile?.userId) ||
+    userMe?.id ||
+    userMe?._id ||
+    decodedToken?.user_id ||
+    decodedToken?.id;
+  const userRole = getProfileUserRole(profile?.userId) || userMe?.role || decodedToken?.role;
 
   return (
     <div className="aurora-bg min-h-screen pb-24">
       <div className="relative overflow-hidden pt-12 pb-10">
-        <div className="container relative z-10">
+        <div className="relative z-10 container">
           <button
             onClick={() => router.back()}
             className="text-muted-foreground hover:text-primary mb-6 flex items-center gap-2 text-sm font-bold transition-colors"
@@ -209,7 +259,7 @@ const CommunityDetail = () => {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-4xl"
           >
-            <h1 className="font-display py-2 text-3xl font-extrabold tracking-tight md:text-5xl leading-[1.2]">
+            <h1 className="font-display py-2 text-3xl leading-[1.2] font-extrabold tracking-tight md:text-5xl">
               {post.title}
             </h1>
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -226,7 +276,7 @@ const CommunityDetail = () => {
         <div className="gradient-orb bg-primary/10 -top-20 -left-20 h-80 w-80 opacity-40 blur-[120px]" />
       </div>
 
-      <div className="container relative z-10 mt-2 grid gap-8 lg:grid-cols-[1fr_340px]">
+      <div className="relative z-10 container mt-2 grid gap-8 lg:grid-cols-[1fr_340px]">
         <div className="space-y-8">
           {error && (
             <div className="border-destructive/20 bg-destructive/10 text-destructive rounded-2xl border px-4 py-4 text-sm font-bold">
@@ -235,7 +285,7 @@ const CommunityDetail = () => {
           )}
 
           <div className="bento-card-v2 p-8">
-            <div className="mb-8 flex items-start justify-between gap-6 border-b border-dashed border-border/50 pb-6">
+            <div className="border-border/50 mb-8 flex items-start justify-between gap-6 border-b border-dashed pb-6">
               <div className="flex items-center gap-4">
                 <div
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-black text-white shadow-lg ${avatarBg}`}
@@ -244,12 +294,12 @@ const CommunityDetail = () => {
                 </div>
                 <div>
                   <p className="text-base font-bold tracking-tight">{authorName}</p>
-                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">
+                  <p className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
                     {post.authorTitle || 'Thành viên cộng đồng'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-6 text-muted-foreground">
+              <div className="text-muted-foreground flex items-center gap-6">
                 <button
                   onClick={handleLike}
                   className={`flex items-center gap-2 transition-colors ${
@@ -271,13 +321,12 @@ const CommunityDetail = () => {
                           ? 'fill-current'
                           : ''
                       }`}
-
                     />
                   </div>
                   <span className="text-sm font-black">{post.likeCount ?? 0}</span>
                 </button>
                 <div className="flex items-center gap-2">
-                  <div className="bg-primary/10 rounded-full p-2 text-primary">
+                  <div className="bg-primary/10 text-primary rounded-full p-2">
                     <MessageCircle className="h-4 w-4" />
                   </div>
                   <span className="text-sm font-black">{post.commentCount ?? 0}</span>
@@ -299,11 +348,13 @@ const CommunityDetail = () => {
                     onClick={(e) => {
                       e.stopPropagation();
                       if (navigator.share) {
-                        navigator.share({
-                          title: post.title,
-                          text: post.content,
-                          url: window.location.href,
-                        }).catch(() => {});
+                        navigator
+                          .share({
+                            title: post.title,
+                            text: post.content,
+                            url: window.location.href,
+                          })
+                          .catch(() => {});
                       } else {
                         void navigator.clipboard.writeText(window.location.href);
                         alert('Đã sao chép liên kết vào bộ nhớ tạm!');
@@ -320,7 +371,7 @@ const CommunityDetail = () => {
               </div>
             </div>
 
-            <p className="text-foreground/90 leading-relaxed whitespace-pre-line text-lg font-medium">
+            <p className="text-foreground/90 text-lg leading-relaxed font-medium whitespace-pre-line">
               {post.content}
             </p>
 
@@ -331,7 +382,7 @@ const CommunityDetail = () => {
                     key={tag}
                     className="bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary rounded-xl px-3 py-1.5 text-xs font-bold transition-colors"
                   >
-                    <Hash className="h-3.5 w-3.5 inline mr-1" /> {tag}
+                    <Hash className="mr-1 inline h-3.5 w-3.5" /> {tag}
                   </span>
                 ))}
               </div>
@@ -340,7 +391,7 @@ const CommunityDetail = () => {
 
           <div className="bento-card-v2 p-8">
             <div className="mb-8 flex items-center gap-3">
-              <div className="bg-primary/20 rounded-xl p-2 text-primary">
+              <div className="bg-primary/20 text-primary rounded-xl p-2">
                 <MessageCircle className="h-5 w-5" />
               </div>
               <h3 className="text-xl font-extrabold tracking-tight">Thảo luận cộng đồng</h3>
@@ -378,7 +429,7 @@ const CommunityDetail = () => {
                           </div>
                           <div>
                             <p className="text-xs font-bold tracking-tight">{cName}</p>
-                            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+                            <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
                               {comment.authorTitle || 'Thành viên'} •{' '}
                               {formatTimeAgo(comment.createdAt)}
                             </p>
@@ -386,47 +437,56 @@ const CommunityDetail = () => {
                         </div>
 
                         {(() => {
-                          const isCommentAuthor = currentUserId && comment.authorId && String(currentUserId) === String(comment.authorId);
-                          const isPostAuthor = currentUserId && post.authorId && String(currentUserId) === String(post.authorId);
+                          const isCommentAuthor =
+                            currentUserId &&
+                            comment.authorId &&
+                            String(currentUserId) === String(comment.authorId);
+                          const isPostAuthor =
+                            currentUserId &&
+                            post.authorId &&
+                            String(currentUserId) === String(post.authorId);
                           const isAdmin = userRole === 'admin';
-                          
-                          return (isCommentAuthor || isPostAuthor || isAdmin) && (
-                            <div className="relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const cId = comment.id || comment._id;
-                                if (cId) setActiveCommentMenu(activeCommentMenu === cId ? null : cId);
-                              }}
-                              className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                            <AnimatePresence>
-                              {activeCommentMenu === (comment.id || comment._id) && (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                  className="border-border bg-popover shadow-elevated absolute right-0 z-10 mt-1 w-28 rounded-xl border p-1"
+
+                          return (
+                            (isCommentAuthor || isPostAuthor || isAdmin) && (
+                              <div className="relative">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cId = comment.id || comment._id;
+                                    if (cId)
+                                      setActiveCommentMenu(activeCommentMenu === cId ? null : cId);
+                                  }}
+                                  className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
                                 >
-                                  <button
-                                    onClick={() => {
-                                      const cId = comment.id || comment._id;
-                                      if (cId) handleDeleteComment(cId);
-                                    }}
-                                    className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors"
-                                  >
-                                    Xóa
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            </div>
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                                <AnimatePresence>
+                                  {activeCommentMenu === (comment.id || comment._id) && (
+                                    <motion.div
+                                      initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                                      className="border-border bg-popover shadow-elevated absolute right-0 z-10 mt-1 w-28 rounded-xl border p-1"
+                                    >
+                                      <button
+                                        onClick={() => {
+                                          const cId = comment.id || comment._id;
+                                          if (cId) handleDeleteComment(cId);
+                                        }}
+                                        className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors"
+                                      >
+                                        Xóa
+                                      </button>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )
                           );
                         })()}
                       </div>
-                      <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-line font-medium">
+                      <p className="text-foreground/90 text-sm leading-relaxed font-medium whitespace-pre-line">
                         {comment.content}
                       </p>
                     </motion.div>
@@ -435,9 +495,9 @@ const CommunityDetail = () => {
               </AnimatePresence>
             </div>
 
-            <div className="mt-10 border-t border-dashed border-border/60 pt-8">
+            <div className="border-border/60 mt-10 border-t border-dashed pt-8">
               <div className="mb-5 flex items-center justify-between">
-                <h4 className="text-sm font-black uppercase tracking-widest">Viết bình luận</h4>
+                <h4 className="text-sm font-black tracking-widest uppercase">Viết bình luận</h4>
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -449,28 +509,32 @@ const CommunityDetail = () => {
                 </div>
               </div>
 
-              {!isAnonymous && profile && (
+              {!isAnonymous && (userMe?.name || profile?.userId?.name) && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
-                  className="mb-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
+                  className="bg-primary/5 border-primary/10 mb-5 flex items-center gap-3 rounded-xl border p-3"
                 >
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.userId?.name || '')}`}>
-                    {getInitials(profile.userId?.name || '')}
+                  <div
+                    className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(userMe?.name || profile?.userId?.name || '')}`}
+                  >
+                    {getInitials(userMe?.name || profile?.userId?.name || '')}
                   </div>
                   <div>
-                    <p className="text-xs font-bold">{profile.userId?.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-medium">Bình luận công khai</p>
+                    <p className="text-xs font-bold">{userMe?.name || profile?.userId?.name}</p>
+                    <p className="text-muted-foreground text-[10px] font-medium">
+                      Bình luận công khai
+                    </p>
                   </div>
                 </motion.div>
               )}
 
               <AnimatePresence>
-                {!isAnonymous && !profile && (
+                {!isAnonymous && !(userMe?.name || profile?.userId?.name) && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="mb-5 text-muted-foreground text-xs font-medium italic"
+                    className="text-muted-foreground mb-5 text-xs font-medium italic"
                   >
                     Đang tải thông tin cá nhân...
                   </motion.div>
@@ -492,7 +556,7 @@ const CommunityDetail = () => {
                     size="default"
                     disabled={isSubmitting || !commentInput.trim()}
                     onClick={handleAddComment}
-                    className="gap-2 px-8 font-bold tracking-wide uppercase shadow-lg shadow-primary/25"
+                    className="shadow-primary/25 gap-2 px-8 font-bold tracking-wide uppercase shadow-lg"
                   >
                     {isSubmitting ? 'Đang gửi...' : 'Gửi bình luận'}
                     <Send className="h-4 w-4" />
@@ -506,21 +570,21 @@ const CommunityDetail = () => {
         <aside className="space-y-6">
           <div className="bento-card-v2 p-6">
             <div className="mb-4 flex items-center gap-3">
-              <div className="bg-primary/20 rounded-lg p-2 text-primary">
+              <div className="bg-primary/20 text-primary rounded-lg p-2">
                 <Sparkles className="h-4 w-4" />
               </div>
               <h3 className="text-lg font-bold">Lưu ý cộng đồng</h3>
             </div>
             <ul className="space-y-4">
-              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+              <li className="flex gap-3 text-sm leading-relaxed font-medium">
                 <span className="text-primary font-black">•</span>
                 <span>Tôn trọng và hỗ trợ nhau khi chia sẻ kinh nghiệm.</span>
               </li>
-              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+              <li className="flex gap-3 text-sm leading-relaxed font-medium">
                 <span className="text-primary font-black">•</span>
                 <span>Không đăng thông tin cá nhân nhạy cảm của bản thân hoặc người khác.</span>
               </li>
-              <li className="flex gap-3 text-sm font-medium leading-relaxed">
+              <li className="flex gap-3 text-sm leading-relaxed font-medium">
                 <span className="text-primary font-black">•</span>
                 <span>Bình luận văn minh, đúng chủ đề thảo luận.</span>
               </li>
@@ -529,13 +593,13 @@ const CommunityDetail = () => {
 
           <div className="bento-card-v2 bg-gradient-mint/10 border-mint/20 p-6">
             <h3 className="mb-4 text-lg font-bold">Cần hỗ trợ từ Mentor?</h3>
-            <p className="text-muted-foreground mb-6 text-sm font-medium leading-relaxed">
+            <p className="text-muted-foreground mb-6 text-sm leading-relaxed font-medium">
               Bạn đang gặp khó khăn trong định hướng? Kết nối ngay với các Mentor giàu kinh nghiệm.
             </p>
             <Button
               onClick={() => router.push('/mentor-matching')}
               variant="hero"
-              className="w-full font-bold uppercase tracking-wider"
+              className="w-full font-bold tracking-wider uppercase"
             >
               Tìm Mentor ngay
             </Button>

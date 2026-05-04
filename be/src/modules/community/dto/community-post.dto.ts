@@ -29,7 +29,7 @@ export class CreateCommunityPostDto {
 
   @ApiProperty()
   @IsString()
-  @MinLength(2)
+  @MinLength(1)
   @MaxLength(60)
   authorName!: string;
 
@@ -49,7 +49,7 @@ export class CreateCommunityCommentDto {
 
   @ApiProperty()
   @IsString()
-  @MinLength(2)
+  @MinLength(1)
   @MaxLength(60)
   authorName!: string;
 

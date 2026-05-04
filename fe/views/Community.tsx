@@ -5,6 +5,7 @@ import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
 import { communityService, type CommunityPost } from '@/lib/community.service';
 import { profileService, type UserProfile } from '@/lib/profile.service';
+import { userService, type UserMe } from '@/lib/user.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bookmark,
@@ -103,6 +104,36 @@ const formatTimeAgo = (timestamp?: string) => {
   return `${years} năm trước`;
 };
 
+type TokenPayload = {
+  user_id?: string;
+  id?: string;
+  role?: string;
+};
+
+const decodeTokenPayload = (token?: string): TokenPayload | null => {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const decoded = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!decoded || typeof decoded !== 'object') return null;
+    const payload = decoded as Record<string, unknown>;
+    return {
+      user_id: typeof payload.user_id === 'string' ? payload.user_id : undefined,
+      id: typeof payload.id === 'string' ? payload.id : undefined,
+      role: typeof payload.role === 'string' ? payload.role : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getProfileUserId = (user: UserProfile['userId'] | undefined): string | undefined => {
+  if (!user) return undefined;
+  const candidate = user as unknown as { id?: string; _id?: string };
+  return candidate.id || candidate._id;
+};
+
 const PostCard = ({
   post,
   index,
@@ -151,14 +182,14 @@ const PostCard = ({
           </div>
           <div>
             <p className="text-sm font-bold tracking-tight">{authorName}</p>
-            <p className="text-muted-foreground text-[11px] font-medium uppercase tracking-wider">
+            <p className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">
               {post.authorTitle || 'Thành viên'}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`tag-pill ${getCategoryBadgeClass(post.category)} border-none bg-opacity-10`}
+            className={`tag-pill ${getCategoryBadgeClass(post.category)} bg-opacity-10 border-none`}
           >
             {post.category}
           </span>
@@ -181,13 +212,17 @@ const PostCard = ({
                 e.stopPropagation();
                 // Logic for share
                 if (navigator.share) {
-                  navigator.share({
-                    title: post.title,
-                    text: post.content,
-                    url: `${window.location.origin}/community/${postId}`,
-                  }).catch(console.error);
+                  navigator
+                    .share({
+                      title: post.title,
+                      text: post.content,
+                      url: `${window.location.origin}/community/${postId}`,
+                    })
+                    .catch(console.error);
                 } else {
-                  void navigator.clipboard.writeText(`${window.location.origin}/community/${postId}`);
+                  void navigator.clipboard.writeText(
+                    `${window.location.origin}/community/${postId}`,
+                  );
                   alert('Đã sao chép liên kết vào bộ nhớ tạm!');
                 }
               }}
@@ -232,7 +267,7 @@ const PostCard = ({
         </div>
       </div>
 
-      <h3 className="font-display mb-2 text-lg font-bold leading-tight tracking-tight">
+      <h3 className="font-display mb-2 text-lg leading-tight font-bold tracking-tight">
         {post.title}
       </h3>
       <p className="text-muted-foreground/90 mb-4 line-clamp-3 text-sm leading-relaxed">
@@ -255,16 +290,18 @@ const PostCard = ({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-dashed border-border/50 pt-4">
+      <div className="border-border/50 flex items-center justify-between border-t border-dashed pt-4">
         <div className="flex items-center gap-5">
           <button
             onClick={(e) => {
               e.stopPropagation();
               if (postId) onLike(postId);
             }}
-            className={`${isLiked ? 'text-rose-500' : 'text-muted-foreground'} hover:text-rose-500 group flex items-center gap-2 transition-colors`}
+            className={`${isLiked ? 'text-rose-500' : 'text-muted-foreground'} group flex items-center gap-2 transition-colors hover:text-rose-500`}
           >
-            <div className={`${isLiked ? 'bg-rose-500/10' : 'group-hover:bg-rose-500/10'} rounded-full p-1.5 transition-colors`}>
+            <div
+              className={`${isLiked ? 'bg-rose-500/10' : 'group-hover:bg-rose-500/10'} rounded-full p-1.5 transition-colors`}
+            >
               <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
             </div>
             <span className="text-xs font-bold">{post.likeCount ?? 0}</span>
@@ -283,7 +320,7 @@ const PostCard = ({
           </button>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+          <span className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
             {post.category}
           </span>
         </div>
@@ -301,6 +338,7 @@ const Community = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -315,6 +353,7 @@ const Community = () => {
   const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([]);
 
   const postCategories = useMemo(() => CATEGORIES.filter((cat) => cat !== 'Tất cả'), []);
+  const publicDisplayName = userMe?.name?.trim() || profile?.userId?.name?.trim() || '';
 
   const loadPosts = useCallback(async () => {
     if (!accessToken) return;
@@ -349,6 +388,16 @@ const Community = () => {
       }
     };
     void fetchProfile();
+
+    const fetchUser = async () => {
+      try {
+        const me = await userService.getMe(accessToken);
+        setUserMe(me);
+      } catch (err) {
+        console.error('Failed to fetch user', err);
+      }
+    };
+    void fetchUser();
 
     const fetchTrending = async () => {
       try {
@@ -401,8 +450,8 @@ const Community = () => {
     if (!trimmedContent) return 'Vui lòng nhập nội dung bài viết.';
     if (trimmedContent.length < 10) return 'Nội dung cần tối thiểu 10 ký tự.';
     if (!category.trim()) return 'Vui lòng chọn chủ đề.';
-    if (!isAnonymous && !profile) {
-      return 'Vui lòng chờ thông tin cá nhân được tải...';
+    if (!isAnonymous && !publicDisplayName) {
+      return 'Vui lòng chờ thông tin tài khoản được tải...';
     }
     if (hashtags.length > 10) return 'Tối đa 10 hashtag.';
     return null;
@@ -421,7 +470,7 @@ const Community = () => {
       return;
     }
 
-    const displayName = isAnonymous ? 'Ẩn danh' : (profile?.userId?.name || 'Thành viên EDUMEE');
+    const displayName = isAnonymous ? 'Ẩn danh' : publicDisplayName;
 
     setIsSubmitting(true);
     setFormError(null);
@@ -432,7 +481,7 @@ const Community = () => {
         category,
         hashtags,
         authorName: displayName,
-        authorTitle: isAnonymous ? undefined : (profile?.educationLevel || undefined),
+        authorTitle: isAnonymous ? undefined : profile?.educationLevel || undefined,
       });
       resetForm();
       setIsFormOpen(false);
@@ -456,7 +505,9 @@ const Community = () => {
     try {
       const updatedPost = await communityService.likePost(accessToken, postId);
       setPosts((prev) =>
-        prev.map((p) => ((p.id || p._id) === (updatedPost.id || updatedPost._id) ? updatedPost : p)),
+        prev.map((p) =>
+          (p.id || p._id) === (updatedPost.id || updatedPost._id) ? updatedPost : p,
+        ),
       );
     } catch (err) {
       console.error('Like failed', err);
@@ -495,27 +546,19 @@ const Community = () => {
 
   const filteredPosts = posts;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let decodedToken: any = null;
-  if (accessToken) {
-    try {
-      const parts = accessToken.split('.');
-      if (parts.length === 3) {
-         
-        decodedToken = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-      }
-    } catch {
-      // ignore
-    }
-  }
+  const decodedToken = decodeTokenPayload(accessToken);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentUserId = profile?.userId?.id || (profile?.userId as any)?._id || decodedToken?.user_id || decodedToken?.id;
+  const currentUserId =
+    getProfileUserId(profile?.userId) ||
+    userMe?.id ||
+    userMe?._id ||
+    decodedToken?.user_id ||
+    decodedToken?.id;
 
   return (
     <div className="aurora-bg min-h-screen pb-20">
       <div className="relative overflow-hidden pt-16 pb-12 text-center">
-        <div className="container relative z-10">
+        <div className="relative z-10 container">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -524,12 +567,12 @@ const Community = () => {
             <span className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
               <Users className="h-3.5 w-3.5" /> 50,000+ thành viên đang kết nối
             </span>
-            <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl font-extrabold tracking-tight md:text-6xl leading-[1.2]">
+            <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
               Cộng đồng CareerAI
             </h1>
-            <p className="text-muted-foreground mx-auto max-w-2xl text-base font-medium leading-relaxed md:text-lg">
-              Không gian chia sẻ kinh nghiệm thực tế, kết nối mentor và kiến tạo tương lai nghề nghiệp
-              cho Gen Z.
+            <p className="text-muted-foreground mx-auto max-w-2xl text-base leading-relaxed font-medium md:text-lg">
+              Không gian chia sẻ kinh nghiệm thực tế, kết nối mentor và kiến tạo tương lai nghề
+              nghiệp cho Gen Z.
             </p>
           </motion.div>
         </div>
@@ -537,13 +580,13 @@ const Community = () => {
         <div className="gradient-orb bg-secondary/20 right-1/4 bottom-0 h-64 w-64 opacity-50 blur-[100px]" />
       </div>
 
-      <div className="container relative z-10 mt-2">
+      <div className="relative z-10 container mt-2">
         <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
           <div className="space-y-6">
             {/* Quick Post & Search Section */}
             <div className="flex flex-col gap-4">
-              <div className="glass-card flex items-center gap-3 rounded-2xl p-3 shadow-soft">
-                <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary">
+              <div className="glass-card shadow-soft flex items-center gap-3 rounded-2xl p-3">
+                <div className="bg-primary/10 text-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
                   <Plus className="h-5 w-5" />
                 </div>
                 <button
@@ -552,26 +595,26 @@ const Community = () => {
                 >
                   Bạn đang nghĩ gì? Chia sẻ ngay...
                 </button>
-                <div className="h-6 w-[1px] bg-border/50" />
+                <div className="bg-border/50 h-6 w-[1px]" />
                 <div className="relative flex-[0.8]">
                   <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Tìm nội dung..."
-                    className="bg-muted/50 focus:ring-primary/30 h-10 w-full rounded-xl pr-4 pl-9 text-sm font-medium outline-none transition-all focus:ring-4"
+                    className="bg-muted/50 focus:ring-primary/30 h-10 w-full rounded-xl pr-4 pl-9 text-sm font-medium transition-all outline-none focus:ring-4"
                   />
                 </div>
               </div>
 
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-2">
                 {CATEGORIES.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
                     className={`shrink-0 rounded-xl px-5 py-2 text-xs font-bold tracking-wide transition-all ${
                       activeCategory === cat
-                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105'
+                        ? 'bg-primary text-primary-foreground shadow-primary/20 scale-105 shadow-lg'
                         : 'bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                   >
@@ -592,12 +635,12 @@ const Community = () => {
                   <form onSubmit={handleSubmit} className="bento-card-v2 mb-6 p-6">
                     <div className="mb-6 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="bg-primary/20 rounded-xl p-2 text-primary">
+                        <div className="bg-primary/20 text-primary rounded-xl p-2">
                           <Sparkles className="h-5 w-5" />
                         </div>
                         <div>
                           <h3 className="text-lg font-bold">Tạo bài viết mới</h3>
-                          <p className="text-muted-foreground text-[11px] font-medium uppercase tracking-wider">
+                          <p className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">
                             Góp ý kiến, nhận chia sẻ
                           </p>
                         </div>
@@ -613,7 +656,7 @@ const Community = () => {
 
                     <div className="grid gap-5 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                        <label className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
                           Chủ đề thảo luận
                         </label>
                         <select
@@ -629,7 +672,7 @@ const Community = () => {
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                        <label className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
                           Tiêu đề bài viết
                         </label>
                         <input
@@ -652,35 +695,39 @@ const Community = () => {
                         />
                         <label
                           htmlFor="anonymous-toggle"
-                          className="text-xs font-bold leading-none select-none"
+                          className="text-xs leading-none font-bold select-none"
                         >
                           Đăng bài ẩn danh
                         </label>
                       </div>
                     </div>
 
-                    {!isAnonymous && profile && (
+                    {!isAnonymous && publicDisplayName && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
-                        className="mt-5 flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10"
+                        className="bg-primary/5 border-primary/10 mt-5 flex items-center gap-3 rounded-xl border p-3"
                       >
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(profile.userId?.name || '')}`}>
-                          {getInitials(profile.userId?.name || '')}
+                        <div
+                          className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white ${getAvatarColor(publicDisplayName)}`}
+                        >
+                          {getInitials(publicDisplayName)}
                         </div>
                         <div>
-                          <p className="text-xs font-bold">{profile.userId?.name}</p>
-                          <p className="text-[10px] text-muted-foreground font-medium">Tên hiển thị công khai</p>
+                          <p className="text-xs font-bold">{publicDisplayName}</p>
+                          <p className="text-muted-foreground text-[10px] font-medium">
+                            Tên hiển thị công khai
+                          </p>
                         </div>
                       </motion.div>
                     )}
 
                     <AnimatePresence>
-                      {!isAnonymous && !profile && (
+                      {!isAnonymous && !publicDisplayName && (
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="mt-5 text-muted-foreground text-xs font-medium italic"
+                          className="text-muted-foreground mt-5 text-xs font-medium italic"
                         >
                           Đang tải thông tin cá nhân...
                         </motion.div>
@@ -688,7 +735,7 @@ const Community = () => {
                     </AnimatePresence>
 
                     <div className="mt-5 space-y-1.5">
-                      <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                      <label className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
                         Hashtags
                       </label>
                       <div className="bg-muted focus-within:ring-primary/20 flex flex-wrap items-center gap-2 rounded-xl px-4 py-3 transition-all focus-within:ring-4">
@@ -724,7 +771,7 @@ const Community = () => {
                     </div>
 
                     <div className="mt-5 space-y-1.5">
-                      <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-wider">
+                      <label className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
                         Nội dung chia sẻ
                       </label>
                       <textarea
@@ -761,7 +808,7 @@ const Community = () => {
                         variant="hero"
                         size="default"
                         disabled={isSubmitting}
-                        className="gap-2 px-8 font-bold tracking-wide uppercase shadow-lg shadow-primary/25"
+                        className="shadow-primary/25 gap-2 px-8 font-bold tracking-wide uppercase shadow-lg"
                       >
                         {isSubmitting ? 'Đang gửi...' : 'Đăng bài viết'}
                         <Send className="h-4 w-4" />
@@ -788,7 +835,7 @@ const Community = () => {
               {isLoading ? (
                 <div className="flex flex-col items-center py-20">
                   <div className="bg-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
-                  <p className="text-muted-foreground mt-4 text-sm font-bold uppercase tracking-widest">
+                  <p className="text-muted-foreground mt-4 text-sm font-bold tracking-widest uppercase">
                     Đang tải dữ liệu...
                   </p>
                 </div>
@@ -828,20 +875,23 @@ const Community = () => {
           <aside className="space-y-6">
             <div className="bento-card-v2 p-6">
               <div className="mb-5 flex items-center gap-3">
-                <div className="bg-amber-500/20 rounded-lg p-2 text-amber-500">
+                <div className="rounded-lg bg-amber-500/20 p-2 text-amber-500">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <h3 className="text-lg font-bold">Xu hướng 🔥</h3>
               </div>
               <ul className="space-y-4">
-                {(trendingTags.length > 0 ? trendingTags : initialTrending.map(t => ({ tag: t, count: 0 }))).map((item, i) => {
+                {(trendingTags.length > 0
+                  ? trendingTags
+                  : initialTrending.map((t) => ({ tag: t, count: 0 }))
+                ).map((item, i) => {
                   const tag = typeof item === 'string' ? item : item.tag;
                   return (
                     <li key={tag} className="group flex items-center gap-4">
-                      <span className="bg-muted text-muted-foreground flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:bg-primary group-hover:text-white">
+                      <span className="bg-muted text-muted-foreground group-hover:bg-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:text-white">
                         {i + 1}
                       </span>
-                      <button 
+                      <button
                         onClick={() => {
                           setSearch(tag);
                           setActiveCategory('Tất cả');
@@ -868,7 +918,7 @@ const Community = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="bg-emerald-500/20 h-2 w-2 rounded-full" />
+                    <div className="h-2 w-2 rounded-full bg-emerald-500/20" />
                     <span className="text-muted-foreground text-sm font-bold">Thảo luận mới</span>
                   </div>
                   <span className="stat-number text-xl font-black">127</span>
@@ -879,7 +929,7 @@ const Community = () => {
                   window.open('https://www.facebook.com/profile.php?id=61586675294663', '_blank')
                 }
                 variant="hero"
-                className="shimmer-btn mt-6 w-full font-bold uppercase tracking-wider"
+                className="shimmer-btn mt-6 w-full font-bold tracking-wider uppercase"
               >
                 Gia nhập ngay
               </Button>
@@ -900,7 +950,7 @@ const Community = () => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold tracking-tight">{c.name}</p>
-                      <p className="text-muted-foreground truncate text-[10px] font-bold uppercase tracking-widest">
+                      <p className="text-muted-foreground truncate text-[10px] font-bold tracking-widest uppercase">
                         {c.role}
                       </p>
                     </div>
