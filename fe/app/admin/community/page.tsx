@@ -53,7 +53,7 @@ export default function AdminCommunityPage() {
   const fetchStats = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const reports = await communityService.listReportsAdmin(accessToken);
+      const reports = await communityService.listReportsAdmin(accessToken) as CommunityReport[];
       setReportCount(reports.filter((r) => r.status === 'pending').length);
     } catch {
       console.error('Failed to fetch admin stats');
