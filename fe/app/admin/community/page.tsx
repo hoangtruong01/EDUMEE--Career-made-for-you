@@ -33,7 +33,7 @@ interface CommunityReport {
 }
 
 interface AdminPost {
-  id: string;
+  id?: string;
   _id?: string;
   authorName: string;
   title: string;
@@ -213,8 +213,8 @@ function PostsTable() {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {posts.map((post) => (
-            <tr key={post.id || post._id} className="hover:bg-slate-50/50 transition">
+          {posts.map((post, index) => (
+            <tr key={post.id || post._id || index} className="hover:bg-slate-50/50 transition">
               <td className="px-6 py-4">
                 <div className="flex items-start gap-3">
                   <div className="mt-1 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 font-black text-[10px]">
@@ -253,7 +253,7 @@ function PostsTable() {
               <td className="px-6 py-4 text-slate-500 text-xs">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end gap-2">
-                  <button className="p-2 hover:bg-rose-50 rounded-lg text-rose-500" onClick={() => handleDelete(post.id || post._id)}>
+                  <button className="p-2 hover:bg-rose-50 rounded-lg text-rose-500" onClick={() => handleDelete(post.id || post._id || '')}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
