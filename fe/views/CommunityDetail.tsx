@@ -20,6 +20,8 @@ import {
   Send,
   Share2,
   Sparkles,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -114,6 +116,9 @@ const CommunityDetail = () => {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeCommentMenu, setActiveCommentMenu] = useState<string | null>(null);
+  
+  const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(null);
+  const [isReporting, setIsReporting] = useState(false);
 
   const loadPost = useCallback(async () => {
     if (!accessToken || !postId) return;
@@ -211,6 +216,31 @@ const CommunityDetail = () => {
     } catch (err) {
       console.error('Delete comment failed', err);
       setError('Không thể xoá bình luận. Vui lòng thử lại sau.');
+    }
+  };
+
+  const handleReport = (id: string, type: 'post' | 'comment') => {
+    setReportTarget({ id, type });
+    setActiveCommentMenu(null);
+  };
+
+  const submitReport = async (reason: string, details?: string) => {
+    if (!accessToken || !reportTarget) return;
+    setIsReporting(true);
+    try {
+      await communityService.report(accessToken, {
+        targetId: reportTarget.id,
+        targetType: reportTarget.type,
+        reason,
+        details,
+        postId: reportTarget.type === 'comment' ? postId : reportTarget.id,
+      });
+      alert('Cảm ơn bạn đã báo cáo. Chúng tôi sẽ sớm xem xét nội dung này.');
+      setReportTarget(null);
+    } catch {
+      alert('Không thể gửi báo cáo lúc này.');
+    } finally {
+      setIsReporting(false);
     }
   };
 
@@ -367,6 +397,15 @@ const CommunityDetail = () => {
                       <Share2 className="h-4 w-4" />
                     </div>
                   </button>
+                  <button
+                    onClick={() => handleReport(postId, 'post')}
+                    className="text-muted-foreground hover:text-rose-500 transition-colors"
+                    title="Báo cáo vi phạm"
+                  >
+                    <div className="bg-muted/50 hover:bg-rose-500/10 rounded-full p-2 transition-colors">
+                      <AlertTriangle className="h-4 w-4" />
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -477,6 +516,15 @@ const CommunityDetail = () => {
                                         className="text-destructive hover:bg-destructive/10 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors"
                                       >
                                         Xóa
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          const cId = comment.id || comment._id;
+                                          if (cId) handleReport(cId, 'comment');
+                                        }}
+                                        className="hover:bg-primary/10 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors"
+                                      >
+                                        Báo cáo
                                       </button>
                                     </motion.div>
                                   )}
@@ -606,8 +654,114 @@ const CommunityDetail = () => {
           </div>
         </aside>
       </div>
+
+      <AnimatePresence>
+        {reportTarget && (
+          <ReportModal
+            onClose={() => setReportTarget(null)}
+            onSubmit={submitReport}
+            isSubmitting={isReporting}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
+function ReportModal({
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: {
+  onClose: () => void;
+  onSubmit: (reason: string, details?: string) => void;
+  isSubmitting: boolean;
+}) {
+  const [reason, setReason] = useState('Spam');
+  const [details, setDetails] = useState('');
+
+  const reasons = [
+    'Spam',
+    'Nội dung nhạy cảm',
+    'Ngôn từ thù ghét',
+    'Lừa đảo/Độc hại',
+    'Thông tin sai lệch',
+    'Khác',
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-500">
+            <AlertTriangle className="h-5 w-5" />
+            <h3 className="text-lg font-bold">Báo cáo vi phạm</h3>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <X className="h-5 w-5 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lý do báo cáo</label>
+            <div className="grid grid-cols-2 gap-2">
+              {reasons.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setReason(r)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all text-left border ${
+                    reason === r 
+                      ? "bg-rose-50 border-rose-200 text-rose-600" 
+                      : "bg-slate-50 border-slate-100 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Chi tiết thêm (Tùy chọn)</label>
+            <textarea
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              placeholder="Vui lòng cung cấp thêm thông tin để chúng tôi xử lý..."
+              rows={3}
+              className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-50 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-all"
+          >
+            Hủy
+          </button>
+          <button
+            onClick={() => onSubmit(reason, details)}
+            disabled={isSubmitting}
+            className="flex-1 bg-rose-500 text-white px-4 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 disabled:opacity-50 transition-all"
+          >
+            {isSubmitting ? 'Đang gửi...' : 'Gửi báo cáo'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 export default CommunityDetail;

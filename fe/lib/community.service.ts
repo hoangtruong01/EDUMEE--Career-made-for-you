@@ -119,4 +119,30 @@ export const communityService = {
       accessToken,
     );
   },
+
+  async report(
+    accessToken: string,
+    payload: {
+      targetId: string;
+      targetType: 'post' | 'comment';
+      reason: string;
+      postId?: string;
+      details?: string;
+    },
+  ): Promise<void> {
+    return apiClient.post('/community/reports', payload, accessToken);
+  },
+
+  // Admin methods
+  async listReportsAdmin(accessToken: string): Promise<unknown[]> {
+    return apiClient.get<unknown[]>('/community/reports/admin', accessToken);
+  },
+
+  async updateReportStatus(accessToken: string, reportId: string, status: string): Promise<void> {
+    return apiClient.patch(`/community/reports/admin/${reportId}/status`, { status }, accessToken);
+  },
+
+  async updatePostStatus(accessToken: string, postId: string, status: string): Promise<void> {
+    return apiClient.patch(`/community/reports/admin/posts/${postId}/status`, { status }, accessToken);
+  },
 };

@@ -7,7 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { CreateCommunityCommentDto, CreateCommunityPostDto } from '../dto/community-post.dto';
-import { CommunityPost, CommunityPostDocument } from '../schemas/community-post.schema';
+import { CommunityPost, CommunityPostDocument, PostStatus } from '../schemas/community-post.schema';
 
 const normalizeHashtag = (value: string): string => {
   const trimmed = value.trim().replace(/^#+/, '');
@@ -56,7 +56,9 @@ export class CommunityPostService {
     const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
     const skip = (safePage - 1) * safeLimit;
 
-    const query: FilterQuery<CommunityPostDocument> = {};
+    const query: FilterQuery<CommunityPostDocument> = {
+      status: PostStatus.PUBLISHED,
+    };
 
     if (filters.category && filters.category !== 'Tất cả') {
       query.category = filters.category;
@@ -265,5 +267,21 @@ export class CommunityPostService {
     ]);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return result as any;
+  }
+
+  async updateStatus(id: string, status: PostStatus): Promise<CommunityPostDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid postId');
+    }
+
+    const post = await this.communityPostModel
+      .findByIdAndUpdate(id, { status }, { new: true })
+      .exec();
+
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    return post;
   }
 }

@@ -19,7 +19,10 @@ import {
   CommunityPostService,
   ReviewInteractionsService,
   ReviewReportService,
+  ReportService,
 } from './services';
+import { Report, ReportSchema } from './schemas/report.schema';
+import { ReportController } from './controllers/report.controller';
 
 @Module({
   imports: [
@@ -28,6 +31,7 @@ import {
       { name: CommunityPost.name, schema: CommunityPostSchema },
       { name: ReviewVote.name, schema: ReviewVoteSchema },
       { name: ReviewReport.name, schema: ReviewReportSchema },
+      { name: Report.name, schema: ReportSchema },
     ]),
   ],
   controllers: [
@@ -35,18 +39,21 @@ import {
     CommunityPostController,
     ReviewInteractionsController,
     ReviewReportController,
+    ReportController,
   ],
   providers: [
     CareerReviewService,
     CommunityPostService,
     ReviewInteractionsService,
     ReviewReportService,
+    ReportService,
   ],
   exports: [
     CareerReviewService,
     CommunityPostService,
     ReviewInteractionsService,
     ReviewReportService,
+    ReportService,
   ],
 })
 export class CommunityModule {}

@@ -37,6 +37,12 @@ CommunityCommentSchema.set('toJSON', {
   },
 });
 
+export enum PostStatus {
+  PUBLISHED = 'published',
+  HIDDEN = 'hidden',
+  DELETED = 'deleted',
+}
+
 @Schema({
   timestamps: true,
   collection: 'community_posts',
@@ -82,6 +88,13 @@ export class CommunityPost {
 
   @Prop({ type: [Types.ObjectId], default: [], ref: 'User' })
   likedUserIds!: Types.ObjectId[];
+
+  @Prop({
+    type: String,
+    enum: PostStatus,
+    default: PostStatus.PUBLISHED,
+  })
+  status!: PostStatus;
 
   @Prop({ type: [CommunityCommentSchema], default: [] })
   comments!: CommunityComment[];
