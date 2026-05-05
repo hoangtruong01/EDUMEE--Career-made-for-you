@@ -4,11 +4,16 @@ import { useAuth } from '@/context/auth-context';
 import { cn } from '@/lib/utils';
 import {
   BarChart3,
+  Briefcase,
   CreditCard,
+  DollarSign,
   FileText,
+  GraduationCap,
+  History,
   Home,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   Settings,
   Users,
 } from 'lucide-react';
@@ -18,9 +23,14 @@ import { usePathname, useRouter } from 'next/navigation';
 const menuItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/users', label: 'Người dùng', icon: Users },
+  { href: '/admin/mentors', label: 'Mentor & Booking', icon: GraduationCap },
+  { href: '/admin/community', label: 'Cộng đồng', icon: MessageSquare },
+  { href: '/admin/careers', label: 'Nghề nghiệp', icon: Briefcase },
+  { href: '/admin/content', label: 'Ngân hàng đề', icon: FileText },
   { href: '/admin/plans', label: 'Gói dịch vụ', icon: CreditCard },
-  { href: '/admin/content', label: 'Nội dung', icon: FileText },
+  { href: '/admin/finance', label: 'Tài chính', icon: DollarSign },
   { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 },
+  { href: '/admin/audit-logs', label: 'Nhật ký', icon: History },
   { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ];
 
