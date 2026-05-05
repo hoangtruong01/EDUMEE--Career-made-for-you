@@ -24,6 +24,7 @@ export interface CommunityPost {
   commentCount: number;
   likedUserIds?: string[];
   comments?: CommunityComment[];
+  status?: string;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -166,7 +166,7 @@ function PostsTable() {
     setIsLoading(true);
     try {
       const res = await communityService.listPosts(accessToken, { limit: 50 });
-      setPosts((res.data as AdminPost[]) || []);
+      setPosts((res.data as unknown as AdminPost[]) || []);
     } catch {
       console.error('Load posts failed');
     } finally {
