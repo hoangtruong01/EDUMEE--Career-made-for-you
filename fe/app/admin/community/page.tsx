@@ -184,7 +184,7 @@ function PostsTable() {
     if (!ok) return;
 
     try {
-      await communityService.updatePostStatus(accessToken, postId, 'deleted');
+      await communityService.deletePost(accessToken, postId);
       await loadPosts();
       alert('Đã xóa bài viết thành công.');
     } catch {
@@ -319,7 +319,7 @@ function ReportsTable() {
 
     try {
       if (report.targetType === 'post') {
-        await communityService.updatePostStatus(accessToken, report.targetId, 'deleted');
+        await communityService.deletePost(accessToken, report.targetId);
       } else {
         // For comments, we use the deleteComment API
         if (report.postId) {

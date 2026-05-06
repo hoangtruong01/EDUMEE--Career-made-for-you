@@ -8,6 +8,7 @@ import { profileService, type UserProfile } from '@/lib/profile.service';
 import { userService, type UserMe } from '@/lib/user.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  AlertTriangle,
   Bookmark,
   Hash,
   Heart,
@@ -20,7 +21,6 @@ import {
   Sparkles,
   Users,
   X,
-  AlertTriangle,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -363,8 +363,10 @@ const Community = () => {
   const [tagInput, setTagInput] = useState('');
   const [menuPostId, setMenuPostId] = useState<string | null>(null);
   const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([]);
-  
-  const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(null);
+
+  const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(
+    null,
+  );
   const [isReporting, setIsReporting] = useState(false);
 
   const postCategories = useMemo(() => CATEGORIES.filter((cat) => cat !== 'Tất cả'), []);
@@ -608,7 +610,7 @@ const Community = () => {
               <Users className="h-3.5 w-3.5" /> 50,000+ thành viên đang kết nối
             </span>
             <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
-              Cộng đồng CareerAI
+              Cộng đồng Edumee
             </h1>
             <p className="text-muted-foreground mx-auto max-w-2xl text-base leading-relaxed font-medium md:text-lg">
               Không gian chia sẻ kinh nghiệm thực tế, kết nối mentor và kiến tạo tương lai nghề
@@ -1046,32 +1048,32 @@ function ReportModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md"
+      className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="bg-card border border-border shadow-elevated w-full max-w-md overflow-hidden rounded-[32px]"
+        className="bg-card border-border shadow-elevated w-full max-w-md overflow-hidden rounded-[32px] border"
       >
-        <div className="p-6 border-b border-border/50 flex items-center justify-between bg-muted/30">
+        <div className="border-border/50 bg-muted/30 flex items-center justify-between border-b p-6">
           <div className="flex items-center gap-3 text-rose-500">
-            <div className="bg-rose-500/10 p-2 rounded-xl">
+            <div className="rounded-xl bg-rose-500/10 p-2">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <h3 className="text-xl font-extrabold tracking-tight">Báo cáo vi phạm</h3>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 hover:bg-muted rounded-full transition-all active:scale-95"
+          <button
+            onClick={onClose}
+            className="hover:bg-muted rounded-full p-2 transition-all active:scale-95"
           >
-            <X className="h-5 w-5 text-muted-foreground" />
+            <X className="text-muted-foreground h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="space-y-6 p-8">
           <div className="space-y-3">
-            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+            <label className="text-muted-foreground ml-1 text-[11px] font-black tracking-[0.2em] uppercase">
               Lý do báo cáo
             </label>
             <div className="grid grid-cols-2 gap-3">
@@ -1079,10 +1081,10 @@ function ReportModal({
                 <button
                   key={r}
                   onClick={() => setReason(r)}
-                  className={`px-4 py-3 rounded-2xl text-sm font-bold transition-all text-left border-2 ${
-                    reason === r 
-                      ? "bg-rose-500/10 border-rose-500/50 text-rose-500 shadow-sm" 
-                      : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted hover:border-border"
+                  className={`rounded-2xl border-2 px-4 py-3 text-left text-sm font-bold transition-all ${
+                    reason === r
+                      ? 'border-rose-500/50 bg-rose-500/10 text-rose-500 shadow-sm'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:border-border border-transparent'
                   }`}
                 >
                   {r}
@@ -1092,7 +1094,7 @@ function ReportModal({
           </div>
 
           <div className="space-y-3">
-            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+            <label className="text-muted-foreground ml-1 text-[11px] font-black tracking-[0.2em] uppercase">
               Chi tiết thêm (Tùy chọn)
             </label>
             <textarea
@@ -1100,22 +1102,22 @@ function ReportModal({
               onChange={(e) => setDetails(e.target.value)}
               placeholder="Vui lòng cung cấp thêm thông tin để chúng tôi xử lý..."
               rows={4}
-              className="w-full bg-muted/50 border-2 border-transparent focus:border-rose-500/30 rounded-[24px] p-5 text-sm font-medium focus:ring-4 focus:ring-rose-500/10 outline-none transition-all resize-none"
+              className="bg-muted/50 w-full resize-none rounded-[24px] border-2 border-transparent p-5 text-sm font-medium transition-all outline-none focus:border-rose-500/30 focus:ring-4 focus:ring-rose-500/10"
             />
           </div>
         </div>
 
-        <div className="p-6 pt-0 flex gap-4">
+        <div className="flex gap-4 p-6 pt-0">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-4 rounded-2xl text-sm font-black tracking-widest uppercase text-muted-foreground hover:bg-muted transition-all"
+            className="text-muted-foreground hover:bg-muted flex-1 rounded-2xl px-4 py-4 text-sm font-black tracking-widest uppercase transition-all"
           >
             Hủy
           </button>
           <button
             onClick={() => onSubmit(reason, details)}
             disabled={isSubmitting}
-            className="flex-1 bg-rose-500 text-white px-4 py-4 rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-rose-500/25 hover:bg-rose-600 hover:shadow-rose-500/40 disabled:opacity-50 transition-all active:scale-[0.98]"
+            className="flex-1 rounded-2xl bg-rose-500 px-4 py-4 text-sm font-black tracking-widest text-white uppercase shadow-lg shadow-rose-500/25 transition-all hover:bg-rose-600 hover:shadow-rose-500/40 active:scale-[0.98] disabled:opacity-50"
           >
             {isSubmitting ? 'Đang gửi...' : 'Gửi báo cáo'}
           </button>
