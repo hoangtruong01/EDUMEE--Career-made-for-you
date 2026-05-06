@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { communityService } from '@/lib/community.service';
 
-type Tab = 'posts' | 'comments' | 'reports';
+type Tab = 'posts' | 'reports';
 
 interface CommunityReport {
   id: string;
@@ -80,12 +80,6 @@ export default function AdminCommunityPage() {
             count={124}
           />
           <TabButton
-            active={activeTab === 'comments'}
-            onClick={() => setActiveTab('comments')}
-            label="Bình luận"
-            count={856}
-          />
-          <TabButton
             active={activeTab === 'reports'}
             onClick={() => setActiveTab('reports')}
             label="Báo cáo"
@@ -106,7 +100,6 @@ export default function AdminCommunityPage() {
       </div>
 
       {activeTab === 'posts' && <PostsTable />}
-      {activeTab === 'comments' && <CommentsTable />}
       {activeTab === 'reports' && <ReportsTable />}
     </div>
   );
@@ -268,26 +261,33 @@ function PostsTable() {
   );
 }
 
-function CommentsTable() {
-  return (
-    <AdminPanel className="p-8 text-center text-slate-500">
-      <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-20" />
-      <p>Giao diện quản lý bình luận đang được tải...</p>
-    </AdminPanel>
-  );
-}
+
 
 function ReportsTable() {
   const { accessToken } = useAuth();
   const [reports, setReports] = useState<CommunityReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [filterTarget, setFilterTarget] = useState<'all' | 'post' | 'comment'>('all');
+  const [filterReason, setFilterReason] = useState('all');
+
+  const reportReasons = [
+    'all',
+    'Spam',
+    'Ngôn từ thù ghét',
+    'Thông tin sai lệch',
+    'Quấy rối',
+    'Nội dung nhạy cảm',
+    'Khác',
+  ];
 
   const loadReports = useCallback(async () => {
     if (!accessToken) return;
     setIsLoading(true);
     try {
       const data = await communityService.listReportsAdmin(accessToken);
-      setReports(data as CommunityReport[]);
+      // Filter out resolved/dismissed reports to only show pending ones as requested
+      const pendingReports = (data as CommunityReport[]).filter(r => r.status === 'pending');
+      setReports(pendingReports);
     } catch {
       console.error('Load reports failed');
     } finally {
@@ -337,12 +337,47 @@ function ReportsTable() {
     }
   };
 
+  const filteredReports = reports.filter((r) => {
+    const matchTarget = filterTarget === 'all' || r.targetType === filterTarget;
+    const matchReason = filterReason === 'all' || r.reason === filterReason;
+    return matchTarget && matchReason;
+  });
+
   if (isLoading) {
     return <AdminPanel className="p-12 text-center text-slate-500">Đang tải báo cáo...</AdminPanel>;
   }
 
   return (
-    <AdminPanel className="p-0 overflow-hidden">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Đối tượng:</span>
+          <select 
+            value={filterTarget} 
+            onChange={(e) => setFilterTarget(e.target.value as 'all' | 'post' | 'comment')}
+            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+          >
+            <option value="all">Tất cả</option>
+            <option value="post">Bài viết</option>
+            <option value="comment">Bình luận</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lý do:</span>
+          <select 
+            value={filterReason} 
+            onChange={(e) => setFilterReason(e.target.value)}
+            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+          >
+            {reportReasons.map(r => (
+              <option key={r} value={r}>{r === 'all' ? 'Tất cả lý do' : r}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <AdminPanel className="p-0 overflow-hidden">
       <table className="min-w-full text-sm">
         <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
           <tr>
@@ -355,8 +390,8 @@ function ReportsTable() {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {reports.map((report, index) => (
-            <tr key={report.id || index} className={cn(report.status !== 'pending' && 'opacity-60 bg-slate-50/30')}>
+          {filteredReports.map((report, index) => (
+            <tr key={report.id || index} className="hover:bg-slate-50/50 transition">
               <td className="px-6 py-4">
                 <p className="font-bold text-slate-900">{report.reporterId?.name || 'User'}</p>
                 <p className="text-[10px] text-slate-500">{report.reporterId?.email}</p>
@@ -377,40 +412,30 @@ function ReportsTable() {
                 {report.details && <p className="text-[10px] text-slate-500 mt-1 italic line-clamp-1">{report.details}</p>}
               </td>
               <td className="px-6 py-4">
-                 <span className={cn(
-                   "text-[10px] font-bold uppercase px-2 py-1 rounded-md",
-                   report.status === 'pending' ? "bg-slate-100 text-slate-600" : 
-                   report.status === 'resolved' ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-400"
-                 )}>
-                   {report.status === 'pending' ? 'Chờ duyệt' : report.status === 'resolved' ? 'Đã giải quyết' : 'Bỏ qua'}
+                 <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-md bg-slate-100 text-slate-600">
+                   Chờ duyệt
                  </span>
               </td>
               <td className="px-6 py-4 text-slate-500 text-xs">{new Date(report.createdAt).toLocaleString('vi-VN')}</td>
               <td className="px-6 py-4">
-                {report.status === 'pending' ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <button 
-                      onClick={() => handleDismiss(report._id || report.id)}
-                      className="px-3 py-1.5 bg-slate-500 text-white rounded-lg text-xs font-bold hover:bg-slate-600 transition"
-                    >
-                      Bỏ qua
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteContent(report)}
-                      className="px-3 py-1.5 bg-rose-500 text-white rounded-lg text-xs font-bold hover:bg-rose-600 transition"
-                    >
-                      Xóa nội dung
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-right text-slate-400 text-[10px] font-bold italic">
-                    Đã xử lý
-                  </div>
-                )}
+                <div className="flex items-center justify-end gap-2">
+                  <button 
+                    onClick={() => handleDismiss(report._id || report.id)}
+                    className="px-3 py-1.5 bg-slate-500 text-white rounded-lg text-xs font-bold hover:bg-slate-600 transition"
+                  >
+                    Bỏ qua
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteContent(report)}
+                    className="px-3 py-1.5 bg-rose-500 text-white rounded-lg text-xs font-bold hover:bg-rose-600 transition"
+                  >
+                    Xóa nội dung
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
-          {reports.length === 0 && (
+          {filteredReports.length === 0 && (
             <tr>
               <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">Không có báo cáo nào.</td>
             </tr>
@@ -418,5 +443,6 @@ function ReportsTable() {
         </tbody>
       </table>
     </AdminPanel>
+  </div>
   );
 }
