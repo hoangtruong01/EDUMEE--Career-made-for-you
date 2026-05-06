@@ -50,4 +50,17 @@ export class Report {
 
 export const ReportSchema = SchemaFactory.createForClass(Report);
 
+ReportSchema.set('toJSON', {
+  virtuals: true,
+  transform: (_doc: any, ret: any): any => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    ret.id = ret._id;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    delete ret._id;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    delete ret.__v;
+    return ret;
+  },
+});
+
 ReportSchema.index({ status: 1, createdAt: -1 });

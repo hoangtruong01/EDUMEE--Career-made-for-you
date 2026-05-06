@@ -5,14 +5,10 @@ import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
   CheckCircle,
-  Eye,
   Flag,
   MessageSquare,
-  MoreHorizontal,
   Search,
   Trash2,
-  User,
-  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
@@ -22,6 +18,7 @@ type Tab = 'posts' | 'comments' | 'reports';
 
 interface CommunityReport {
   id: string;
+  _id?: string;
   reporterId: { name: string; email: string };
   targetId: string;
   targetType: 'post' | 'comment';
@@ -190,7 +187,7 @@ function PostsTable() {
       await communityService.updatePostStatus(accessToken, postId, 'deleted');
       await loadPosts();
       alert('Đã xóa bài viết thành công.');
-    } catch (err) {
+    } catch {
       alert('Thất bại khi xóa bài viết.');
     }
   };
@@ -306,11 +303,11 @@ function ReportsTable() {
   }, [loadReports]);
 
   const handleDismiss = async (reportId: string) => {
-    if (!accessToken) return;
+    if (!accessToken || !reportId) return;
     try {
       await communityService.updateReportStatus(accessToken, reportId, 'dismissed');
       await loadReports();
-    } catch (err) {
+    } catch {
       alert('Thất bại khi cập nhật báo cáo.');
     }
   };
@@ -332,10 +329,10 @@ function ReportsTable() {
           return;
         }
       }
-      await communityService.updateReportStatus(accessToken, report.id, 'resolved');
+      await communityService.updateReportStatus(accessToken, report._id || report.id, 'resolved');
       await loadReports();
       alert('Đã xóa nội dung thành công.');
-    } catch (err) {
+    } catch {
       alert('Thất bại khi xóa nội dung.');
     }
   };
@@ -358,8 +355,8 @@ function ReportsTable() {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {reports.map((report) => (
-            <tr key={report.id} className={cn(report.status !== 'pending' && 'opacity-60 bg-slate-50/30')}>
+          {reports.map((report, index) => (
+            <tr key={report.id || index} className={cn(report.status !== 'pending' && 'opacity-60 bg-slate-50/30')}>
               <td className="px-6 py-4">
                 <p className="font-bold text-slate-900">{report.reporterId?.name || 'User'}</p>
                 <p className="text-[10px] text-slate-500">{report.reporterId?.email}</p>
@@ -393,7 +390,7 @@ function ReportsTable() {
                 {report.status === 'pending' ? (
                   <div className="flex items-center justify-end gap-2">
                     <button 
-                      onClick={() => handleDismiss(report.id)}
+                      onClick={() => handleDismiss(report._id || report.id)}
                       className="px-3 py-1.5 bg-slate-500 text-white rounded-lg text-xs font-bold hover:bg-slate-600 transition"
                     >
                       Bỏ qua

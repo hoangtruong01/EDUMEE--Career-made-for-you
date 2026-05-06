@@ -50,15 +50,16 @@ export class CommunityPostService {
   async findAll(
     page = 1,
     limit = 10,
-    filters: { category?: string; search?: string; hashtag?: string } = {},
+    filters: { category?: string; search?: string; hashtag?: string; allStatus?: boolean } = {},
   ): Promise<{ data: CommunityPostDocument[]; total: number; page: number; totalPages: number }> {
     const safePage = Math.max(1, Number(page) || 1);
     const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
     const skip = (safePage - 1) * safeLimit;
 
-    const query: FilterQuery<CommunityPostDocument> = {
-      status: PostStatus.PUBLISHED,
-    };
+    const query: FilterQuery<CommunityPostDocument> = {};
+    if (!filters.allStatus) {
+      query.status = PostStatus.PUBLISHED;
+    }
 
     if (filters.category && filters.category !== 'Tất cả') {
       query.category = filters.category;

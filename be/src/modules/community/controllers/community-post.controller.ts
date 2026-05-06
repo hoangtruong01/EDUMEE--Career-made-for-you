@@ -47,8 +47,14 @@ export class CommunityPostController {
     @Query('category') category?: string,
     @Query('q') search?: string,
     @Query('hashtag') hashtag?: string,
+    @CurrentUser() user?: AuthUserLike,
   ) {
-    return this.communityPostService.findAll(page, limit, { category, search, hashtag });
+    return this.communityPostService.findAll(page, limit, {
+      category,
+      search,
+      hashtag,
+      allStatus: user ? isAdmin(user) : false,
+    });
   }
 
   @Get(':id')

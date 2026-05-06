@@ -694,36 +694,43 @@ function ReportModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md"
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="bg-card border border-border shadow-elevated w-full max-w-md overflow-hidden rounded-[32px]"
       >
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-rose-500">
-            <AlertTriangle className="h-5 w-5" />
-            <h3 className="text-lg font-bold">Báo cáo vi phạm</h3>
+        <div className="p-6 border-b border-border/50 flex items-center justify-between bg-muted/30">
+          <div className="flex items-center gap-3 text-rose-500">
+            <div className="bg-rose-500/10 p-2 rounded-xl">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <h3 className="text-xl font-extrabold tracking-tight">Báo cáo vi phạm</h3>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-            <X className="h-5 w-5 text-slate-400" />
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-muted rounded-full transition-all active:scale-95"
+          >
+            <X className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lý do báo cáo</label>
-            <div className="grid grid-cols-2 gap-2">
+        <div className="p-8 space-y-6">
+          <div className="space-y-3">
+            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+              Lý do báo cáo
+            </label>
+            <div className="grid grid-cols-2 gap-3">
               {reasons.map((r) => (
                 <button
                   key={r}
                   onClick={() => setReason(r)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all text-left border ${
+                  className={`px-4 py-3 rounded-2xl text-sm font-bold transition-all text-left border-2 ${
                     reason === r 
-                      ? "bg-rose-50 border-rose-200 text-rose-600" 
-                      : "bg-slate-50 border-slate-100 text-slate-600 hover:border-slate-300"
+                      ? "bg-rose-500/10 border-rose-500/50 text-rose-500 shadow-sm" 
+                      : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted hover:border-border"
                   }`}
                 >
                   {r}
@@ -732,29 +739,31 @@ function ReportModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Chi tiết thêm (Tùy chọn)</label>
+          <div className="space-y-3">
+            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+              Chi tiết thêm (Tùy chọn)
+            </label>
             <textarea
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               placeholder="Vui lòng cung cấp thêm thông tin để chúng tôi xử lý..."
-              rows={3}
-              className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-rose-500/20 outline-none transition-all"
+              rows={4}
+              className="w-full bg-muted/50 border-2 border-transparent focus:border-rose-500/30 rounded-[24px] p-5 text-sm font-medium focus:ring-4 focus:ring-rose-500/10 outline-none transition-all resize-none"
             />
           </div>
         </div>
 
-        <div className="p-6 bg-slate-50 flex gap-3">
+        <div className="p-6 pt-0 flex gap-4">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-all"
+            className="flex-1 px-4 py-4 rounded-2xl text-sm font-black tracking-widest uppercase text-muted-foreground hover:bg-muted transition-all"
           >
             Hủy
           </button>
           <button
             onClick={() => onSubmit(reason, details)}
             disabled={isSubmitting}
-            className="flex-1 bg-rose-500 text-white px-4 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 disabled:opacity-50 transition-all"
+            className="flex-1 bg-rose-500 text-white px-4 py-4 rounded-2xl text-sm font-black tracking-widest uppercase shadow-lg shadow-rose-500/25 hover:bg-rose-600 hover:shadow-rose-500/40 disabled:opacity-50 transition-all active:scale-[0.98]"
           >
             {isSubmitting ? 'Đang gửi...' : 'Gửi báo cáo'}
           </button>
