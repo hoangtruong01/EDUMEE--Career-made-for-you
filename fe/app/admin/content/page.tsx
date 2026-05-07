@@ -234,12 +234,12 @@ export default function AdminContentPage() {
 
       <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
         <AdminPanel>
-          <h3 className="mb-4 text-lg font-bold text-slate-900">
+          <h3 className="mb-4 text-lg font-bold text-slate-900 dark:text-slate-100">
             {editingId ? 'Chỉnh sửa câu hỏi' : 'Thêm câu hỏi mới'}
           </h3>
 
           <div className="space-y-3">
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Nội dung câu hỏi
               <textarea
                 value={form.questionText}
@@ -247,20 +247,20 @@ export default function AdminContentPage() {
                   setForm((prev) => ({ ...prev, questionText: event.target.value }))
                 }
                 rows={4}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400"
+                className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Nhập nội dung câu hỏi"
               />
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Nhóm dimension
                 <select
                   value={form.dimension}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, dimension: event.target.value }))
                   }
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400"
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 >
                   {dimensionOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -270,7 +270,7 @@ export default function AdminContentPage() {
                 </select>
               </label>
 
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Thứ tự
                 <input
                   type="number"
@@ -278,48 +278,48 @@ export default function AdminContentPage() {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, orderIndex: event.target.value }))
                   }
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                   placeholder="0"
                 />
               </label>
             </div>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Lựa chọn A
               <input
                 value={form.optionA}
                 onChange={(event) => setForm((prev) => ({ ...prev, optionA: event.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Nội dung đáp án A"
               />
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Lựa chọn B
               <input
                 value={form.optionB}
                 onChange={(event) => setForm((prev) => ({ ...prev, optionB: event.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Nội dung đáp án B"
               />
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Lựa chọn C
               <input
                 value={form.optionC}
                 onChange={(event) => setForm((prev) => ({ ...prev, optionC: event.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Nội dung đáp án C"
               />
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Lựa chọn D
               <input
                 value={form.optionD}
                 onChange={(event) => setForm((prev) => ({ ...prev, optionD: event.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Nội dung đáp án D"
               />
             </label>
@@ -338,7 +338,7 @@ export default function AdminContentPage() {
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                 >
                   <X className="h-4 w-4" />
                   Hủy chỉnh sửa
@@ -351,11 +351,11 @@ export default function AdminContentPage() {
         <div>
           <AdminPanel className="p-3">
             <div className="relative min-w-72">
-              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="h-11 w-full rounded-xl border border-slate-200 pr-3 pl-10 text-sm outline-none focus:border-violet-400"
+                className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pr-3 pl-10 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all"
                 placeholder="Tìm theo nội dung hoặc dimension"
               />
             </div>
@@ -363,8 +363,8 @@ export default function AdminContentPage() {
 
           <AdminPanel className="mt-4 p-0">
             <div className="overflow-x-auto rounded-2xl">
-              <table className="min-w-full bg-white text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
+              <table className="min-w-full bg-white dark:bg-slate-900 text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
                   <tr>
                     <th className="px-4 py-3">Thứ tự</th>
                     <th className="px-4 py-3">Câu hỏi</th>
@@ -385,17 +385,17 @@ export default function AdminContentPage() {
                   {visibleItems.map((question) => {
                     const id = question.id || question._id || '';
                     return (
-                      <tr key={id} className="border-t border-slate-100 align-top">
-                        <td className="px-4 py-4 text-slate-700">{question.orderIndex ?? 0}</td>
-                        <td className="max-w-xl px-4 py-4 font-semibold text-slate-800">
+                      <tr key={id} className="border-t border-slate-100 dark:border-slate-800 align-top hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="px-4 py-4 text-slate-700 dark:text-slate-400">{question.orderIndex ?? 0}</td>
+                        <td className="max-w-xl px-4 py-4 font-semibold text-slate-800 dark:text-slate-100">
                           {question.questionText}
                         </td>
                         <td className="px-4 py-4">
-                          <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">
+                          <span className="rounded-full bg-sky-100 dark:bg-sky-500/10 px-2 py-1 text-xs font-semibold text-sky-700 dark:text-sky-400 border border-sky-200/50 dark:border-sky-500/20">
                             {question.dimension}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-xs text-slate-600">
+                        <td className="px-4 py-4 text-xs text-slate-600 dark:text-slate-400">
                           {question.options.map((option) => (
                             <p key={option.value} className="leading-5">
                               <strong>{option.value}.</strong> {option.label}
@@ -430,7 +430,7 @@ export default function AdminContentPage() {
         </div>
       </div>
 
-      <p className="mt-4 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700">
+      <p className="mt-4 rounded-xl border border-sky-100 dark:border-sky-900/30 bg-sky-50 dark:bg-sky-900/10 px-4 py-3 text-sm font-medium text-sky-700 dark:text-sky-400">
         {message}
       </p>
     </div>

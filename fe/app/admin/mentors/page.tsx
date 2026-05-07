@@ -26,7 +26,7 @@ export default function AdminMentorsPage() {
         subtitle="Duyệt hồ sơ chuyên gia và theo dõi tiến độ các buổi tư vấn 1-1."
       />
 
-      <div className="mb-6 flex gap-4 border-b border-slate-200">
+      <div className="mb-6 flex gap-4 border-b border-slate-200 dark:border-slate-800">
         <TabItem
           active={activeTab === 'pending'}
           onClick={() => setActiveTab('pending')}
@@ -69,7 +69,7 @@ function TabItem({
       onClick={onClick}
       className={cn(
         'relative pb-4 text-sm font-semibold transition-colors',
-        active ? 'text-violet-600' : 'text-slate-500 hover:text-slate-800',
+        active ? 'text-violet-600 dark:text-violet-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200',
       )}
     >
       {label}
@@ -78,7 +78,7 @@ function TabItem({
           {badge}
         </span>
       )}
-      {active && <div className="absolute bottom-0 left-0 h-0.5 w-full bg-violet-600" />}
+      {active && <div className="absolute bottom-0 left-0 h-0.5 w-full bg-violet-600 dark:bg-violet-400" />}
     </button>
   );
 }
@@ -116,11 +116,11 @@ function PendingMentors() {
                   <GraduationCap className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">{m.name}</h3>
-                  <p className="text-sm text-slate-500">{m.email}</p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{m.name}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{m.email}</p>
                 </div>
               </div>
-              <span className="text-xs text-slate-400">{m.submittedAt}</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">{m.submittedAt}</span>
             </div>
 
             <div className="mb-6 space-y-3">
@@ -131,7 +131,7 @@ function PendingMentors() {
           </div>
 
           <div className="flex gap-2">
-            <button className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-bold text-white hover:bg-slate-800 transition shadow-sm">
+            <button className="flex-1 rounded-xl bg-slate-900 dark:bg-slate-800 py-2.5 text-sm font-bold text-white hover:bg-slate-800 dark:hover:bg-slate-700 transition shadow-sm">
               Xem Hồ sơ (CV)
             </button>
             <button className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition shadow-sm">
@@ -150,14 +150,14 @@ function PendingMentors() {
 function MentorList() {
   return (
     <AdminPanel className="p-0 overflow-hidden">
-      <div className="p-4 border-b border-slate-100 flex items-center gap-4">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="h-10 w-full rounded-xl border border-slate-200 pl-10 text-sm outline-none focus:border-violet-400" placeholder="Tìm mentor..." />
+          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+          <input className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:border-violet-400 dark:text-slate-200 transition-all" placeholder="Tìm mentor..." />
         </div>
       </div>
       <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+        <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
           <tr>
             <th className="px-6 py-4 text-left">Mentor</th>
             <th className="px-6 py-4 text-left">Chuyên môn</th>
@@ -166,25 +166,25 @@ function MentorList() {
             <th className="px-6 py-4 text-right">Thao tác</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {[1, 2, 3].map((i) => (
-            <tr key={i} className="hover:bg-slate-50/50">
+            <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-bold">M</div>
                   <div>
-                    <p className="font-bold text-slate-900">Mentor Name {i}</p>
-                    <p className="text-xs text-slate-500">mentor{i}@edumee.com</p>
+                    <p className="font-bold text-slate-900 dark:text-slate-100">Mentor Name {i}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">mentor{i}@edumee.com</p>
                   </div>
                 </div>
               </td>
-              <td className="px-6 py-4 text-slate-600">Product Manager, Business Analyst</td>
+              <td className="px-6 py-4 text-slate-600 dark:text-slate-400">Product Manager, Business Analyst</td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-center gap-1 text-amber-500 font-bold">
                   <Star className="h-4 w-4 fill-current" /> 4.9
                 </div>
               </td>
-              <td className="px-6 py-4 text-center font-bold text-slate-700">128</td>
+              <td className="px-6 py-4 text-center font-bold text-slate-700 dark:text-slate-300">128</td>
               <td className="px-6 py-4 text-right">
                 <button className="p-2 hover:bg-slate-100 rounded-lg"><MoreVertical className="h-4 w-4 text-slate-400" /></button>
               </td>
@@ -200,7 +200,7 @@ function BookingList() {
   return (
     <AdminPanel className="p-0 overflow-hidden">
       <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+        <thead className="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
           <tr>
             <th className="px-6 py-4 text-left">Học viên</th>
             <th className="px-6 py-4 text-left">Mentor</th>
@@ -209,17 +209,17 @@ function BookingList() {
             <th className="px-6 py-4 text-right">Chi tiết</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
-          <tr className="hover:bg-slate-50/50">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
             <td className="px-6 py-4 font-medium">Trần Văn C</td>
             <td className="px-6 py-4 font-medium">Lê Thế Hoàng</td>
             <td className="px-6 py-4">
-              <div className="flex items-center gap-2 text-slate-600">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                 <Calendar className="h-4 w-4" /> 15/05/2024 • 20:00
               </div>
             </td>
             <td className="px-6 py-4">
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Đã xác nhận</span>
+              <span className="rounded-full bg-emerald-100 dark:bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20">Đã xác nhận</span>
             </td>
             <td className="px-6 py-4 text-right">
               <button className="text-violet-600 hover:underline"><ChevronRight className="h-5 w-5 inline" /></button>
@@ -234,8 +234,8 @@ function BookingList() {
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-semibold text-slate-700">{value}</p>
+      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{label}</p>
+      <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{value}</p>
     </div>
   );
 }
