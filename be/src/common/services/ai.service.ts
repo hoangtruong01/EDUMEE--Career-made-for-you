@@ -21,6 +21,35 @@ interface Career {
   description?: string;
 }
 
+export interface CareerRoadmap {
+  title: string;
+  description: string;
+  totalDuration: string;
+  phases: Array<{
+    phaseId: string;
+    phase: string;
+    title: string;
+    description: string;
+    estimatedDuration: string;
+    objectives: string[];
+    order: number;
+    milestones: Array<{
+      milestoneId: string;
+      title: string;
+      description: string;
+      tasks: Array<{
+        taskId: string;
+        taskTitle: string;
+        isRequired: boolean;
+        estimatedHours: number;
+        order: number;
+      }>;
+      skills: Array<{ skillName: string; targetLevel: number }>;
+      completionCriteria: { requiredTasks: string[] };
+    }>;
+  }>;
+}
+
 @Injectable()
 export class AIService {
   private readonly logger = new Logger(AIService.name);
@@ -391,28 +420,7 @@ Quy tắc:
     }
   }
 
-  async generateCareerRoadmap(careerTitle: string, personalityTraits: string[]): Promise<{
-    title: string;
-    description: string;
-    totalDuration: string;
-    phases: {
-      phaseId: string;
-      phase: string;
-      title: string;
-      description: string;
-      estimatedDuration: string;
-      objectives: string[];
-      order: number;
-      milestones: {
-        milestoneId: string;
-        title: string;
-        description: string;
-        tasks: { taskId: string; taskTitle: string; isRequired: boolean; estimatedHours: number; order: number }[];
-        skills: { skillName: string; targetLevel: number }[];
-        completionCriteria: { requiredTasks: string[] };
-      }[];
-    }[];
-  }> {
+  async generateCareerRoadmap(careerTitle: string, personalityTraits: string[]): Promise<CareerRoadmap> {
     const prompt = `
 Bạn là chuyên gia thiết kế lộ trình học tập nghề nghiệp. Tạo lộ trình học tập chi tiết cho nghề "${careerTitle}" từ người mới bắt đầu.
 ${personalityTraits.length > 0 ? `Tính cách học viên: ${personalityTraits.join(', ')}` : ''}
@@ -464,12 +472,7 @@ Quy tắc:
       let clean = response.trim();
       if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
       if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
-      return JSON.parse(clean) as {
-        title: string;
-        description: string;
-        totalDuration: string;
-        phases: any[];
-      };
+      return JSON.parse(clean) as CareerRoadmap;
     } catch (error) {
       this.logger.error('Failed to generate career roadmap:', error);
       // Return a sensible fallback
@@ -595,6 +598,80 @@ Quy tắc:
       return JSON.parse(cleanJson) as CareerSimulationData;
     } catch (error) {
       this.logger.error('Error generating career simulation:', error);
+      throw error;
+    }
+  }
+
+  async generateFullCareerData(title: string): Promise<Record<string, any>> {
+    const prompt = `
+Bạn là một chuyên gia hướng nghiệp và phân tích thị trường lao động. Hãy tạo một hồ sơ nghề nghiệp cực kỳ chi tiết cho nghề: "${title}" tại thị trường Việt Nam.
+
+Trả về một đối tượng JSON hợp lệ (KHÔNG có markdown code blocks) khớp với cấu trúc sau:
+{
+  "title": "${title}",
+  "description": "Mô tả chi tiết 3-4 câu về nghề",
+  "category": "technology | healthcare | finance | education | creative | business | engineering | science | legal | sales_marketing | social_services | other",
+  "industries": ["Ngành 1", "Ngành 2"],
+  "skillRequirements": {
+    "technical": [
+      { "skillName": "Tên kỹ năng", "importance": 5, "minimumLevel": 3 }
+    ],
+    "soft": [
+      { "skillName": "Tên kỹ năng", "importance": 4, "minimumLevel": 3 }
+    ]
+  },
+  "personalityFit": {
+    "idealTraits": ["trait 1", "trait 2"],
+    "challengingTraits": ["trait 3"],
+    "hollandCodes": ["R", "I"],
+    "workEnvironment": ["Môi trường 1"]
+  },
+  "careerLevels": [
+    {
+      "level": "intern",
+      "title": "Thực tập sinh ${title}",
+      "description": "Mô tả vai trò",
+      "experience": { "years": { "min": 0, "max": 1 }, "description": "Mới bắt đầu" },
+      "skills": { "technical": ["skill 1"], "soft": ["skill 2"] },
+      "responsibilities": ["trách nhiệm 1"],
+      "salary": [{ "currency": "VND", "min": 5000000, "max": 8000000, "location": "Việt Nam" }],
+      "typicalTasks": ["task 1"],
+      "nextLevels": ["entry_level"]
+    }
+  ],
+  "marketInfo": {
+    "demandLevel": "high",
+    "growthProjection": "Tăng trưởng 15% trong 5 năm tới",
+    "jobAvailability": 4,
+    "competitionLevel": "medium",
+    "automationRisk": "low"
+  },
+  "workEnvironment": {
+    "workSettings": ["Remote", "Office"],
+    "workSchedule": ["Flexible"],
+    "travelRequirement": "minimal",
+    "physicalDemands": "low",
+    "stressLevel": "medium"
+  },
+  "tags": ["tag1", "tag2"]
+}
+
+Lưu ý quan trọng:
+1. "category" PHẢI là một trong các giá trị: technology, healthcare, finance, education, creative, business, engineering, science, legal, sales_marketing, social_services, other.
+2. "careerLevels" nên có ít nhất 4 cấp độ: intern, entry_level, mid_level, senior.
+3. Toàn bộ nội dung văn bản phải bằng TIẾNG VIỆT.
+4. "hollandCodes" là các chữ cái RIASEC (R, I, A, S, E, C).
+5. Chỉ trả về JSON, không giải thích thêm.
+`;
+
+    try {
+      const response = await this.callGeminiAPI(prompt);
+      let clean = response.trim();
+      if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
+      if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
+      return JSON.parse(clean) as Record<string, any>;
+    } catch (error) {
+      this.logger.error('Failed to generate full career data:', error);
       throw error;
     }
   }

@@ -12,6 +12,7 @@ import {
   CareerFitResult,
   CareerFitResultSchema,
 } from './schemas';
+import { Career, CareerSchema } from '../careers/schemas/career.schema';
 import { CareerInsight, CareerInsightSchema } from '../careers/schemas/career-insight.schema';
 import { AssessmentSession, AssessmentSessionSchema } from './schemas/assessment-sesions.schema';
 import { UsersModule } from '../users/users.module';
@@ -50,6 +51,7 @@ import { AssessmentSessionController } from './controllers/assessment-session.co
       { name: AssessmentSession.name, schema: AssessmentSessionSchema },
       { name: UserSubscription.name, schema: UserSubscriptionSchema },
       { name: AiPlan.name, schema: AiPlanSchema },
+      { name: Career.name, schema: CareerSchema },
       { name: CareerInsight.name, schema: CareerInsightSchema },
     ]),
   ],

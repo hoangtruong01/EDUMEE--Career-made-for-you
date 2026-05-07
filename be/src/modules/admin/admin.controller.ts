@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -60,5 +60,47 @@ export class AdminController {
     @Body('role') role: UserRole,
   ) {
     return this.adminService.updateUserRole(id, role);
+  }
+
+  // Career Management
+  @ApiOperation({ summary: 'Lấy danh sách nghề nghiệp' })
+  @Get('careers')
+  async getAllCareers(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+  ) {
+    return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search, category);
+  }
+
+  @ApiOperation({ summary: 'Kiểm tra tên nghề nghiệp trùng' })
+  @Get('careers/check-duplicate')
+  async checkCareerTitleDuplicate(@Query('title') title: string) {
+    return { exists: await this.adminService.checkCareerTitleDuplicate(title) };
+  }
+
+  @ApiOperation({ summary: 'Tạo nghề nghiệp bằng AI' })
+  @Post('careers/generate-ai')
+  async generateCareerWithAI(@Body('title') title: string) {
+    return this.adminService.generateCareerWithAI(title);
+  }
+
+  @ApiOperation({ summary: 'Thêm nghề nghiệp mới' })
+  @Post('careers')
+  async createCareer(@Body() data: Record<string, any>) {
+    return this.adminService.createCareer(data);
+  }
+
+  @ApiOperation({ summary: 'Cập nhật nghề nghiệp' })
+  @Patch('careers/:id')
+  async updateCareer(@Param('id') id: string, @Body() data: Record<string, any>) {
+    return this.adminService.updateCareer(id, data);
+  }
+
+  @ApiOperation({ summary: 'Xóa nghề nghiệp' })
+  @Delete('careers/:id')
+  async deleteCareer(@Param('id') id: string) {
+    return this.adminService.deleteCareer(id);
   }
 }

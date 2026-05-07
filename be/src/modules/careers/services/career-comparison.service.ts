@@ -148,13 +148,14 @@ export class CareerComparisonService {
             throw new BadRequestException(`Career insight not found for ID: ${id.toString()}`);
           }
           // Map Insight to Career-like object
+          const insightData = insight as unknown as CareerInsightDocument;
           return {
-            _id: (insight as CareerInsightDocument)._id,
-            title: insight.careerTitle,
+            _id: insightData._id,
+            title: insightData.careerTitle,
             category: 'Công nghệ',
-            description: insight.analysis?.overview || '',
-            requiredSkills: insight.analysis?.keySkills || [],
-            marketInfo: { demandLevel: insight.analysis?.demandLevel || 'Cao' },
+            description: insightData.analysis?.overview || '',
+            requiredSkills: insightData.analysis?.keySkills || [],
+            marketInfo: { demandLevel: insightData.analysis?.demandLevel || 'Cao' },
           } as unknown as Career;
         }
       })
@@ -185,13 +186,14 @@ export class CareerComparisonService {
             console.error(`generateDetailedComparison: Insight not found for ID ${id.toString()} after failing to find in static careers.`);
             throw new BadRequestException(`Career insight not found for ID: ${id.toString()}`);
           }
+          const insightData = insight as unknown as CareerInsightDocument;
           return {
-            _id: (insight as CareerInsightDocument)._id,
-            title: insight.careerTitle,
+            _id: insightData._id,
+            title: insightData.careerTitle,
             category: 'Công nghệ',
-            description: insight.analysis?.overview || '',
-            requiredSkills: insight.analysis?.keySkills || [],
-            marketInfo: { demandLevel: insight.analysis?.demandLevel || 'Cao' },
+            description: insightData.analysis?.overview || '',
+            requiredSkills: insightData.analysis?.keySkills || [],
+            marketInfo: { demandLevel: insightData.analysis?.demandLevel || 'Cao' },
           } as unknown as Career;
         }
       }),

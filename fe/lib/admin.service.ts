@@ -39,6 +39,31 @@ export interface AdminUsersResponse {
   total: number;
 }
 
+export interface SkillRequirement {
+  skillName: string;
+  importance: number;
+  minimumLevel: number;
+}
+
+export interface MarketInfo {
+  demandLevel: 'low' | 'medium' | 'high' | 'very_high';
+  growthProjection: string;
+}
+
+export interface AdminCareer {
+  id?: string;
+  _id?: string;
+  title: string;
+  category: string;
+  description: string;
+  skillRequirements?: {
+    technical: SkillRequirement[];
+    soft: SkillRequirement[];
+  };
+  marketInfo?: MarketInfo;
+  isDraft?: boolean;
+}
+
 export const adminService = {
   getDashboardStats(token: string) {
     return apiClient.get<DashboardStats>('/admin/dashboard-stats', token);
@@ -63,6 +88,31 @@ export const adminService = {
 
   bulkDeleteUsers(token: string, userIds: string[]) {
     return apiClient.delete<void>('/admin/users/bulk-delete', token, { ids: userIds });
+  },
+
+  getAllCareers(token: string, page: number = 1, limit: number = 10, search?: string, category?: string) {
+    const url = `/admin/careers?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}${category ? `&category=${category}` : ''}`;
+    return apiClient.get<{ careers: AdminCareer[]; total: number }>(url, token);
+  },
+
+  checkCareerDuplicate(token: string, title: string) {
+    return apiClient.get<{ exists: boolean }>(`/admin/careers/check-duplicate?title=${encodeURIComponent(title)}`, token);
+  },
+
+  generateCareerWithAI(token: string, title: string) {
+    return apiClient.post<AdminCareer>('/admin/careers/generate-ai', { title }, token);
+  },
+
+  createCareer(token: string, data: Partial<AdminCareer>) {
+    return apiClient.post<AdminCareer>('/admin/careers', data, token);
+  },
+
+  updateCareer(token: string, id: string, data: Partial<AdminCareer>) {
+    return apiClient.patch<AdminCareer>(`/admin/careers/${id}`, data, token);
+  },
+
+  deleteCareer(token: string, id: string) {
+    return apiClient.delete<void>(`/admin/careers/${id}`, token);
   },
 
 };

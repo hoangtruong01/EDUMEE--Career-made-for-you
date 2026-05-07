@@ -9,6 +9,7 @@ import { AssessmentAnswerService } from './assessment-answer.service';
 import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 import { UsersService } from '../../users/users.service';
+import { Career, CareerDocument } from '../../careers/schemas/career.schema';
 import { CareerInsight, CareerInsightDocument } from '../../careers/schemas/career-insight.schema';
 
 
@@ -17,13 +18,6 @@ interface QuestionData {
   questionText?: string;
   dimension?: string;
   options?: { value: string; label: string }[];
-}
-
-interface Career {
-  _id?: string;
-  title: string;
-  category?: string;
-  industry?: string;
 }
 
 interface AnswerWithSessionId {
@@ -37,6 +31,8 @@ export class CareerFitResultService {
   constructor(
     @InjectModel(CareerFitResult.name)
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
+    @InjectModel(Career.name)
+    private readonly careerModel: Model<CareerDocument>,
     @InjectModel(CareerInsight.name)
     private readonly careerInsightModel: Model<CareerInsightDocument>,
     private readonly aiService: AIService,
@@ -141,8 +137,43 @@ export class CareerFitResultService {
       .exec();
   }
 
-  async findAllInsights(): Promise<CareerInsight[]> {
-    return this.careerInsightModel.find().sort({ updatedAt: -1 }).exec();
+  async findAllInsights(): Promise<Record<string, any>[]> {
+    const [insights, curated] = await Promise.all([
+      this.careerInsightModel.find().exec(),
+      this.careerModel.find({ isActive: true }).exec(),
+    ]);
+
+    const result = [...insights];
+    
+    // Add curated careers that aren't in insights yet
+    for (const c of curated) {
+      const exists = result.some(i => i.careerTitle.toLowerCase() === c.title.toLowerCase());
+      if (!exists) {
+        result.push({
+          _id: c._id,
+          careerTitle: c.title,
+          analysis: {
+            overview: c.description,
+            pros: [],
+            cons: [],
+            trends: [],
+            salaryRange: c.careerLevels?.[0]?.salary?.[0] 
+              ? `${c.careerLevels[0].salary[0].min}-${c.careerLevels[0].salary[0].max}` 
+              : 'N/A',
+            demandLevel: c.marketInfo?.demandLevel || 'medium',
+            keySkills: c.skillRequirements?.technical?.map(s => s.skillName) || [],
+            topCompanies: []
+          },
+          lastAIUpdate: (c as unknown as { updatedAt?: Date }).updatedAt || new Date()
+        });
+      }
+    }
+
+    return result.sort((a, b) => {
+      const dateA = new Date((a.updatedAt || a.lastAIUpdate || 0) as string | number | Date).getTime();
+      const dateB = new Date((b.updatedAt || b.lastAIUpdate || 0) as string | number | Date).getTime();
+      return dateB - dateA;
+    });
   }
 
   async getTopCareerMatches(userId: string, limit = 10): Promise<CareerFitResult[]> {
@@ -189,7 +220,7 @@ export class CareerFitResultService {
     }
   }
 
-  async generateComparisonReport(userId: string, careerIds: string[]): Promise<any> {
+  async generateComparisonReport(userId: string, careerIds: string[]): Promise<Record<string, any>> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }

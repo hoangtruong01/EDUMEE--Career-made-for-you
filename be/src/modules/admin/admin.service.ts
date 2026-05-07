@@ -4,9 +4,11 @@ import { Model, Types, FilterQuery } from 'mongoose';
 
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Career, CareerDocument } from '../careers/schemas/career.schema';
+import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-insight.schema';
 import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
 import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
 import { UserRole, UserVerifyStatus, LoginType } from '../../common/enums';
+import { AIService } from '../../common/services/ai.service';
 
 
 @Injectable()
@@ -14,9 +16,129 @@ export class AdminService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Career.name) private careerModel: Model<CareerDocument>,
+    @InjectModel(CareerInsight.name) private careerInsightModel: Model<CareerInsightDocument>,
     @InjectModel(CareerFitResult.name) private careerFitResultModel: Model<CareerFitResultDocument>,
     @InjectModel(BookingSession.name) private bookingSessionModel: Model<BookingSessionDocument>,
+    private readonly aiService: AIService,
   ) {}
+
+  async getAllCareers(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    
+    // Use aggregation to merge Career and CareerInsight
+    // We want all titles from both collections
+    const curatedTitles = await this.careerModel.distinct('title');
+    const insightTitles = await this.careerInsightModel.distinct('careerTitle');
+    
+    const allTitles = [...new Set([...curatedTitles, ...insightTitles])];
+    
+    let filteredTitles = allTitles;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredTitles = filteredTitles.filter(t => t.toLowerCase().includes(searchLower));
+    }
+
+    // This is a bit inefficient for huge datasets, but for careers it's fine
+    // Sort alphabetically for consistency
+    filteredTitles.sort((a, b) => a.localeCompare(b));
+
+    const total = filteredTitles.length;
+    const paginatedTitles = filteredTitles.slice(skip, skip + limit);
+
+    const [curatedCareers, insights] = await Promise.all([
+      this.careerModel.find({ title: { $in: paginatedTitles } }).exec(),
+      this.careerInsightModel.find({ careerTitle: { $in: paginatedTitles } }).exec(),
+    ]);
+
+    const merged = paginatedTitles.map(title => {
+      const curated = curatedCareers.find(c => c.title === title);
+      const insight = insights.find(i => i.careerTitle === title);
+      
+      if (curated) {
+        return curated.toJSON();
+      }
+      
+      // If only insight exists, return a skeleton career object
+      return {
+        id: insight?._id,
+        _id: insight?._id,
+        title: title,
+        category: 'Other',
+        description: insight?.analysis?.overview || 'AI Discovered',
+        marketInfo: {
+          demandLevel: insight?.analysis?.demandLevel || 'medium',
+          growthProjection: 'N/A'
+        },
+        isDraft: true // Flag to indicate it's not fully curated
+      };
+    });
+
+    return { careers: merged, total };
+  }
+
+  async checkCareerTitleDuplicate(title: string) {
+    const career = await this.careerModel.findOne({ title: { $regex: `^${title}$`, $options: 'i' } }).exec();
+    return !!career;
+  }
+
+  async generateCareerWithAI(title: string) {
+    const exists = await this.checkCareerTitleDuplicate(title);
+    if (exists) {
+      return { error: 'Ngành này đã tồn tại trong hệ thống.' };
+    }
+    return this.aiService.generateFullCareerData(title);
+  }
+
+  async createCareer(data: Partial<Career>) {
+    const career = new this.careerModel(data);
+    if (!career.slug) {
+      career.slug = data.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+    }
+    const saved = await career.save();
+    await this.syncToInsight(saved);
+    return saved;
+  }
+
+  async updateCareer(id: string, data: Partial<Career>) {
+    const updated = await this.careerModel.findByIdAndUpdate(id, data, { new: true }).exec();
+    if (updated) {
+      await this.syncToInsight(updated);
+    }
+    return updated;
+  }
+
+  async deleteCareer(id: string) {
+    const career = await this.careerModel.findById(id).exec();
+    if (career) {
+      await this.careerInsightModel.deleteOne({ careerTitle: career.title }).exec();
+    }
+    return this.careerModel.findByIdAndDelete(id).exec();
+  }
+
+  private async syncToInsight(career: CareerDocument) {
+    const insightData = {
+      careerTitle: career.title,
+      analysis: {
+        overview: career.description,
+        pros: [], // Could be extracted if needed
+        cons: [],
+        trends: [],
+        salaryRange: career.careerLevels?.length 
+          ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}` 
+          : 'N/A',
+        demandLevel: career.marketInfo?.demandLevel || 'medium',
+        keySkills: career.skillRequirements?.technical?.map(s => s.skillName) || [],
+        topCompanies: []
+      },
+      lastAIUpdate: new Date()
+    };
+
+    await this.careerInsightModel.findOneAndUpdate(
+      { careerTitle: career.title },
+      { $set: insightData },
+      { upsert: true }
+    ).exec();
+  }
 
   async deleteUser(id: string) {
     return this.userModel.findByIdAndDelete(id);
@@ -59,7 +181,7 @@ export class AdminService {
       })),
       ...recentTests.map(t => ({
         title: 'Hoàn thành bài test',
-        user: (t.userId as unknown as { name: string })?.name || 'Ẩn danh',
+        user: (t.userId as unknown as { name?: string })?.name || 'Ẩn danh',
         time: t.createdAt,
         type: 'test',
       })),
