@@ -19,7 +19,7 @@ export function AdminStatCard({
   iconClassName,
 }: StatCardProps) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <div
           className={cn(
@@ -33,17 +33,17 @@ export function AdminStatCard({
           <span
             className={cn(
               'rounded-full px-2 py-1 text-xs font-semibold',
-              deltaType === 'up' && 'bg-emerald-100 text-emerald-700',
-              deltaType === 'down' && 'bg-rose-100 text-rose-600',
-              deltaType === 'neutral' && 'bg-slate-100 text-slate-600',
+              deltaType === 'up' && 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+              deltaType === 'down' && 'bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400',
+              deltaType === 'neutral' && 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400',
             )}
           >
             {delta}
           </span>
         )}
       </div>
-      <p className="mb-1 text-sm text-slate-500">{title}</p>
-      <p className="text-4xl/none font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mb-1 text-sm text-slate-500 dark:text-slate-400">{title}</p>
+      <p className="text-4xl/none font-bold tracking-tight text-slate-900 dark:text-slate-50">{value}</p>
     </article>
   );
 }
@@ -59,9 +59,9 @@ export function AdminPanel({
 }) {
   return (
     <section
-      className={cn('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm', className)}
+      className={cn('rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm', className)}
     >
-      {title && <h3 className="mb-4 text-xl font-bold text-slate-900">{title}</h3>}
+      {title && <h3 className="mb-4 text-xl font-bold text-slate-900 dark:text-slate-50">{title}</h3>}
       {children}
     </section>
   );
@@ -79,8 +79,8 @@ export function AdminSectionHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="text-5xl/none font-extrabold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-2 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="text-5xl/none font-extrabold tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
+        {subtitle && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
       {right}
     </div>

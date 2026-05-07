@@ -267,8 +267,8 @@ export default function AdminCareersPage() {
               className={cn(
                 'rounded-full px-4 py-1.5 text-xs font-bold transition',
                 activeCategory === cat
-                  ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 dark:shadow-violet-900/20'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800',
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700',
               )}
             >
               {cat}
@@ -281,7 +281,7 @@ export default function AdminCareersPage() {
           <input 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:border-violet-400 dark:text-slate-200" 
+            className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all dark:text-slate-200" 
             placeholder="Tìm tên nghề nghiệp..." 
           />
         </form>
@@ -563,54 +563,48 @@ function CareerCard({
   };
 
   return (
-    <AdminPanel className="group relative overflow-hidden p-0 border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/40 hover:shadow-xl hover:shadow-violet-500/10 transition-all duration-300">
-      <div className="p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="h-10 w-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 flex items-center justify-center">
-            <Briefcase className="h-5 w-5" />
-          </div>
-          <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold text-xs bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded-lg">
-            <TrendingUp className="h-3 w-3" /> {career.marketInfo?.growthProjection || 'N/A'}
-          </div>
+    <div className="group relative flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-violet-500/10 dark:hover:border-violet-500/30">
+      <div className="mb-5 flex items-center justify-between">
+        <div className="h-12 w-12 rounded-2xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center border border-violet-100 dark:border-violet-500/20">
+          <Briefcase className="h-6 w-6" />
         </div>
-
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-1">{career.title}</h3>
-          {career.isDraft && (
-            <Badge variant="outline" className="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 text-[10px] h-5 px-1.5 font-bold uppercase tracking-wider">
-              AI Đề xuất
-            </Badge>
-          )}
-        </div>
-        <p className="mb-4 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{career.category}</p>
-
-        <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800 pt-4">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nhu cầu</p>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              {career.marketInfo?.demandLevel ? (demandMap[career.marketInfo.demandLevel] || career.marketInfo.demandLevel) : 'Ổn định'}
-            </p>
-          </div>
-          <div className="flex gap-1">
-            <button 
-              onClick={onEdit}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 dark:text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 transition"
-            >
-              <Edit3 className="h-4 w-4" />
-            </button>
-            <button 
-              onClick={onDelete}
-              className="p-2 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 transition"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-tight">
+          <TrendingUp className="h-3.5 w-3.5" /> {career.marketInfo?.growthProjection || 'N/A'}
         </div>
       </div>
-      
-      <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <ChevronRight className="h-4 w-4 text-slate-300" />
+
+      <div className="flex items-center gap-2 mb-1">
+        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-1">{career.title}</h3>
+        {career.isDraft && (
+          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 text-[10px] h-5 px-1.5 font-bold uppercase tracking-wider">
+            AI Đề xuất
+          </Badge>
+        )}
       </div>
-    </AdminPanel>
+      <p className="mb-6 text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{career.category}</p>
+
+      <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800 pt-5 mt-auto">
+        <div>
+          <p className="text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest mb-1">Nhu cầu thị trường</p>
+          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-300">
+            {career.marketInfo?.demandLevel ? (demandMap[career.marketInfo.demandLevel] || career.marketInfo.demandLevel) : 'Ổn định'}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={onEdit}
+            className="p-2.5 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl text-slate-400 dark:text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 transition-all border border-transparent hover:border-violet-100 dark:hover:border-violet-500/20"
+          >
+            <Edit3 className="h-5 w-5" />
+          </button>
+          <button 
+            onClick={onDelete}
+            className="p-2.5 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 transition-all border border-transparent hover:border-rose-100 dark:hover:border-rose-500/20"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
