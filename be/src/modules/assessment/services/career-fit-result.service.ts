@@ -143,7 +143,15 @@ export class CareerFitResultService {
       this.careerModel.find({ isActive: true }).exec(),
     ]);
 
-    const result = [...insights];
+    interface CareerInsightItem {
+      careerTitle: string;
+      updatedAt?: Date;
+      lastAIUpdate?: Date | string | number;
+      analysis?: any;
+      _id?: any;
+    }
+
+    const result: CareerInsightItem[] = [...insights] as unknown as CareerInsightItem[];
     
     // Add curated careers that aren't in insights yet
     for (const c of curated) {
@@ -170,10 +178,10 @@ export class CareerFitResultService {
     }
 
     return result.sort((a, b) => {
-      const dateA = new Date((a.updatedAt || a.lastAIUpdate || 0) as string | number | Date).getTime();
-      const dateB = new Date((b.updatedAt || b.lastAIUpdate || 0) as string | number | Date).getTime();
+      const dateA = new Date((a.updatedAt || a.lastAIUpdate || 0)).getTime();
+      const dateB = new Date((b.updatedAt || b.lastAIUpdate || 0)).getTime();
       return dateB - dateA;
-    });
+    }) as unknown as Record<string, any>[];
   }
 
   async getTopCareerMatches(userId: string, limit = 10): Promise<CareerFitResult[]> {

@@ -145,6 +145,16 @@ export class Career {
     automationRisk: 'low' | 'medium' | 'high';
   };
 
+  // Discovery and Analysis information for User view
+  @Prop({ type: Object })
+  discoveryData?: {
+    pros: string[];
+    cons: string[];
+    topCompanies: string[];
+    trends: { year: string; description: string }[];
+    salarySummary?: string; // Quick salary range summary
+  };
+
   // Educational pathways
   @Prop({ type: [Object] })
   educationPathways?: {

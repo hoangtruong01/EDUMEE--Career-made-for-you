@@ -61,6 +61,13 @@ export interface AdminCareer {
     soft: SkillRequirement[];
   };
   marketInfo?: MarketInfo;
+  discoveryData?: {
+    pros: string[];
+    cons: string[];
+    topCompanies: string[];
+    trends: { year: string; description: string }[];
+    salarySummary?: string;
+  };
   isDraft?: boolean;
 }
 

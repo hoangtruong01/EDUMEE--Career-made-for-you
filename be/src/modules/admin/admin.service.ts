@@ -92,7 +92,9 @@ export class AdminService {
   async createCareer(data: Partial<Career>) {
     const career = new this.careerModel(data);
     if (!career.slug) {
-      career.slug = data.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+      if (data.title) {
+        career.slug = data.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+      }
     }
     const saved = await career.save();
     await this.syncToInsight(saved);
@@ -120,15 +122,15 @@ export class AdminService {
       careerTitle: career.title,
       analysis: {
         overview: career.description,
-        pros: [], // Could be extracted if needed
-        cons: [],
-        trends: [],
-        salaryRange: career.careerLevels?.length 
+        pros: career.discoveryData?.pros || [],
+        cons: career.discoveryData?.cons || [],
+        trends: career.discoveryData?.trends || [],
+        salaryRange: career.discoveryData?.salarySummary || (career.careerLevels?.length 
           ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}` 
-          : 'N/A',
+          : 'N/A'),
         demandLevel: career.marketInfo?.demandLevel || 'medium',
         keySkills: career.skillRequirements?.technical?.map(s => s.skillName) || [],
-        topCompanies: []
+        topCompanies: career.discoveryData?.topCompanies || []
       },
       lastAIUpdate: new Date()
     };

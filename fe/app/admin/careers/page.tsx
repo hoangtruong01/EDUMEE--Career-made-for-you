@@ -13,6 +13,8 @@ import {
   Loader2,
   Sparkles,
   Save,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
@@ -37,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const categories = [
   'Tất cả',
@@ -60,7 +63,6 @@ export default function AdminCareersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [careers, setCareers] = useState<AdminCareer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
   // Modal states
@@ -73,7 +75,35 @@ export default function AdminCareersPage() {
     description: '',
     skillRequirements: { technical: [], soft: [] },
     marketInfo: { demandLevel: 'medium', growthProjection: '' },
+    discoveryData: {
+      pros: [],
+      cons: [],
+      topCompanies: [],
+      trends: [],
+      salarySummary: ''
+    }
   });
+
+  const updateDiscoveryArray = (field: 'pros' | 'cons' | 'topCompanies', index: number, value: string) => {
+    const newData = { ...formData.discoveryData };
+    if (!newData[field]) newData[field] = [];
+    const arr = [...newData[field]!];
+    arr[index] = value;
+    setFormData({ ...formData, discoveryData: { ...newData, [field]: arr } });
+  };
+
+  const addDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies') => {
+    const newData = { ...formData.discoveryData };
+    if (!newData[field]) newData[field] = [];
+    setFormData({ ...formData, discoveryData: { ...newData, [field]: [...newData[field]!, ''] } });
+  };
+
+  const removeDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies', index: number) => {
+    const newData = { ...formData.discoveryData };
+    const arr = [...(newData[field] || [])];
+    arr.splice(index, 1);
+    setFormData({ ...formData, discoveryData: { ...newData, [field]: arr } });
+  };
 
   const fetchCareers = useCallback(async () => {
     if (!accessToken) return;
@@ -87,8 +117,7 @@ export default function AdminCareersPage() {
         activeCategory === 'Tất cả' ? undefined : activeCategory
       );
       setCareers(res.careers);
-      setTotal(res.total);
-    } catch (_error) {
+    } catch {
       toast.error('Không thể tải danh sách nghề nghiệp');
     } finally {
       setIsLoading(false);
@@ -111,16 +140,31 @@ export default function AdminCareersPage() {
       title: '',
       category: 'technology',
       description: '',
-      industries: [],
       skillRequirements: { technical: [], soft: [] },
       marketInfo: { demandLevel: 'medium', growthProjection: '' },
+      discoveryData: {
+        pros: [],
+        cons: [],
+        topCompanies: [],
+        trends: [],
+        salarySummary: ''
+      }
     });
     setIsModalOpen(true);
   };
 
   const openEditModal = (career: AdminCareer) => {
     setEditingCareer(career);
-    setFormData(career);
+    setFormData({
+      ...career,
+      discoveryData: career.discoveryData || {
+        pros: [],
+        cons: [],
+        topCompanies: [],
+        trends: [],
+        salarySummary: ''
+      }
+    });
     setIsModalOpen(true);
   };
 
@@ -130,7 +174,7 @@ export default function AdminCareersPage() {
       await adminService.deleteCareer(accessToken, id);
       toast.success('Đã xóa thành công');
       fetchCareers();
-    } catch (_error) {
+    } catch {
       toast.error('Xóa thất bại');
     }
   };
@@ -155,7 +199,7 @@ export default function AdminCareersPage() {
       const res = await adminService.generateCareerWithAI(accessToken, formData.title);
       setFormData(res);
       toast.success('AI đã tạo dữ liệu thành công');
-    } catch (_error) {
+    } catch {
       toast.error('AI không thể tạo dữ liệu lúc này');
     } finally {
       setIsGenerating(false);
@@ -174,7 +218,7 @@ export default function AdminCareersPage() {
       }
       setIsModalOpen(false);
       fetchCareers();
-    } catch (_error) {
+    } catch {
       toast.error('Lưu thất bại');
     }
   };
@@ -259,106 +303,210 @@ export default function AdminCareersPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
-            <div className="grid gap-4">
-              <div className="flex gap-2 items-end">
-                <div className="flex-1 space-y-2">
-                  <Label>Tên nghề nghiệp</Label>
-                  <Input 
-                    value={formData.title} 
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    placeholder="VD: Senior Frontend Developer" 
-                  />
-                </div>
-                {!editingCareer && (
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    className="flex gap-2 items-center border-violet-200 text-violet-600 hover:bg-violet-50"
-                    onClick={handleGenerateWithAI}
-                    disabled={isGenerating}
-                  >
-                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    AI Khởi tạo
-                  </Button>
-                )}
-              </div>
+          <div className="py-4">
+            <Tabs defaultValue="general" className="w-full">
+              <TabsList className="grid w-full grid-cols-4 mb-6">
+                <TabsTrigger value="general">Cơ bản</TabsTrigger>
+                <TabsTrigger value="market">Thị trường</TabsTrigger>
+                <TabsTrigger value="analysis">Phân tích</TabsTrigger>
+                <TabsTrigger value="roadmap">Lộ trình</TabsTrigger>
+              </TabsList>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Danh mục</Label>
-                  <Select 
-                    value={formData.category?.toLowerCase()} 
-                    onValueChange={(val) => setFormData({...formData, category: val})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn danh mục" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.filter(c => c !== 'Tất cả').map(cat => (
-                        <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
+              <TabsContent value="general" className="space-y-6">
+                <div className="grid gap-4">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-2">
+                      <Label>Tên nghề nghiệp</Label>
+                      <Input 
+                        value={formData.title} 
+                        onChange={(e) => setFormData({...formData, title: e.target.value})}
+                        placeholder="VD: Senior Frontend Developer" 
+                      />
+                    </div>
+                    {!editingCareer && (
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        className="flex gap-2 items-center border-violet-200 text-violet-600 hover:bg-violet-50"
+                        onClick={handleGenerateWithAI}
+                        disabled={isGenerating}
+                      >
+                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        AI Khởi tạo
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Danh mục</Label>
+                    <Select 
+                      value={formData.category?.toLowerCase()} 
+                      onValueChange={(val) => setFormData({...formData, category: val})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn danh mục" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.filter(c => c !== 'Tất cả').map(cat => (
+                          <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Mô tả nghề nghiệp</Label>
+                    <Textarea 
+                      value={formData.description}
+                      onChange={(e) => setFormData({...formData, description: e.target.value})}
+                      placeholder="Nhập mô tả chi tiết về nghề nghiệp..."
+                      rows={5}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="market" className="space-y-6">
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nhu cầu thị trường</Label>
+                      <Select 
+                        value={formData.marketInfo?.demandLevel} 
+                        onValueChange={(val) => setFormData({...formData, marketInfo: {...formData.marketInfo!, demandLevel: val as 'low' | 'medium' | 'high' | 'very_high'}})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn mức nhu cầu" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Thấp</SelectItem>
+                          <SelectItem value="medium">Trung bình</SelectItem>
+                          <SelectItem value="high">Cao</SelectItem>
+                          <SelectItem value="very_high">Rất cao</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dự báo tăng trưởng</Label>
+                      <Input 
+                        value={formData.marketInfo?.growthProjection}
+                        onChange={(e) => setFormData({...formData, marketInfo: {...formData.marketInfo!, growthProjection: e.target.value}})}
+                        placeholder="VD: +25% trong 5 năm tới" 
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>Mức lương tóm tắt (Discovery)</Label>
+                    <Input 
+                      value={formData.discoveryData?.salarySummary}
+                      onChange={(e) => setFormData({...formData, discoveryData: {...formData.discoveryData!, salarySummary: e.target.value}})}
+                      placeholder="VD: 15 - 35 triệu VNĐ" 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Các công ty hàng đầu</Label>
+                    <div className="space-y-2">
+                      {formData.discoveryData?.topCompanies?.map((company, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <Input 
+                            value={company}
+                            onChange={(e) => updateDiscoveryArray('topCompanies', idx, e.target.value)}
+                            placeholder="Tên công ty"
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('topCompanies', idx)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
+                      <Button variant="outline" size="sm" className="w-full" onClick={() => addDiscoveryItem('topCompanies')}>
+                        <Plus className="h-3 w-3 mr-2" /> Thêm công ty
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Nhu cầu thị trường</Label>
-                  <Select 
-                    value={formData.marketInfo?.demandLevel} 
-                    onValueChange={(val) => setFormData({...formData, marketInfo: {...formData.marketInfo, demandLevel: val}})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn mức nhu cầu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Thấp</SelectItem>
-                      <SelectItem value="medium">Trung bình</SelectItem>
-                      <SelectItem value="high">Cao</SelectItem>
-                      <SelectItem value="very_high">Rất cao</SelectItem>
-                    </SelectContent>
-                  </Select>
+              </TabsContent>
+
+              <TabsContent value="analysis" className="space-y-6">
+                <div className="grid gap-6">
+                  <div className="space-y-3">
+                    <Label className="text-emerald-600 font-bold flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" /> Ưu điểm (Pros)
+                    </Label>
+                    <div className="space-y-2">
+                      {formData.discoveryData?.pros?.map((pro, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <Input 
+                            value={pro}
+                            onChange={(e) => updateDiscoveryArray('pros', idx, e.target.value)}
+                            placeholder="VD: Thu nhập ổn định"
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('pros', idx)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button variant="outline" size="sm" className="w-full border-emerald-100 text-emerald-600 hover:bg-emerald-50" onClick={() => addDiscoveryItem('pros')}>
+                        <Plus className="h-3 w-3 mr-2" /> Thêm ưu điểm
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-rose-600 font-bold flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" /> Nhược điểm (Cons)
+                    </Label>
+                    <div className="space-y-2">
+                      {formData.discoveryData?.cons?.map((con, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <Input 
+                            value={con}
+                            onChange={(e) => updateDiscoveryArray('cons', idx, e.target.value)}
+                            placeholder="VD: Áp lực cao"
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('cons', idx)}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button variant="outline" size="sm" className="w-full border-rose-100 text-rose-600 hover:bg-rose-50" onClick={() => addDiscoveryItem('cons')}>
+                        <Plus className="h-3 w-3 mr-2" /> Thêm nhược điểm
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </TabsContent>
 
-              <div className="space-y-2">
-                <Label>Mô tả nghề nghiệp</Label>
-                <Textarea 
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="Nhập mô tả chi tiết về nghề nghiệp..."
-                  rows={4}
-                />
-              </div>
-
-              {/* Skills Display */}
-              <div className="space-y-2">
-                <Label className="flex justify-between items-center">
-                  <span>Kỹ năng chính (AI đề xuất)</span>
-                  <Badge variant="secondary" className="bg-violet-50 text-violet-600">
-                    {formData.skillRequirements?.technical?.length || 0} kỹ năng
-                  </Badge>
-                </Label>
-                <div className="flex flex-wrap gap-1.5 p-3 rounded-lg border border-slate-100 bg-slate-50/50">
-                  {formData.skillRequirements?.technical?.map((s, idx: number) => (
-                    <Badge key={idx} variant="outline" className="bg-white">
-                      {s.skillName} (Lvl {s.minimumLevel})
-                    </Badge>
-                  ))}
-                  {(!formData.skillRequirements?.technical || formData.skillRequirements.technical.length === 0) && (
-                    <span className="text-xs text-slate-400 italic">Chưa có dữ liệu kỹ năng</span>
-                  )}
+              <TabsContent value="roadmap" className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="flex justify-between items-center">
+                      <span>Kỹ năng cốt lõi</span>
+                      <Badge variant="secondary" className="bg-violet-50 text-violet-600">
+                        {formData.skillRequirements?.technical?.length || 0} kỹ năng
+                      </Badge>
+                    </Label>
+                    <div className="flex flex-wrap gap-1.5 p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                      {formData.skillRequirements?.technical?.map((s, idx: number) => (
+                        <Badge key={idx} variant="outline" className="bg-white">
+                          {s.skillName} (Lvl {s.minimumLevel})
+                        </Badge>
+                      ))}
+                      {(!formData.skillRequirements?.technical || formData.skillRequirements.technical.length === 0) && (
+                        <span className="text-xs text-slate-400 italic">Chưa có dữ liệu kỹ năng. Hãy dùng AI Khởi tạo ở Tab Cơ bản.</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-4">
+                    <p className="text-xs text-blue-700 font-medium leading-relaxed">
+                      Lộ trình chi tiết (Roadmap) và các bài học sẽ được hệ thống AI tự động tạo dựa trên các kỹ năng và mô tả bạn cung cấp. Hãy đảm bảo Tab Cơ bản và Phân tích đầy đủ thông tin nhất có thể.
+                    </p>
+                  </div>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Dự báo tăng trưởng</Label>
-                <Input 
-                  value={formData.marketInfo?.growthProjection}
-                  onChange={(e) => setFormData({...formData, marketInfo: {...formData.marketInfo, growthProjection: e.target.value}})}
-                  placeholder="VD: +25% trong 5 năm tới" 
-                />
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
           </div>
 
           <DialogFooter>

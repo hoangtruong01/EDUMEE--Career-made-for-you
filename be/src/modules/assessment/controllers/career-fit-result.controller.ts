@@ -27,13 +27,13 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { assertOwnerOrAdmin, getAuthUserId, isAdmin } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
 
-interface Career {
+interface CareerInput {
   id: string;
   title: string;
 }
 
 interface GenerateAnalysisRequest {
-  availableCareers?: Career[];
+  availableCareers?: CareerInput[];
 }
 
 function toOwnerId(value: unknown): string {
@@ -78,7 +78,7 @@ export class CareerFitResultController {
 
     return this.careerFitResultService.generateAnalysisFromUserAnswers(
       userId,
-      requestData?.availableCareers || []
+      (requestData?.availableCareers as unknown as import('../../careers/schemas/career.schema').Career[]) || []
     );
   }
 

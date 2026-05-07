@@ -20,8 +20,8 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Compass },
@@ -45,8 +45,27 @@ const getThemeSnapshot = () => {
 
 const Navbar = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [logoClicks, setLogoClicks] = useState(0);
   const { hasAssessmentResult } = useAssessment();
+
+  useEffect(() => {
+    if (logoClicks > 0) {
+      const timer = setTimeout(() => setLogoClicks(0), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [logoClicks]);
+
+  const handleLogoClick = (e: React.MouseEvent) => {
+    if (logoClicks + 1 >= 5) {
+      e.preventDefault();
+      setLogoClicks(0);
+      router.push('/admin-login');
+    } else {
+      setLogoClicks((prev) => prev + 1);
+    }
+  };
 
   const darkMode = useSyncExternalStore(themeSubscribe, getThemeSnapshot, () => false);
 
@@ -70,7 +89,11 @@ const Navbar = () => {
   return (
     <nav className="glass-card sticky top-0 z-50 border-b">
       <div className="container flex h-16 items-center justify-between">
-        <Link href="/" className="font-display flex items-center gap-2 text-xl font-bold">
+        <Link 
+          href="/" 
+          className="font-display flex items-center gap-2 text-xl font-bold"
+          onClick={handleLogoClick}
+        >
           <Image
             src="/edumee-logo-icon.svg"
             alt="Edumee logo"

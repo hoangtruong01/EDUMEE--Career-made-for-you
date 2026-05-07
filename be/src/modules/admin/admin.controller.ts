@@ -66,12 +66,11 @@ export class AdminController {
   @ApiOperation({ summary: 'Lấy danh sách nghề nghiệp' })
   @Get('careers')
   async getAllCareers(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('search') search?: string,
-    @Query('category') category?: string,
   ) {
-    return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search, category);
+    return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search);
   }
 
   @ApiOperation({ summary: 'Kiểm tra tên nghề nghiệp trùng' })
