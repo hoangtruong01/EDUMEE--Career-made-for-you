@@ -85,24 +85,41 @@ export default function AdminCareersPage() {
   });
 
   const updateDiscoveryArray = (field: 'pros' | 'cons' | 'topCompanies', index: number, value: string) => {
-    const newData = { ...formData.discoveryData };
-    if (!newData[field]) newData[field] = [];
-    const arr = [...newData[field]!];
+    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+    const arr = [...(discoveryData[field] || [])];
     arr[index] = value;
-    setFormData({ ...formData, discoveryData: { ...newData, [field]: arr } });
+    setFormData({ 
+      ...formData, 
+      discoveryData: { 
+        ...discoveryData,
+        [field]: arr 
+      } 
+    });
   };
 
   const addDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies') => {
-    const newData = { ...formData.discoveryData };
-    if (!newData[field]) newData[field] = [];
-    setFormData({ ...formData, discoveryData: { ...newData, [field]: [...newData[field]!, ''] } });
+    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+    const arr = [...(discoveryData[field] || []), ''];
+    setFormData({ 
+      ...formData, 
+      discoveryData: { 
+        ...discoveryData,
+        [field]: arr 
+      } 
+    });
   };
 
   const removeDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies', index: number) => {
-    const newData = { ...formData.discoveryData };
-    const arr = [...(newData[field] || [])];
+    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+    const arr = [...(discoveryData[field] || [])];
     arr.splice(index, 1);
-    setFormData({ ...formData, discoveryData: { ...newData, [field]: arr } });
+    setFormData({ 
+      ...formData, 
+      discoveryData: { 
+        ...discoveryData,
+        [field]: arr 
+      } 
+    });
   };
 
   const fetchCareers = useCallback(async () => {
@@ -281,7 +298,10 @@ export default function AdminCareersPage() {
               key={career.id || career._id} 
               career={career} 
               onEdit={() => openEditModal(career)}
-              onDelete={() => handleDelete(career.id || career._id)}
+              onDelete={() => {
+                const id = career.id || career._id;
+                if (id) handleDelete(id);
+              }}
             />
           ))}
           {careers.length === 0 && (
@@ -567,7 +587,9 @@ function CareerCard({
         <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800 pt-4">
           <div>
             <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nhu cầu</p>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{demandMap[career.marketInfo?.demandLevel] || career.marketInfo?.demandLevel || 'Ổn định'}</p>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+              {career.marketInfo?.demandLevel ? (demandMap[career.marketInfo.demandLevel] || career.marketInfo.demandLevel) : 'Ổn định'}
+            </p>
           </div>
           <div className="flex gap-1">
             <button 
