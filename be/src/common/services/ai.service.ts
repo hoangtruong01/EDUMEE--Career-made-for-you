@@ -612,6 +612,16 @@ Trả về một đối tượng JSON hợp lệ (KHÔNG có markdown code block
   "description": "Mô tả chi tiết 3-4 câu về nghề",
   "category": "technology | healthcare | finance | education | creative | business | engineering | science | legal | sales_marketing | social_services | other",
   "industries": ["Ngành 1", "Ngành 2"],
+  "discoveryData": {
+    "pros": ["Ưu điểm 1", "Ưu điểm 2", "Ưu điểm 3"],
+    "cons": ["Nhược điểm 1", "Nhược điểm 2"],
+    "topCompanies": ["Công ty A", "Công ty B", "Công ty C"],
+    "trends": [
+      { "year": "2024", "description": "Mô tả xu hướng năm hiện tại" },
+      { "year": "2025-2029", "description": "Dự báo xu hướng 5 năm tới" }
+    ],
+    "salarySummary": "Tóm tắt mức lương (ví dụ: 15-40 triệu VNĐ/tháng)"
+  },
   "skillRequirements": {
     "technical": [
       { "skillName": "Tên kỹ năng", "importance": 5, "minimumLevel": 3 }
