@@ -215,7 +215,7 @@ const Specialization = () => {
         }
 
         // Map backend insights to frontend UI format
-        const mapped = (insights as Array<Record<string, unknown>>).map((insight) => {
+        const mapped = (insights as CareerInsight[]).map((insight) => {
           const salary = parseSalaryRange(insight.analysis?.salaryRange);
           const categoryKey = normalizeCategory(insight.category);
           const categoryLabel = CATEGORY_LABELS[categoryKey] || 'Khác';
