@@ -103,4 +103,10 @@ export class AdminController {
   async deleteCareer(@Param('id') id: string) {
     return this.adminService.deleteCareer(id);
   }
+
+  @ApiOperation({ summary: 'Bổ sung thông tin thiếu bằng AI' })
+  @Post('careers/:id/fill-missing')
+  async fillMissingData(@Param('id') id: string) {
+    return this.adminService.fillMissingData(id);
+  }
 }

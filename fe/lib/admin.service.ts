@@ -131,4 +131,8 @@ export const adminService = {
   deleteCareer(token: string, id: string) {
     return apiClient.delete<void>(`/admin/careers/${id}`, token);
   },
+
+  fillMissingData(token: string, id: string) {
+    return apiClient.post<AdminCareer>(`/admin/careers/${id}/fill-missing`, {}, token);
+  },
 };

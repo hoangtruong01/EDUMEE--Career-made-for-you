@@ -36,6 +36,7 @@ import {
   Trash2,
   TrendingUp,
   X,
+  Bot,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -270,6 +271,38 @@ export default function AdminCareersPage() {
     }
   };
 
+  const handleFillMissingData = async () => {
+    if (!accessToken || (!editingCareer?.id && !editingCareer?._id)) {
+      toast.error('Không tìm thấy ID nghề nghiệp');
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const id = (editingCareer.id || editingCareer._id)!;
+      const data = await adminService.fillMissingData(accessToken, id);
+      
+      // Merge AI data into existing formData, prioritizing AI for empty fields
+      setFormData({
+        ...formData,
+        ...data,
+        // Keep existing title/category if they exist
+        title: formData.title || data.title,
+        description: formData.description || data.description,
+        // Ensure discoveryData is merged
+        discoveryData: {
+          ...formData.discoveryData,
+          ...data.discoveryData
+        }
+      });
+      toast.success('Đã bổ sung thông tin thiếu bằng AI');
+    } catch (error) {
+      console.error('AI Fill error:', error);
+      toast.error('Không thể bổ sung thông tin bằng AI');
+    }
+    setIsGenerating(false);
+  };
+
   const handleSave = async () => {
     if (!accessToken) return;
     const title = formData.title?.trim() || '';
@@ -439,22 +472,34 @@ export default function AdminCareersPage() {
                         placeholder="VD: Senior Frontend Developer"
                       />
                     </div>
-                    {showAIGenerate && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="flex items-center gap-2 border-violet-200 text-violet-600 hover:bg-violet-50"
-                        onClick={handleGenerateWithAI}
-                        disabled={isGenerating}
-                      >
-                        {isGenerating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4" />
+                      <div className="flex gap-2">
+                        {showAIGenerate && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="flex items-center gap-2 border-violet-200 text-violet-600 hover:bg-violet-50"
+                            onClick={handleGenerateWithAI}
+                            disabled={isGenerating}
+                            title="Khởi tạo toàn bộ dữ liệu mới"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            {isGenerating ? 'Đang tạo...' : 'AI Khởi tạo'}
+                          </Button>
                         )}
-                        AI Khởi tạo
-                      </Button>
-                    )}
+                        {(editingCareer?.id || editingCareer?._id) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="flex items-center gap-2 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                            onClick={handleFillMissingData}
+                            disabled={isGenerating}
+                            title="Chỉ bổ sung các thông tin còn thiếu"
+                          >
+                            <Bot className="h-4 w-4" />
+                            {isGenerating ? 'Đang tra...' : 'Bổ sung AI'}
+                          </Button>
+                        )}
+                      </div>
                   </div>
 
                   <div className="space-y-2">

@@ -58,10 +58,29 @@ export class AdminService {
       const insight = insights.find(i => i.careerTitle === title);
 
       if (curated) {
-        return curated.toJSON();
+        const curatedObj = curated.toJSON();
+        // If curated is missing discoveryData or marketInfo, but we have an insight, merge it
+        if (insight) {
+          if (!curatedObj.discoveryData || Object.keys(curatedObj.discoveryData).length === 0) {
+            curatedObj.discoveryData = {
+              pros: insight.analysis.pros || [],
+              cons: insight.analysis.cons || [],
+              topCompanies: insight.analysis.topCompanies || [],
+              trends: insight.analysis.trends || [],
+              salarySummary: insight.analysis.salaryRange || 'N/A'
+            };
+          }
+          if (!curatedObj.marketInfo || !curatedObj.marketInfo.demandLevel) {
+            curatedObj.marketInfo = {
+              demandLevel: insight.analysis.demandLevel || 'medium',
+              growthProjection: curatedObj.marketInfo?.growthProjection || 'N/A'
+            };
+          }
+        }
+        return curatedObj;
       }
 
-      // If only insight exists, return a skeleton career object
+      // If only insight exists, return a skeleton career object with full discovery data
       return {
         id: insight?._id,
         _id: insight?._id,
@@ -72,7 +91,14 @@ export class AdminService {
           demandLevel: insight?.analysis?.demandLevel || 'medium',
           growthProjection: 'N/A'
         },
-        isDraft: true // Flag to indicate it's not fully curated
+        discoveryData: insight ? {
+          pros: insight.analysis.pros || [],
+          cons: insight.analysis.cons || [],
+          topCompanies: insight.analysis.topCompanies || [],
+          trends: insight.analysis.trends || [],
+          salarySummary: insight.analysis.salaryRange || 'N/A'
+        } : undefined,
+        isDraft: true
       };
     });
 
@@ -110,6 +136,24 @@ export class AdminService {
       await this.syncToInsight(updated);
     }
     return updated;
+  }
+
+  async fillMissingData(id: string) {
+    const career = await this.careerModel.findById(id).exec();
+    if (!career) {
+      // If it's a draft (insight), we can just call generateFullCareerData
+      const insight = await this.careerInsightModel.findById(id).exec();
+      if (insight) {
+        return this.aiService.generateFullCareerData(insight.careerTitle);
+      }
+      return { error: 'Không tìm thấy dữ liệu.' };
+    }
+
+    // If it's an existing official career, we want to fill only what's missing
+    // For now, we can pass the title to generateFullCareerData and let the admin decide what to keep
+    // Or we can implement a more surgical AI prompt.
+    // Given the current architecture, generating full data and letting the frontend merge is safest.
+    return this.aiService.generateFullCareerData(career.title);
   }
 
   async deleteCareer(id: string) {
