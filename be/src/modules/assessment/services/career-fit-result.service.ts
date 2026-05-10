@@ -321,9 +321,9 @@ export class CareerFitResultService {
         : analysis.careerRecommendations;
 
       // Seed Discovery Repository with new careers found by AI
-      try {
-        for (const rec of recommendations) {
-          const title = rec.careerTitle;
+      for (const rec of recommendations) {
+        const title = rec.careerTitle;
+        try {
           await this.careerInsightModel.findOneAndUpdate(
             { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(title)}$`, 'i') } },
             {
@@ -344,9 +344,12 @@ export class CareerFitResultService {
             },
             { upsert: true },
           );
+        } catch (e: unknown) {
+          const mongoError = e as { code?: number; message?: string };
+          if (mongoError.code !== 11000 && !mongoError.message?.includes('E11000')) {
+            this.logger.error(`Failed to seed discovery repository for ${title}:`, e);
+          }
         }
-      } catch (e) {
-        this.logger.error('Failed to seed discovery repository:', e);
       }
 
       // Convert AI recommendations to CareerFitResult documents
@@ -540,15 +543,31 @@ export class CareerFitResultService {
     ]);
 
     // 3. Save to shared cache for other users
-    await this.careerInsightModel.findOneAndUpdate(
-      { careerTitle: { $regex: new RegExp(`^${careerTitle}$`, 'i') } },
-      {
-        careerTitle, // Normalize title
-        analysis,
-        lastAIUpdate: new Date(),
-      },
-      { upsert: true, new: true },
-    );
+    try {
+      await this.careerInsightModel.findOneAndUpdate(
+        { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') } },
+        {
+          careerTitle, // Normalize title
+          analysis,
+          lastAIUpdate: new Date(),
+        },
+        { upsert: true, new: true },
+      );
+    } catch (error: unknown) {
+      const mongoError = error as { code?: number; message?: string };
+      if (mongoError.code === 11000 || mongoError.message?.includes('E11000')) {
+        await this.careerInsightModel.findOneAndUpdate(
+          { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') } },
+          {
+            analysis,
+            lastAIUpdate: new Date(),
+          },
+          { new: true },
+        );
+      } else {
+        throw error;
+      }
+    }
 
     return { ...analysis, careerTitle };
   }

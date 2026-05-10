@@ -149,11 +149,23 @@ export class AdminService {
       lastAIUpdate: new Date()
     };
 
-    await this.careerInsightModel.findOneAndUpdate(
-      { careerTitle: career.title },
-      { $set: insightData },
-      { upsert: true }
-    ).exec();
+    try {
+      await this.careerInsightModel.findOneAndUpdate(
+        { careerTitle: career.title },
+        { $set: insightData },
+        { upsert: true }
+      ).exec();
+    } catch (error: unknown) {
+      const mongoError = error as { code?: number; message?: string };
+      if (mongoError.code === 11000 || mongoError.message?.includes('E11000')) {
+        await this.careerInsightModel.findOneAndUpdate(
+          { careerTitle: career.title },
+          { $set: insightData }
+        ).exec();
+      } else {
+        throw error;
+      }
+    }
   }
 
   async deleteUser(id: string) {
