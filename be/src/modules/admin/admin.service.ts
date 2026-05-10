@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, FilterQuery } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { Career, CareerDocument } from '../careers/schemas/career.schema';
-import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-insight.schema';
-import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
-import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
-import { UserRole, UserVerifyStatus, LoginType } from '../../common/enums';
+import { LoginType, UserRole, UserVerifyStatus } from '../../common/enums';
 import { AIService } from '../../common/services/ai.service';
+import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
+import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-insight.schema';
+import { Career, CareerDocument } from '../careers/schemas/career.schema';
+import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
 
 
 @Injectable()
@@ -22,16 +22,19 @@ export class AdminService {
     private readonly aiService: AIService,
   ) {}
 
-  async getAllCareers(page: number = 1, limit: number = 10, search?: string) {
+  async getAllCareers(page: number = 1, limit: number = 10, search?: string, category?: string) {
     const skip = (page - 1) * limit;
-    
+    const normalizedCategory = this.normalizeCategory(category);
+
     // Use aggregation to merge Career and CareerInsight
     // We want all titles from both collections
-    const curatedTitles = await this.careerModel.distinct('title');
-    const insightTitles = await this.careerInsightModel.distinct('careerTitle');
-    
+    const curatedTitles = await this.careerModel.distinct('title', normalizedCategory ? { category: normalizedCategory } : {});
+    const insightTitles = normalizedCategory && normalizedCategory !== 'other'
+      ? []
+      : await this.careerInsightModel.distinct('careerTitle');
+
     const allTitles = [...new Set([...curatedTitles, ...insightTitles])];
-    
+
     let filteredTitles = allTitles;
     if (search) {
       const searchLower = search.toLowerCase();
@@ -53,17 +56,17 @@ export class AdminService {
     const merged = paginatedTitles.map(title => {
       const curated = curatedCareers.find(c => c.title === title);
       const insight = insights.find(i => i.careerTitle === title);
-      
+
       if (curated) {
         return curated.toJSON();
       }
-      
+
       // If only insight exists, return a skeleton career object
       return {
         id: insight?._id,
         _id: insight?._id,
         title: title,
-        category: 'Other',
+        category: 'other',
         description: insight?.analysis?.overview || 'AI Discovered',
         marketInfo: {
           demandLevel: insight?.analysis?.demandLevel || 'medium',
@@ -113,8 +116,19 @@ export class AdminService {
     const career = await this.careerModel.findById(id).exec();
     if (career) {
       await this.careerInsightModel.deleteOne({ careerTitle: career.title }).exec();
+      return this.careerModel.findByIdAndDelete(id).exec();
     }
-    return this.careerModel.findByIdAndDelete(id).exec();
+    if (Types.ObjectId.isValid(id)) {
+      return this.careerInsightModel.findByIdAndDelete(id).exec();
+    }
+    return null;
+  }
+
+  private normalizeCategory(category?: string): string | undefined {
+    if (!category) return undefined;
+    const normalized = category.trim().toLowerCase();
+    if (!normalized || normalized === 'all') return undefined;
+    return normalized.replace(/\s+/g, '_');
   }
 
   private async syncToInsight(career: CareerDocument) {
@@ -125,8 +139,8 @@ export class AdminService {
         pros: career.discoveryData?.pros || [],
         cons: career.discoveryData?.cons || [],
         trends: career.discoveryData?.trends || [],
-        salaryRange: career.discoveryData?.salarySummary || (career.careerLevels?.length 
-          ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}` 
+        salaryRange: career.discoveryData?.salarySummary || (career.careerLevels?.length
+          ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}`
           : 'N/A'),
         demandLevel: career.marketInfo?.demandLevel || 'medium',
         keySkills: career.skillRequirements?.technical?.map(s => s.skillName) || [],

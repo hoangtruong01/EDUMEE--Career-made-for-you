@@ -1,5 +1,6 @@
 import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
+import { Toaster as SonnerToaster } from 'sonner';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 
@@ -28,6 +29,7 @@ export default function RootLayout({
         <AppProviders>
           {children}
           <Toaster />
+          <SonnerToaster position="top-right" richColors />
         </AppProviders>
       </body>
     </html>

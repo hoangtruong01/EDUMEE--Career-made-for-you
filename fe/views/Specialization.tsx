@@ -19,19 +19,59 @@ import { useAuth } from '@/context/auth-context';
 import { roadmapService } from '@/lib/roadmap.service';
 
 /* ─── Data ─── */
-const CATEGORIES = [
-  'Tất cả',
-  'Công nghệ',
-  'Dữ liệu & AI',
-  'Thiết kế',
-  'Marketing',
-  'Y tế',
-  'Pháp luật',
-  'Xây dựng',
-  'Quản lý sản phẩm',
+const CATEGORY_OPTIONS = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'technology', label: 'Công nghệ' },
+  { value: 'healthcare', label: 'Y tế' },
+  { value: 'finance', label: 'Tài chính' },
+  { value: 'education', label: 'Giáo dục' },
+  { value: 'creative', label: 'Sáng tạo' },
+  { value: 'business', label: 'Kinh doanh' },
+  { value: 'engineering', label: 'Kỹ thuật' },
+  { value: 'science', label: 'Khoa học' },
+  { value: 'legal', label: 'Pháp luật' },
+  { value: 'sales_marketing', label: 'Marketing & Sales' },
+  { value: 'social_services', label: 'Dịch vụ xã hội' },
+  { value: 'other', label: 'Khác' },
 ];
 
+const CATEGORY_LABELS = CATEGORY_OPTIONS.reduce((acc, item) => {
+  if (item.value !== 'all') acc[item.value] = item.label;
+  return acc;
+}, {} as Record<string, string>);
+
 const SORT_OPTIONS = ['Mới nhất', 'Lương cao nhất', 'Tăng trưởng cao nhất'];
+
+const DEMAND_CONFIG: Record<string, { label: string; stars: number; growth: number }> = {
+  low: { label: 'Thấp', stars: 2, growth: 5 },
+  medium: { label: 'Trung bình', stars: 3, growth: 10 },
+  high: { label: 'Cao', stars: 4, growth: 15 },
+  very_high: { label: 'Rất cao', stars: 5, growth: 20 },
+};
+
+const normalizeCategory = (value?: string) => {
+  if (!value) return 'other';
+  return value.trim().toLowerCase().replace(/\s+/g, '_');
+};
+
+const toMillions = (value: number) => (value >= 1000 ? Math.round(value / 1000000) : value);
+
+const parseSalaryRange = (raw?: string) => {
+  if (!raw) return { min: null, max: null, text: 'Chưa cập nhật' };
+  const matches = raw.match(/\d+(?:[.,]\d+)?/g);
+  if (!matches || matches.length < 2) {
+    return { min: null, max: null, text: raw };
+  }
+  const values = matches
+    .map((value) => parseFloat(value.replace(/,/g, '.')))
+    .filter((value) => !Number.isNaN(value));
+  if (values.length < 2) {
+    return { min: null, max: null, text: raw };
+  }
+  const min = toMillions(Math.min(values[0], values[1]));
+  const max = toMillions(Math.max(values[0], values[1]));
+  return { min, max, text: `${min}–${max} triệu` };
+};
 
 /* ─── Stars component ─── */
 const Stars = ({ count }: { count: number }) => (
@@ -50,15 +90,18 @@ interface CareerDiscoveryItem {
   title: string;
   description: string;
   category: string;
+  categoryLabel: string;
   categoryColor: string;
   icon: string;
-  salaryMin: number;
-  salaryMax: number;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryText: string;
   growth: number;
   demandLabel: string;
   demandStars: number;
   skills: string[];
   aiInsight: string;
+  lastUpdated: number;
 }
 
 /* ─── Career Card ─── */
@@ -90,7 +133,7 @@ const CareerCard = ({
             <span
               className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${career.categoryColor}`}
             >
-              {career.category}
+              {career.categoryLabel}
             </span>
           </div>
         </div>
@@ -103,10 +146,11 @@ const CareerCard = ({
       <div className="mb-3 flex items-center gap-4 text-sm">
         <span className="text-foreground flex items-center gap-1 font-medium">
           <span className="text-mint">$</span>
-          {career.salaryMin}–{career.salaryMax} triệu
+          {career.salaryText}
         </span>
         <span className="text-mint flex items-center gap-1 font-medium">
-          <TrendingUp className="h-3.5 w-3.5" />+{career.growth}%
+          <TrendingUp className="h-3.5 w-3.5" />
+          {career.growth ? `+${career.growth}%` : 'Đang cập nhật'}
         </span>
       </div>
 
@@ -152,7 +196,7 @@ const CareerCard = ({
 /* ─── Main view ─── */
 const Specialization = () => {
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [sortBy, setSortBy] = useState(SORT_OPTIONS[0]);
   const [showSort, setShowSort] = useState(false);
   const [careerList, setCareerList] = useState<CareerDiscoveryItem[]>([]);
@@ -169,31 +213,42 @@ const Specialization = () => {
           setCareerList([]);
           return;
         }
-        
+
         // Map backend insights to frontend UI format
-        const mapped = insights.map(insight => {
-          const salary = insight.analysis?.salaryRange || '20-50';
-          const [minStr, maxStr] = salary.split('-').map(s => s.replace(/\D/g, ''));
-          const min = parseInt(minStr) || 20;
-          const max = parseInt(maxStr) || min + 20;
-          
+        const mapped = (insights as Array<Record<string, unknown>>).map((insight) => {
+          const salary = parseSalaryRange(insight.analysis?.salaryRange);
+          const categoryKey = normalizeCategory(insight.category);
+          const categoryLabel = CATEGORY_LABELS[categoryKey] || 'Khác';
+          const demandKey = insight.analysis?.demandLevel;
+          const demand = DEMAND_CONFIG[demandKey] || { label: 'Chưa cập nhật', stars: 0, growth: 0 };
+          const skills = Array.isArray(insight.analysis?.keySkills)
+            ? insight.analysis.keySkills.filter(Boolean)
+            : [];
+          const lastUpdated = new Date(
+            insight.updatedAt || insight.lastAIUpdate || 0
+          ).getTime();
+          const trendInsight = insight.analysis?.trends?.[0]?.description;
+
           return {
             id: insight._id,
             title: insight.careerTitle,
             description: insight.analysis?.overview || 'Thông tin chi tiết đang được cập nhật...',
-            category: 'Công nghệ', 
+            category: categoryKey,
+            categoryLabel,
             categoryColor: 'bg-sky-light text-primary',
             icon: '💼',
-            salaryMin: min,
-            salaryMax: max,
-            growth: 15,
-            demandLabel: insight.analysis?.demandLevel || 'Cao',
-            demandStars: 4,
-            skills: insight.analysis?.keySkills?.length ? insight.analysis.keySkills : ['Giao tiếp', 'Tư duy'],
-            aiInsight: 'Phân tích từ cộng đồng người dùng Edumee.'
+            salaryMin: salary.min,
+            salaryMax: salary.max,
+            salaryText: salary.text,
+            growth: demand.growth,
+            demandLabel: demand.label,
+            demandStars: demand.stars,
+            skills: skills.length > 0 ? skills.slice(0, 5) : ['Đang cập nhật'],
+            aiInsight: trendInsight || 'Được tổng hợp từ dữ liệu cộng đồng Edumee.',
+            lastUpdated,
           };
         });
-        
+
         setCareerList(mapped);
       } catch (err) {
         console.error('Failed to load discovery insights:', err);
@@ -206,7 +261,7 @@ const Specialization = () => {
 
   const filtered = useMemo(() => {
     let list = careerList;
-    if (activeCategory !== 'Tất cả') {
+    if (activeCategory !== 'all') {
       list = list.filter((c) => c.category === activeCategory);
     }
     if (search.trim()) {
@@ -214,14 +269,19 @@ const Specialization = () => {
       list = list.filter(
         (c) =>
           c.title.toLowerCase().includes(q) ||
-          c.category.toLowerCase().includes(q) ||
+          c.categoryLabel.toLowerCase().includes(q) ||
           c.skills.some((s: string) => s.toLowerCase().includes(q)),
       );
     }
-    if (sortBy === 'Lương cao nhất') list = [...list].sort((a, b) => b.salaryMax - a.salaryMax);
-    else if (sortBy === 'Tăng trưởng cao nhất')
+    if (sortBy === 'Lương cao nhất') {
+      list = [...list].sort(
+        (a, b) => (b.salaryMax ?? b.salaryMin ?? 0) - (a.salaryMax ?? a.salaryMin ?? 0),
+      );
+    } else if (sortBy === 'Tăng trưởng cao nhất') {
       list = [...list].sort((a, b) => b.growth - a.growth);
-    else if (sortBy === 'Mới nhất') list = [...list]; // Default order
+    } else if (sortBy === 'Mới nhất') {
+      list = [...list].sort((a, b) => b.lastUpdated - a.lastUpdated);
+    }
     return list;
   }, [search, activeCategory, sortBy, careerList]);
 
@@ -288,17 +348,17 @@ const Specialization = () => {
         {/* Categories scroll */}
         <div className="no-scrollbar -mx-4 flex overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <div className="flex gap-2">
-            {CATEGORIES.map((cat) => (
+            {CATEGORY_OPTIONS.map((cat) => (
               <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
+                key={cat.value}
+                onClick={() => setActiveCategory(cat.value)}
                 className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-all ${
-                  activeCategory === cat
+                  activeCategory === cat.value
                     ? 'bg-primary text-white shadow-lg shadow-purple-500/20'
                     : 'bg-secondary/50 text-muted-foreground hover:bg-secondary border border-border'
                 }`}
               >
-                {cat}
+                {cat.label}
               </button>
             ))}
           </div>

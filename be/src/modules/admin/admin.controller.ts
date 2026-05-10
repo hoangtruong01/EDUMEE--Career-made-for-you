@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
-import { AdminService } from './admin.service';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '../../common/enums';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../../common/enums';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
 @ApiBearerAuth('JWT-auth')
@@ -69,8 +69,9 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('category') category?: string,
   ) {
-    return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search);
+    return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search, category);
   }
 
   @ApiOperation({ summary: 'Kiểm tra tên nghề nghiệp trùng' })

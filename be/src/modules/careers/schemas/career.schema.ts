@@ -75,8 +75,8 @@ export class Career {
   }
 
   // Skills required for this career
-  @Prop({ type: Object, required: true })
-  skillRequirements!: {
+  @Prop({ type: Object })
+  skillRequirements?: {
     technical: {
       skillName: string;
       importance: number; // 1-5 scale
@@ -99,8 +99,8 @@ export class Career {
   };
 
   // Career progression levels
-  @Prop({ required: true, type: [Object] })
-  careerLevels!: {
+  @Prop({ type: [Object] })
+  careerLevels?: {
     level: ExperienceLevel;
     title: string;
     description: string;

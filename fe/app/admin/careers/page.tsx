@@ -1,65 +1,81 @@
 'use client';
 
-import { AdminPanel, AdminSectionHeader } from '@/components/admin/AdminPrimitives';
-import { cn } from '@/lib/utils';
-import {
-  Briefcase,
-  ChevronRight,
-  Edit3,
-  Plus,
-  Search,
-  Trash2,
-  TrendingUp,
-  Loader2,
-  Sparkles,
-  Save,
-  X,
-  AlertCircle,
-} from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/context/auth-context';
-import { adminService, AdminCareer } from '@/lib/admin.service';
-import { toast } from 'sonner';
+import { AdminSectionHeader } from '@/components/admin/AdminPrimitives';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/context/auth-context';
+import { AdminCareer, adminService } from '@/lib/admin.service';
+import { cn } from '@/lib/utils';
+import {
+  AlertCircle,
+  Briefcase,
+  Edit3,
+  Loader2,
+  Plus,
+  Save,
+  Search,
+  Sparkles,
+  Trash2,
+  TrendingUp,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
-const categories = [
-  'Tất cả',
-  'Technology',
-  'Healthcare',
-  'Finance',
-  'Education',
-  'Creative',
-  'Business',
-  'Engineering',
-  'Science',
-  'Legal',
-  'Sales_Marketing',
-  'Social_Services',
-  'Other',
+type CategoryOption = { label: string; value: string };
+
+const categoryOptions: CategoryOption[] = [
+  { label: 'Tất cả', value: 'all' },
+  { label: 'Technology', value: 'technology' },
+  { label: 'Healthcare', value: 'healthcare' },
+  { label: 'Finance', value: 'finance' },
+  { label: 'Education', value: 'education' },
+  { label: 'Creative', value: 'creative' },
+  { label: 'Business', value: 'business' },
+  { label: 'Engineering', value: 'engineering' },
+  { label: 'Science', value: 'science' },
+  { label: 'Legal', value: 'legal' },
+  { label: 'Sales_Marketing', value: 'sales_marketing' },
+  { label: 'Social_Services', value: 'social_services' },
+  { label: 'Other', value: 'other' },
 ];
+
+const categoryLabelMap = categoryOptions
+  .filter((item) => item.value !== 'all')
+  .reduce(
+    (acc, item) => {
+      acc[item.value] = item.label;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+
+const normalizeCategoryValue = (value?: string) => {
+  if (!value) return 'other';
+  return value.trim().toLowerCase().replace(/\s+/g, '_');
+};
 
 export default function AdminCareersPage() {
   const { accessToken } = useAuth();
-  const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [careers, setCareers] = useState<AdminCareer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,6 +84,7 @@ export default function AdminCareersPage() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingCareer, setEditingCareer] = useState<AdminCareer | null>(null);
   const [formData, setFormData] = useState<Partial<AdminCareer>>({
     title: '',
@@ -80,45 +97,67 @@ export default function AdminCareersPage() {
       cons: [],
       topCompanies: [],
       trends: [],
-      salarySummary: ''
-    }
+      salarySummary: '',
+    },
   });
 
-  const updateDiscoveryArray = (field: 'pros' | 'cons' | 'topCompanies', index: number, value: string) => {
-    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+  const updateDiscoveryArray = (
+    field: 'pros' | 'cons' | 'topCompanies',
+    index: number,
+    value: string,
+  ) => {
+    const discoveryData = formData.discoveryData || {
+      pros: [],
+      cons: [],
+      topCompanies: [],
+      trends: [],
+      salarySummary: '',
+    };
     const arr = [...(discoveryData[field] || [])];
     arr[index] = value;
-    setFormData({ 
-      ...formData, 
-      discoveryData: { 
+    setFormData({
+      ...formData,
+      discoveryData: {
         ...discoveryData,
-        [field]: arr 
-      } 
+        [field]: arr,
+      },
     });
   };
 
   const addDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies') => {
-    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+    const discoveryData = formData.discoveryData || {
+      pros: [],
+      cons: [],
+      topCompanies: [],
+      trends: [],
+      salarySummary: '',
+    };
     const arr = [...(discoveryData[field] || []), ''];
-    setFormData({ 
-      ...formData, 
-      discoveryData: { 
+    setFormData({
+      ...formData,
+      discoveryData: {
         ...discoveryData,
-        [field]: arr 
-      } 
+        [field]: arr,
+      },
     });
   };
 
   const removeDiscoveryItem = (field: 'pros' | 'cons' | 'topCompanies', index: number) => {
-    const discoveryData = formData.discoveryData || { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+    const discoveryData = formData.discoveryData || {
+      pros: [],
+      cons: [],
+      topCompanies: [],
+      trends: [],
+      salarySummary: '',
+    };
     const arr = [...(discoveryData[field] || [])];
     arr.splice(index, 1);
-    setFormData({ 
-      ...formData, 
-      discoveryData: { 
+    setFormData({
+      ...formData,
+      discoveryData: {
         ...discoveryData,
-        [field]: arr 
-      } 
+        [field]: arr,
+      },
     });
   };
 
@@ -131,7 +170,7 @@ export default function AdminCareersPage() {
         page,
         12,
         searchTerm,
-        activeCategory === 'Tất cả' ? undefined : activeCategory
+        activeCategory === 'all' ? undefined : activeCategory,
       );
       setCareers(res.careers);
     } catch {
@@ -164,8 +203,8 @@ export default function AdminCareersPage() {
         cons: [],
         topCompanies: [],
         trends: [],
-        salarySummary: ''
-      }
+        salarySummary: '',
+      },
     });
     setIsModalOpen(true);
   };
@@ -174,13 +213,14 @@ export default function AdminCareersPage() {
     setEditingCareer(career);
     setFormData({
       ...career,
+      category: normalizeCategoryValue(career.category),
       discoveryData: career.discoveryData || {
         pros: [],
         cons: [],
         topCompanies: [],
         trends: [],
-        salarySummary: ''
-      }
+        salarySummary: '',
+      },
     });
     setIsModalOpen(true);
   };
@@ -214,7 +254,14 @@ export default function AdminCareersPage() {
       }
 
       const res = await adminService.generateCareerWithAI(accessToken, formData.title);
-      setFormData(res);
+      if ((res as { error?: string }).error) {
+        toast.error((res as { error?: string }).error || 'AI không thể tạo dữ liệu lúc này');
+        return;
+      }
+      setFormData({
+        ...res,
+        category: normalizeCategoryValue(res.category),
+      });
       toast.success('AI đã tạo dữ liệu thành công');
     } catch {
       toast.error('AI không thể tạo dữ liệu lúc này');
@@ -225,20 +272,69 @@ export default function AdminCareersPage() {
 
   const handleSave = async () => {
     if (!accessToken) return;
+    const title = formData.title?.trim() || '';
+    if (!title) {
+      toast.error('Vui lòng nhập tên nghề nghiệp');
+      return;
+    }
+    if (!formData.description?.trim()) {
+      toast.error('Vui lòng nhập mô tả nghề nghiệp');
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      ...formData,
+      title,
+      category: normalizeCategoryValue(formData.category),
+    };
+
+    // Remove IDs from payload to avoid Mongoose immutable field errors or ID conflicts
+    delete payload.id;
+    delete payload._id;
+
+    const hasSkillRequirements =
+      (payload.skillRequirements?.technical?.length || 0) > 0 ||
+      (payload.skillRequirements?.soft?.length || 0) > 0;
+    const hasCareerLevels = Array.isArray(payload.careerLevels) && payload.careerLevels.length > 0;
+
+    if (!hasSkillRequirements || !hasCareerLevels) {
+      toast.warning('Nghề nghiệp thiếu dữ liệu kỹ năng hoặc lộ trình. AI có thể tư vấn kém chính xác hơn.');
+    }
+
+    const isDraft = Boolean(editingCareer?.isDraft);
+    const careerId = editingCareer?.id || editingCareer?._id;
+
     try {
-      if (editingCareer) {
-        await adminService.updateCareer(accessToken, editingCareer.id || editingCareer._id || '', formData);
+      setIsSaving(true);
+      if (!editingCareer || isDraft) {
+        // If it's a draft or new, check for duplicate title in formal careers
+        const check = await adminService.checkCareerDuplicate(accessToken, title);
+        if (check.exists && !isDraft) {
+          toast.error('Nghề nghiệp này đã tồn tại trong hệ thống');
+          return;
+        }
+        await adminService.createCareer(accessToken, payload);
+        toast.success(isDraft ? 'Đã chính thức hóa nghề nghiệp thành công' : 'Thêm mới thành công');
+      } else if (careerId) {
+        await adminService.updateCareer(accessToken, careerId, payload);
         toast.success('Cập nhật thành công');
-      } else {
-        await adminService.createCareer(accessToken, formData);
-        toast.success('Thêm mới thành công');
       }
       setIsModalOpen(false);
       fetchCareers();
-    } catch {
-      toast.error('Lưu thất bại');
+    } catch (error: unknown) {
+      console.error('Save error:', error);
+      let errorMessage = 'Lưu thất bại';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const response = (error as { response: { data: { message?: string } } }).response;
+        errorMessage = response.data.message || errorMessage;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const showAIGenerate = !editingCareer || editingCareer.isDraft;
 
   return (
     <div className="w-full">
@@ -246,9 +342,9 @@ export default function AdminCareersPage() {
         title="Quản lý Danh mục Nghề nghiệp"
         subtitle="Cập nhật thông tin chi tiết về các nghề nghiệp để cung cấp dữ liệu chính xác cho AI tư vấn."
         right={
-          <button 
+          <button
             onClick={openAddModal}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-500 px-5 text-sm font-bold text-white shadow-lg shadow-violet-200 hover:bg-violet-600 transition"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-500 px-5 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-600"
           >
             <Plus className="h-4 w-4" /> Thêm nghề nghiệp mới
           </button>
@@ -257,32 +353,32 @@ export default function AdminCareersPage() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => (
+          {categoryOptions.map((cat) => (
             <button
-              key={cat}
+              key={cat.value}
               onClick={() => {
-                setActiveCategory(cat);
+                setActiveCategory(cat.value);
                 setPage(1);
               }}
               className={cn(
                 'rounded-full px-4 py-1.5 text-xs font-bold transition',
-                activeCategory === cat
+                activeCategory === cat.value
                   ? 'bg-violet-600 text-white shadow-sm'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700',
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700',
               )}
             >
-              {cat}
+              {cat.label}
             </button>
           ))}
         </div>
-        
+
         <form onSubmit={handleSearch} className="relative min-w-64">
           <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input 
+          <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all dark:text-slate-200" 
-            placeholder="Tìm tên nghề nghiệp..." 
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 text-sm transition-all outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+            placeholder="Tìm tên nghề nghiệp..."
           />
         </form>
       </div>
@@ -294,9 +390,9 @@ export default function AdminCareersPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {careers.map((career) => (
-            <CareerCard 
-              key={career.id || career._id} 
-              career={career} 
+            <CareerCard
+              key={career.id || career._id}
+              career={career}
               onEdit={() => openEditModal(career)}
               onDelete={() => {
                 const id = career.id || career._id;
@@ -315,7 +411,7 @@ export default function AdminCareersPage() {
 
       {/* Career Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editingCareer ? 'Chỉnh sửa nghề nghiệp' : 'Thêm nghề nghiệp mới'}
@@ -325,7 +421,7 @@ export default function AdminCareersPage() {
 
           <div className="py-4">
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 mb-6">
+              <TabsList className="mb-6 grid w-full grid-cols-4">
                 <TabsTrigger value="general">Cơ bản</TabsTrigger>
                 <TabsTrigger value="market">Thị trường</TabsTrigger>
                 <TabsTrigger value="analysis">Phân tích</TabsTrigger>
@@ -334,24 +430,28 @@ export default function AdminCareersPage() {
 
               <TabsContent value="general" className="space-y-6">
                 <div className="grid gap-4">
-                  <div className="flex gap-2 items-end">
+                  <div className="flex items-end gap-2">
                     <div className="flex-1 space-y-2">
                       <Label>Tên nghề nghiệp</Label>
-                      <Input 
-                        value={formData.title} 
-                        onChange={(e) => setFormData({...formData, title: e.target.value})}
-                        placeholder="VD: Senior Frontend Developer" 
+                      <Input
+                        value={formData.title}
+                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        placeholder="VD: Senior Frontend Developer"
                       />
                     </div>
-                    {!editingCareer && (
-                      <Button 
+                    {showAIGenerate && (
+                      <Button
                         type="button"
                         variant="outline"
-                        className="flex gap-2 items-center border-violet-200 text-violet-600 hover:bg-violet-50"
+                        className="flex items-center gap-2 border-violet-200 text-violet-600 hover:bg-violet-50"
                         onClick={handleGenerateWithAI}
                         disabled={isGenerating}
                       >
-                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {isGenerating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
                         AI Khởi tạo
                       </Button>
                     )}
@@ -359,26 +459,30 @@ export default function AdminCareersPage() {
 
                   <div className="space-y-2">
                     <Label>Danh mục</Label>
-                    <Select 
-                      value={formData.category?.toLowerCase()} 
-                      onValueChange={(val) => setFormData({...formData, category: val})}
+                    <Select
+                      value={normalizeCategoryValue(formData.category)}
+                      onValueChange={(val) => setFormData({ ...formData, category: val })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Chọn danh mục" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.filter(c => c !== 'Tất cả').map(cat => (
-                          <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
-                        ))}
+                        {categoryOptions
+                          .filter((c) => c.value !== 'all')
+                          .map((cat) => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Mô tả nghề nghiệp</Label>
-                    <Textarea 
+                    <Textarea
                       value={formData.description}
-                      onChange={(e) => setFormData({...formData, description: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       placeholder="Nhập mô tả chi tiết về nghề nghiệp..."
                       rows={5}
                     />
@@ -391,9 +495,17 @@ export default function AdminCareersPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Nhu cầu thị trường</Label>
-                      <Select 
-                        value={formData.marketInfo?.demandLevel} 
-                        onValueChange={(val) => setFormData({...formData, marketInfo: {...formData.marketInfo!, demandLevel: val as 'low' | 'medium' | 'high' | 'very_high'}})}
+                      <Select
+                        value={formData.marketInfo?.demandLevel}
+                        onValueChange={(val) =>
+                          setFormData({
+                            ...formData,
+                            marketInfo: {
+                              ...formData.marketInfo!,
+                              demandLevel: val as 'low' | 'medium' | 'high' | 'very_high',
+                            },
+                          })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Chọn mức nhu cầu" />
@@ -408,21 +520,37 @@ export default function AdminCareersPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Dự báo tăng trưởng</Label>
-                      <Textarea 
+                      <Textarea
                         value={formData.marketInfo?.growthProjection}
-                        onChange={(e) => setFormData({...formData, marketInfo: {...formData.marketInfo!, growthProjection: e.target.value}})}
-                        placeholder="VD: +25% trong 5 năm tới. Mô tả chi tiết về xu hướng thị trường..." 
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            marketInfo: {
+                              ...formData.marketInfo!,
+                              growthProjection: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="VD: +25% trong 5 năm tới. Mô tả chi tiết về xu hướng thị trường..."
                         rows={3}
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Mức lương tóm tắt (Discovery)</Label>
-                    <Input 
+                    <Input
                       value={formData.discoveryData?.salarySummary}
-                      onChange={(e) => setFormData({...formData, discoveryData: {...formData.discoveryData!, salarySummary: e.target.value}})}
-                      placeholder="VD: 15 - 35 triệu VNĐ" 
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          discoveryData: {
+                            ...formData.discoveryData!,
+                            salarySummary: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="VD: 15 - 35 triệu VNĐ"
                     />
                   </div>
 
@@ -431,18 +559,29 @@ export default function AdminCareersPage() {
                     <div className="space-y-2">
                       {formData.discoveryData?.topCompanies?.map((company, idx) => (
                         <div key={idx} className="flex gap-2">
-                          <Input 
+                          <Input
                             value={company}
-                            onChange={(e) => updateDiscoveryArray('topCompanies', idx, e.target.value)}
+                            onChange={(e) =>
+                              updateDiscoveryArray('topCompanies', idx, e.target.value)
+                            }
                             placeholder="Tên công ty"
                           />
-                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('topCompanies', idx)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeDiscoveryItem('topCompanies', idx)}
+                          >
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
                       ))}
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => addDiscoveryItem('topCompanies')}>
-                        <Plus className="h-3 w-3 mr-2" /> Thêm công ty
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => addDiscoveryItem('topCompanies')}
+                      >
+                        <Plus className="mr-2 h-3 w-3" /> Thêm công ty
                       </Button>
                     </div>
                   </div>
@@ -452,47 +591,65 @@ export default function AdminCareersPage() {
               <TabsContent value="analysis" className="space-y-6">
                 <div className="grid gap-6">
                   <div className="space-y-3">
-                    <Label className="text-emerald-600 font-bold flex items-center gap-2">
+                    <Label className="flex items-center gap-2 font-bold text-emerald-600">
                       <TrendingUp className="h-4 w-4" /> Ưu điểm (Pros)
                     </Label>
                     <div className="space-y-2">
                       {formData.discoveryData?.pros?.map((pro, idx) => (
                         <div key={idx} className="flex gap-2">
-                          <Input 
+                          <Input
                             value={pro}
                             onChange={(e) => updateDiscoveryArray('pros', idx, e.target.value)}
                             placeholder="VD: Thu nhập ổn định"
                           />
-                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('pros', idx)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeDiscoveryItem('pros', idx)}
+                          >
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
                       ))}
-                      <Button variant="outline" size="sm" className="w-full border-emerald-100 text-emerald-600 hover:bg-emerald-50" onClick={() => addDiscoveryItem('pros')}>
-                        <Plus className="h-3 w-3 mr-2" /> Thêm ưu điểm
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-emerald-100 text-emerald-600 hover:bg-emerald-50"
+                        onClick={() => addDiscoveryItem('pros')}
+                      >
+                        <Plus className="mr-2 h-3 w-3" /> Thêm ưu điểm
                       </Button>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <Label className="text-rose-600 font-bold flex items-center gap-2">
+                    <Label className="flex items-center gap-2 font-bold text-rose-600">
                       <AlertCircle className="h-4 w-4" /> Nhược điểm (Cons)
                     </Label>
                     <div className="space-y-2">
                       {formData.discoveryData?.cons?.map((con, idx) => (
                         <div key={idx} className="flex gap-2">
-                          <Input 
+                          <Input
                             value={con}
                             onChange={(e) => updateDiscoveryArray('cons', idx, e.target.value)}
                             placeholder="VD: Áp lực cao"
                           />
-                          <Button variant="ghost" size="icon" onClick={() => removeDiscoveryItem('cons', idx)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeDiscoveryItem('cons', idx)}
+                          >
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
                       ))}
-                      <Button variant="outline" size="sm" className="w-full border-rose-100 text-rose-600 hover:bg-rose-50" onClick={() => addDiscoveryItem('cons')}>
-                        <Plus className="h-3 w-3 mr-2" /> Thêm nhược điểm
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-rose-100 text-rose-600 hover:bg-rose-50"
+                        onClick={() => addDiscoveryItem('cons')}
+                      >
+                        <Plus className="mr-2 h-3 w-3" /> Thêm nhược điểm
                       </Button>
                     </div>
                   </div>
@@ -502,30 +659,44 @@ export default function AdminCareersPage() {
               <TabsContent value="roadmap" className="space-y-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Kỹ năng cốt lõi</span>
-                      <Badge variant="secondary" className="bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                    <Label className="mb-2 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Kỹ năng cốt lõi
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="border border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                      >
                         {formData.skillRequirements?.technical?.length || 0} kỹ năng
                       </Badge>
                     </Label>
-                    <div className="flex flex-wrap gap-2 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/40 shadow-inner">
+                    <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-100 bg-slate-50/30 p-5 shadow-inner dark:border-slate-800 dark:bg-slate-900/40">
                       {formData.skillRequirements?.technical?.map((s, idx: number) => (
-                        <Badge key={idx} variant="outline" className="bg-white dark:bg-slate-800/80 dark:text-violet-300 dark:border-violet-500/30 px-3 py-1.5 font-medium shadow-sm">
+                        <Badge
+                          key={idx}
+                          variant="outline"
+                          className="bg-white px-3 py-1.5 font-medium shadow-sm dark:border-violet-500/30 dark:bg-slate-800/80 dark:text-violet-300"
+                        >
                           {s.skillName} (Lvl {s.minimumLevel})
                         </Badge>
                       ))}
-                      {(!formData.skillRequirements?.technical || formData.skillRequirements.technical.length === 0) && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 italic py-2">Chưa có dữ liệu kỹ năng. Hãy dùng AI Khởi tạo ở Tab Cơ bản.</span>
+                      {(!formData.skillRequirements?.technical ||
+                        formData.skillRequirements.technical.length === 0) && (
+                        <span className="py-2 text-xs text-slate-400 italic dark:text-slate-500">
+                          Chưa có dữ liệu kỹ năng. Hãy dùng AI Khởi tạo ở Tab Cơ bản.
+                        </span>
                       )}
                     </div>
                   </div>
-                  
-                  <div className="rounded-2xl border border-blue-100 dark:border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/10 p-5 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+
+                  <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-5 dark:border-blue-500/20 dark:bg-blue-500/10">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-500/20">
                       <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </div>
-                    <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
-                      Lộ trình chi tiết (Roadmap) và các bài học sẽ được hệ thống AI tự động tạo dựa trên các kỹ năng và mô tả bạn cung cấp. Hãy đảm bảo Tab Cơ bản và Phân tích đầy đủ thông tin nhất có thể.
+                    <p className="text-xs leading-relaxed font-medium text-blue-700 dark:text-blue-300">
+                      Lộ trình chi tiết (Roadmap) và các bài học sẽ được hệ thống AI tự động tạo dựa
+                      trên các kỹ năng và mô tả bạn cung cấp. Hãy đảm bảo Tab Cơ bản và Phân tích
+                      đầy đủ thông tin nhất có thể.
                     </p>
                   </div>
                 </div>
@@ -534,9 +705,19 @@ export default function AdminCareersPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Hủy</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700" onClick={handleSave}>
-              <Save className="mr-2 h-4 w-4" />
+            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+              Hủy
+            </Button>
+            <Button 
+              className="bg-violet-600 hover:bg-violet-700" 
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
               {editingCareer ? 'Cập nhật' : 'Lưu nghề nghiệp'}
             </Button>
           </DialogFooter>
@@ -559,47 +740,60 @@ function CareerCard({
     low: 'Thấp',
     medium: 'Trung bình',
     high: 'Cao',
-    very_high: 'Rất cao'
+    very_high: 'Rất cao',
   };
+  const categoryLabel =
+    categoryLabelMap[normalizeCategoryValue(career.category)] || career.category || 'Other';
 
   return (
-    <div className="group relative flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-violet-500/10 dark:hover:border-violet-500/30">
+    <div className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-violet-500/10 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-500/30">
       <div className="mb-5 flex items-center justify-between">
-        <div className="h-12 w-12 rounded-2xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center border border-violet-100 dark:border-violet-500/20">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-100 bg-violet-50 text-violet-600 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-400">
           <Briefcase className="h-6 w-6" />
         </div>
-        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-tight">
+        <div className="flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-bold tracking-tight text-emerald-600 uppercase dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
           <TrendingUp className="h-3.5 w-3.5" /> {career.marketInfo?.growthProjection || 'N/A'}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-1">{career.title}</h3>
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="line-clamp-1 text-xl font-bold text-slate-900 transition-colors group-hover:text-violet-600 dark:text-slate-100 dark:group-hover:text-violet-400">
+          {career.title}
+        </h3>
         {career.isDraft && (
-          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30 text-[10px] h-5 px-1.5 font-bold uppercase tracking-wider">
+          <Badge
+            variant="outline"
+            className="h-5 border-amber-200 bg-amber-50 px-1.5 text-[10px] font-bold tracking-wider text-amber-600 uppercase dark:border-amber-900/30 dark:bg-amber-500/10 dark:text-amber-400"
+          >
             AI Đề xuất
           </Badge>
         )}
       </div>
-      <p className="mb-6 text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{career.category}</p>
+      <p className="mb-6 text-[10px] font-extrabold tracking-[0.2em] text-slate-400 uppercase dark:text-slate-500">
+        {categoryLabel}
+      </p>
 
-      <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800 pt-5 mt-auto">
+      <div className="mt-auto flex items-center justify-between border-t border-slate-50 pt-5 dark:border-slate-800">
         <div>
-          <p className="text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest mb-1">Nhu cầu thị trường</p>
+          <p className="mb-1 text-[10px] font-bold tracking-widest text-slate-300 uppercase dark:text-slate-600">
+            Nhu cầu thị trường
+          </p>
           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-300">
-            {career.marketInfo?.demandLevel ? (demandMap[career.marketInfo.demandLevel] || career.marketInfo.demandLevel) : 'Ổn định'}
+            {career.marketInfo?.demandLevel
+              ? demandMap[career.marketInfo.demandLevel] || career.marketInfo.demandLevel
+              : 'Ổn định'}
           </p>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={onEdit}
-            className="p-2.5 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-xl text-slate-400 dark:text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 transition-all border border-transparent hover:border-violet-100 dark:hover:border-violet-500/20"
+            className="rounded-xl border border-transparent p-2.5 text-slate-400 transition-all hover:border-violet-100 hover:bg-violet-50 hover:text-violet-600 dark:text-slate-500 dark:hover:border-violet-500/20 dark:hover:bg-violet-500/10 dark:hover:text-violet-400"
           >
             <Edit3 className="h-5 w-5" />
           </button>
-          <button 
+          <button
             onClick={onDelete}
-            className="p-2.5 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 transition-all border border-transparent hover:border-rose-100 dark:hover:border-rose-500/20"
+            className="rounded-xl border border-transparent p-2.5 text-slate-400 transition-all hover:border-rose-100 hover:bg-rose-50 hover:text-rose-500 dark:text-slate-500 dark:hover:border-rose-500/20 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
           >
             <Trash2 className="h-5 w-5" />
           </button>
