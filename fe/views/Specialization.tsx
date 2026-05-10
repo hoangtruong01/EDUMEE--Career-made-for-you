@@ -16,7 +16,7 @@ import {
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/auth-context';
-import { roadmapService } from '@/lib/roadmap.service';
+import { CareerInsight, roadmapService } from '@/lib/roadmap.service';
 
 /* ─── Data ─── */
 const CATEGORY_OPTIONS = [
