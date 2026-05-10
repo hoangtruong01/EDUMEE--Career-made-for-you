@@ -293,9 +293,9 @@ export default function AdminCareersPage() {
     delete payload._id;
 
     const hasSkillRequirements =
-      (payload.skillRequirements?.technical?.length || 0) > 0 ||
-      (payload.skillRequirements?.soft?.length || 0) > 0;
-    const hasCareerLevels = Array.isArray(payload.careerLevels) && payload.careerLevels.length > 0;
+      (formData.skillRequirements?.technical?.length || 0) > 0 ||
+      (formData.skillRequirements?.soft?.length || 0) > 0;
+    const hasCareerLevels = Array.isArray(formData.careerLevels) && formData.careerLevels.length > 0;
 
     if (!hasSkillRequirements || !hasCareerLevels) {
       toast.warning('Nghề nghiệp thiếu dữ liệu kỹ năng hoặc lộ trình. AI có thể tư vấn kém chính xác hơn.');
