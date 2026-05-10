@@ -282,18 +282,70 @@ export default function AdminCareersPage() {
       const id = (editingCareer.id || editingCareer._id)!;
       const data = await adminService.fillMissingData(accessToken, id);
       
-      // Merge AI data into existing formData, prioritizing AI for empty fields
-      setFormData({
-        ...formData,
-        ...data,
-        // Keep existing title/category if they exist
-        title: formData.title || data.title,
-        description: formData.description || data.description,
-        // Ensure discoveryData is merged
-        discoveryData: {
-          ...formData.discoveryData,
-          ...data.discoveryData
-        }
+      if (!data || (data as { error?: string }).error) {
+        toast.error((data as { error?: string })?.error || 'AI không thể trả về dữ liệu.');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Merge AI data into existing formData, prioritizing existing manual edits for non-empty fields
+      setFormData(prev => {
+        const merged = { ...prev, ...data };
+        
+        // Preserve manual text edits if they exist
+        merged.title = prev.title || data.title;
+        merged.description = prev.description || data.description;
+        merged.category = prev.category || data.category;
+        
+        // Merge Market Info surgically
+        merged.marketInfo = {
+          ...data.marketInfo,
+          ...prev.marketInfo,
+          // Only use AI values if prev values are empty/falsy
+          demandLevel: prev.marketInfo?.demandLevel || data.marketInfo?.demandLevel || 'medium',
+          growthProjection: prev.marketInfo?.growthProjection || data.marketInfo?.growthProjection || '',
+        };
+
+        // Merge Skills
+        merged.skillRequirements = {
+          technical: [
+            ...(prev.skillRequirements?.technical || []),
+            ...(data.skillRequirements?.technical || []).filter(
+              aiSkill => !prev.skillRequirements?.technical?.some(
+                prevSkill => prevSkill.skillName.toLowerCase() === aiSkill.skillName.toLowerCase()
+              )
+            )
+          ],
+          soft: [
+            ...(prev.skillRequirements?.soft || []),
+            ...(data.skillRequirements?.soft || []).filter(
+              aiSkill => !prev.skillRequirements?.soft?.some(
+                prevSkill => prevSkill.skillName.toLowerCase() === aiSkill.skillName.toLowerCase()
+              )
+            )
+          ]
+        };
+
+        // Merge Discovery Data
+        merged.discoveryData = {
+          ...data.discoveryData,
+          ...prev.discoveryData,
+          pros: [
+            ...(prev.discoveryData?.pros || []),
+            ...(data.discoveryData?.pros || []).filter(p => !prev.discoveryData?.pros?.includes(p))
+          ],
+          cons: [
+            ...(prev.discoveryData?.cons || []),
+            ...(data.discoveryData?.cons || []).filter(c => !prev.discoveryData?.cons?.includes(c))
+          ],
+          topCompanies: [
+            ...(prev.discoveryData?.topCompanies || []),
+            ...(data.discoveryData?.topCompanies || []).filter(c => !prev.discoveryData?.topCompanies?.includes(c))
+          ],
+          salarySummary: prev.discoveryData?.salarySummary || data.discoveryData?.salarySummary || ''
+        };
+
+        return merged;
       });
       toast.success('Đã bổ sung thông tin thiếu bằng AI');
     } catch (error) {
