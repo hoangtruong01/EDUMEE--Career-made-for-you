@@ -24,7 +24,7 @@ export class AdminService {
     private readonly aiService: AIService,
   ) {}
 
-  async getAllCareers(page: number = 1, limit: number = 10, search?: string, category?: string) {
+  async getAllCareers(page: number = 1, limit: number = 10, search?: string, category?: string): Promise<{ careers: any[]; total: number }> {
     const skip = (page - 1) * limit;
     const normalizedCategory = this.normalizeCategory(category);
 

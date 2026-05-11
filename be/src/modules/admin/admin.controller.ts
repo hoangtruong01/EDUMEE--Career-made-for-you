@@ -70,7 +70,7 @@ export class AdminController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('category') category?: string,
-  ) {
+  ): Promise<{ careers: any[]; total: number }> {
     return this.adminService.getAllCareers(Number(page) || 1, Number(limit) || 10, search, category);
   }
 
