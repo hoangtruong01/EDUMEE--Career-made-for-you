@@ -197,19 +197,19 @@ const CareerCard = ({
 
       {/* Actions */}
       <div className="mt-auto flex items-center gap-3">
-        <Link 
-          href={`/career-analysis?career=${encodeURIComponent(career.title)}&from=discovery`} 
+        <Link
+          href={`/career-analysis?career=${encodeURIComponent(career.title)}&from=discovery`}
           className="flex-1"
         >
-          <Button 
+          <Button
             className="shimmer-btn w-full bg-gradient-hero rounded-2xl font-bold transition-all hover:scale-[1.02] active:scale-95"
           >
             Khám phá ngay <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </Link>
         <Link href={`/career-compare?ids=${career.id}`}>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="rounded-2xl border-white/10 bg-white/5 font-bold hover:bg-white/10 transition-all active:scale-95"
           >
             <GitCompare className="h-4 w-4" />
@@ -334,8 +334,8 @@ const Specialization = () => {
       <div className="relative z-10">
         {/* Header Section */}
         <div className="container py-16 text-center">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }} 
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
           >
@@ -346,10 +346,10 @@ const Specialization = () => {
               </span>
             </div>
             <h1 className="text-gradient-animate font-display text-4xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
-              Khám phá <br /> Nghề nghiệp
+              Khám phá Nghề nghiệp <br /> 
             </h1>
             <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg md:text-xl">
-              Hệ thống AI phân tích và dự báo nghề nghiệp dành riêng cho Gen Z. 
+              Hệ thống AI phân tích và dự báo nghề nghiệp dành riêng cho Gen Z.
               Tìm kiếm hướng đi phù hợp nhất với bản thân ngay hôm nay.
             </p>
           </motion.div>
@@ -381,7 +381,7 @@ const Specialization = () => {
               </Button>
               <AnimatePresence>
                 {showSort && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
@@ -446,7 +446,7 @@ const Specialization = () => {
             </div>
           ) : paginatedResults.length > 0 ? (
             <>
-              <motion.div 
+              <motion.div
                 layout
                 className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3"
               >
@@ -478,8 +478,8 @@ const Specialization = () => {
                       const page = i + 1;
                       // Only show current page, first, last, and neighbors
                       if (
-                        page === 1 || 
-                        page === totalPages || 
+                        page === 1 ||
+                        page === totalPages ||
                         (page >= currentPage - 1 && page <= currentPage + 1)
                       ) {
                         return (
@@ -523,7 +523,7 @@ const Specialization = () => {
               )}
             </>
           ) : (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="flex h-96 flex-col items-center justify-center rounded-[3rem] border-2 border-dashed border-white/5 bg-white/2 p-12 text-center backdrop-blur-xl"
@@ -535,7 +535,7 @@ const Specialization = () => {
               <p className="text-muted-foreground mt-2 max-w-sm">
                 Thử tìm kiếm với từ khóa khác hoặc thay đổi bộ lọc để khám phá thêm nhiều ngành nghề.
               </p>
-              <Button 
+              <Button
                 onClick={() => { setSearch(''); setActiveCategory('all'); }}
                 className="mt-8 rounded-2xl bg-white/10 hover:bg-white/20 font-bold"
               >
