@@ -136,7 +136,8 @@ export class AdminService {
     if (exists) {
       return { error: 'Ngành này đã tồn tại trong hệ thống.' };
     }
-    return this.aiService.generateFullCareerData(title);
+    const data = await this.aiService.generateFullCareerData(title);
+    return this.normalizeAIData(data);
   }
 
   async createCareer(data: Partial<Career>) {
@@ -202,14 +203,55 @@ export class AdminService {
       return { error: 'ID nghề nghiệp không hợp lệ.' };
     }
     const career = await this.careerModel.findById(id).exec();
+    let data: unknown;
+
     if (!career) {
       const insight = await this.careerInsightModel.findById(id).exec();
       if (insight) {
-        return this.aiService.generateFullCareerData(insight.careerTitle);
+        data = await this.aiService.generateFullCareerData(insight.careerTitle);
+      } else {
+        return { error: 'Không tìm thấy dữ liệu.' };
       }
-      return { error: 'Không tìm thấy dữ liệu.' };
+    } else {
+      data = await this.aiService.generateFullCareerData(career.title);
     }
-    return this.aiService.generateFullCareerData(career.title);
+
+    return this.normalizeAIData(data);
+  }
+
+  private normalizeAIData(data: unknown) {
+    if (!data || typeof data !== 'object') return data;
+
+    const result = data as Record<string, unknown>;
+
+    // Normalize category
+    if (result.category && typeof result.category === 'string') {
+      result.category = result.category.toLowerCase();
+    }
+    
+    // Normalize marketInfo
+    if (result.marketInfo && typeof result.marketInfo === 'object' && !Array.isArray(result.marketInfo)) {
+      const marketInfo = result.marketInfo as Record<string, unknown>;
+      if (marketInfo.demandLevel && typeof marketInfo.demandLevel === 'string') {
+        const dl = marketInfo.demandLevel.toLowerCase();
+        if (dl.includes('rất cao')) marketInfo.demandLevel = 'very_high';
+        else if (dl.includes('rất thấp')) marketInfo.demandLevel = 'very_low';
+        else if (dl.includes('cao')) marketInfo.demandLevel = 'high';
+        else if (dl.includes('thấp')) marketInfo.demandLevel = 'low';
+        else if (dl.includes('trung bình')) marketInfo.demandLevel = 'medium';
+        else if (dl.includes('very high')) marketInfo.demandLevel = 'very_high';
+        else if (dl.includes('very low')) marketInfo.demandLevel = 'very_low';
+        else marketInfo.demandLevel = dl;
+      }
+    }
+
+    // Normalize discoveryData
+    if (result.discoveryData && typeof result.discoveryData === 'object' && !Array.isArray(result.discoveryData)) {
+      const discoveryData = result.discoveryData as Record<string, unknown>;
+      discoveryData.salarySummary = (discoveryData.salarySummary as string) || (discoveryData.salaryRange as string) || '';
+    }
+
+    return result;
   }
 
   async deleteCareer(id: string) {

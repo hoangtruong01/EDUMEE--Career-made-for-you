@@ -301,9 +301,13 @@ export default function AdminCareersPage() {
         merged.marketInfo = {
           ...data.marketInfo,
           ...prev.marketInfo,
-          // Only use AI values if prev values are empty/falsy
-          demandLevel: prev.marketInfo?.demandLevel || data.marketInfo?.demandLevel || 'medium',
-          growthProjection: prev.marketInfo?.growthProjection || data.marketInfo?.growthProjection || '',
+          // Only use AI values if prev values are empty/falsy or 'N/A'
+          demandLevel: (!prev.marketInfo?.demandLevel || prev.marketInfo?.demandLevel === 'medium') 
+            ? (data.marketInfo?.demandLevel || prev.marketInfo?.demandLevel || 'medium')
+            : prev.marketInfo?.demandLevel,
+          growthProjection: (!prev.marketInfo?.growthProjection || prev.marketInfo?.growthProjection === 'N/A')
+            ? (data.marketInfo?.growthProjection || prev.marketInfo?.growthProjection || '')
+            : prev.marketInfo?.growthProjection,
         };
 
         // Merge Skills
@@ -342,7 +346,9 @@ export default function AdminCareersPage() {
             ...(prev.discoveryData?.topCompanies || []),
             ...(data.discoveryData?.topCompanies || []).filter(c => !prev.discoveryData?.topCompanies?.includes(c))
           ],
-          salarySummary: prev.discoveryData?.salarySummary || data.discoveryData?.salarySummary || ''
+          salarySummary: (!prev.discoveryData?.salarySummary || prev.discoveryData?.salarySummary === 'N/A')
+            ? (data.discoveryData?.salarySummary || prev.discoveryData?.salarySummary || '')
+            : prev.discoveryData?.salarySummary
         };
 
         return merged;

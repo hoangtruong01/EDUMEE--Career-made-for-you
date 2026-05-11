@@ -82,7 +82,7 @@ export class AdminController {
 
   @ApiOperation({ summary: 'Tạo nghề nghiệp bằng AI' })
   @Post('careers/generate-ai')
-  async generateCareerWithAI(@Body('title') title: string) {
+  async generateCareerWithAI(@Body('title') title: string): Promise<unknown> {
     return this.adminService.generateCareerWithAI(title);
   }
 
@@ -106,7 +106,7 @@ export class AdminController {
 
   @ApiOperation({ summary: 'Bổ sung thông tin thiếu bằng AI' })
   @Post('careers/:id/fill-missing')
-  async fillMissingData(@Param('id') id: string) {
+  async fillMissingData(@Param('id') id: string): Promise<unknown> {
     return this.adminService.fillMissingData(id);
   }
 }
