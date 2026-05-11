@@ -228,7 +228,15 @@ const Specialization = () => {
   const [showSort, setShowSort] = useState(false);
   const [careerList, setCareerList] = useState<CareerDiscoveryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 9;
+
   const { accessToken } = useAuth();
+
+  useEffect(() => {
+    // Reset to first page when search or category changes
+    setCurrentPage(1);
+  }, [search, activeCategory, sortBy]);
 
   useEffect(() => {
     const load = async () => {
@@ -310,6 +318,12 @@ const Specialization = () => {
     }
     return list;
   }, [search, activeCategory, sortBy, careerList]);
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedResults = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+  }, [filtered, currentPage]);
 
   return (
     <div className="aurora-bg min-h-screen noise-bg">
@@ -430,17 +444,84 @@ const Specialization = () => {
                 AI đang quét kho dữ liệu...
               </p>
             </div>
-          ) : filtered.length > 0 ? (
-            <motion.div 
-              layout
-              className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3"
-            >
-              <AnimatePresence mode="popLayout">
-                {filtered.map((career, idx) => (
-                  <CareerCard key={career.id} career={career} index={idx} />
-                ))}
-              </AnimatePresence>
-            </motion.div>
+          ) : paginatedResults.length > 0 ? (
+            <>
+              <motion.div 
+                layout
+                className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3"
+              >
+                <AnimatePresence mode="popLayout">
+                  {paginatedResults.map((career, idx) => (
+                    <CareerCard key={career.id} career={career} index={idx} />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-16 flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={currentPage === 1}
+                    onClick={() => {
+                      setCurrentPage(p => Math.max(1, p - 1));
+                      window.scrollTo({ top: 400, behavior: 'smooth' });
+                    }}
+                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 disabled:opacity-20"
+                  >
+                    <ChevronDown className="h-6 w-6 rotate-90" />
+                  </Button>
+
+                  <div className="flex items-center gap-2 rounded-2xl bg-white/5 p-1 backdrop-blur-xl border border-white/10">
+                    {Array.from({ length: totalPages }).map((_, i) => {
+                      const page = i + 1;
+                      // Only show current page, first, last, and neighbors
+                      if (
+                        page === 1 || 
+                        page === totalPages || 
+                        (page >= currentPage - 1 && page <= currentPage + 1)
+                      ) {
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => {
+                              setCurrentPage(page);
+                              window.scrollTo({ top: 400, behavior: 'smooth' });
+                            }}
+                            className={`h-10 min-w-[40px] px-2 rounded-xl text-sm font-bold transition-all ${
+                              currentPage === page
+                                ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                : 'text-muted-foreground hover:bg-white/10'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      }
+                      // Show ellipsis
+                      if (page === currentPage - 2 || page === currentPage + 2) {
+                        return <span key={page} className="px-1 text-muted-foreground">...</span>;
+                      }
+                      return null;
+                    })}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={currentPage === totalPages}
+                    onClick={() => {
+                      setCurrentPage(p => Math.min(totalPages, p + 1));
+                      window.scrollTo({ top: 400, behavior: 'smooth' });
+                    }}
+                    className="h-12 w-12 rounded-2xl bg-white/5 border-white/10 disabled:opacity-20"
+                  >
+                    <ChevronDown className="h-6 w-6 -rotate-90" />
+                  </Button>
+                </div>
+              )}
+            </>
           ) : (
             <motion.div 
               initial={{ opacity: 0 }}
