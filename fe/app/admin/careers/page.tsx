@@ -332,8 +332,6 @@ export default function AdminCareersPage() {
 
         // Merge Discovery Data
         merged.discoveryData = {
-          ...data.discoveryData,
-          ...prev.discoveryData,
           pros: [
             ...(prev.discoveryData?.pros || []),
             ...(data.discoveryData?.pros || []).filter(p => !prev.discoveryData?.pros?.includes(p))
@@ -345,6 +343,12 @@ export default function AdminCareersPage() {
           topCompanies: [
             ...(prev.discoveryData?.topCompanies || []),
             ...(data.discoveryData?.topCompanies || []).filter(c => !prev.discoveryData?.topCompanies?.includes(c))
+          ],
+          trends: [
+            ...(prev.discoveryData?.trends || []),
+            ...(data.discoveryData?.trends || []).filter(
+              t => !prev.discoveryData?.trends?.some(pt => pt.year === t.year && pt.description === t.description)
+            )
           ],
           salarySummary: (!prev.discoveryData?.salarySummary || prev.discoveryData?.salarySummary === 'N/A')
             ? (data.discoveryData?.salarySummary || prev.discoveryData?.salarySummary || '')
