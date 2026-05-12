@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
 import { assessmentService, CareerFitResult } from '@/lib/assessment.service';
 import { profileService, UserProfile } from '@/lib/profile.service';
-import { userService } from '@/lib/user.service';
+import { userService, type UserMe } from '@/lib/user.service';
 import { motion } from 'framer-motion';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -24,6 +24,7 @@ import {
   Target,
   User,
   X,
+  Camera,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
@@ -43,6 +44,9 @@ const Profile = () => {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -75,6 +79,7 @@ const Profile = () => {
         console.log('Profile Data Loaded:', profData);
         setProfile(profData);
         setResults(resData);
+        setUserMe(userData);
         if (profData && typeof profData === 'object') {
           setFormData({
             fullName: userData?.name || profData?.userId?.name || '',
@@ -127,6 +132,29 @@ const Profile = () => {
     }
   };
 
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !accessToken) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Kích thước ảnh không được vượt quá 5MB');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const response = await userService.updateAvatar(accessToken, file);
+      setUserMe((prev) => (prev ? { ...prev, avatar: response.avatar } : prev));
+      toast.success('Cập nhật ảnh đại diện thành công');
+    } catch (error) {
+      toast.error('Lỗi khi tải ảnh lên');
+      console.error(error);
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!accessToken) return;
     setIsSaving(true);
@@ -148,6 +176,7 @@ const Profile = () => {
         userService.getMe(accessToken),
       ]);
       setProfile(updatedProfile);
+      setUserMe(updatedUser);
       setFormData((prev) => ({
         ...prev,
         fullName: updatedUser?.name || prev.fullName,
@@ -529,8 +558,37 @@ const Profile = () => {
             animate={{ opacity: 1, y: 0 }}
             className="flex items-center gap-4"
           >
-            <div className="bg-gradient-hero shadow-primary/20 flex h-16 w-16 items-center justify-center rounded-2xl text-2xl shadow-xl">
-              {profile?.gender === 'female' ? '👩‍🎓' : '👨‍🎓'}
+            <div className="relative">
+              <div className="bg-gradient-hero shadow-primary/20 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl text-3xl shadow-xl">
+                {userMe?.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={userMe.avatar}
+                    alt="Avatar"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <>{profile?.gender === 'female' ? '👩‍🎓' : '👨‍🎓'}</>
+                )}
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingAvatar}
+                className="absolute -right-2 -bottom-2 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-violet-600 text-white shadow-md transition-transform hover:scale-110 dark:border-zinc-900"
+              >
+                {isUploadingAvatar ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarUpload}
+                accept="image/png, image/jpeg, image/webp"
+                className="hidden"
+              />
             </div>
             <div>
               <h1 className="font-display text-xl font-bold">

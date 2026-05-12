@@ -14,6 +14,9 @@ class CommunityComment {
   @Prop({ trim: true })
   authorTitle?: string;
 
+  @Prop({ trim: true })
+  authorAvatar?: string;
+
   @Prop({ required: true, trim: true })
   content!: string;
 
@@ -67,6 +70,9 @@ export class CommunityPost {
 
   @Prop({ trim: true })
   authorTitle?: string;
+
+  @Prop({ trim: true })
+  authorAvatar?: string;
 
   @Prop({ required: true, trim: true })
   title!: string;

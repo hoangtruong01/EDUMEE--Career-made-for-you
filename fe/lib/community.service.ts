@@ -6,6 +6,7 @@ export interface CommunityComment {
   authorId?: string;
   authorName: string;
   authorTitle?: string;
+  authorAvatar?: string;
   content: string;
   createdAt?: string;
 }
@@ -16,6 +17,7 @@ export interface CommunityPost {
   authorId?: string;
   authorName: string;
   authorTitle?: string;
+  authorAvatar?: string;
   title: string;
   content: string;
   category: string;
@@ -43,12 +45,14 @@ export interface CreateCommunityPostPayload {
   hashtags?: string[];
   authorName: string;
   authorTitle?: string;
+  authorAvatar?: string;
 }
 
 export interface CreateCommunityCommentPayload {
   content: string;
   authorName: string;
   authorTitle?: string;
+  authorAvatar?: string;
 }
 
 export const communityService = {
@@ -124,8 +128,8 @@ export const communityService = {
   async getTopContributors(
     accessToken: string,
     limit = 5,
-  ): Promise<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]> {
-    return apiClient.get<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]>(
+  ): Promise<{ authorName: string; authorTitle?: string; authorAvatar?: string; totalLikes: number; postCount: number }[]> {
+    return apiClient.get<{ authorName: string; authorTitle?: string; authorAvatar?: string; totalLikes: number; postCount: number }[]>(
       `/community-posts/top-contributors?limit=${limit}`,
       accessToken,
     );

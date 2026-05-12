@@ -156,11 +156,17 @@ const PostCard = ({
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
         <div className="flex items-center gap-3">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
-          >
-            {initials}
-          </div>
+          {post.authorAvatar ? (
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-sm">
+              <img src={post.authorAvatar} alt={authorName} className="h-full w-full object-cover" />
+            </div>
+          ) : (
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
+            >
+              {initials}
+            </div>
+          )}
           <div>
             <p className="text-sm font-bold tracking-tight">{authorName}</p>
             <p className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">
@@ -488,6 +494,7 @@ const Community = () => {
         hashtags,
         authorName: displayName,
         authorTitle: isAnonymous ? undefined : profile?.educationLevel || undefined,
+        authorAvatar: userMe?.avatar,
       });
       resetForm();
       setIsFormOpen(false);
@@ -981,11 +988,17 @@ const Community = () => {
                     const bg = getAvatarColor(c.authorName);
                     return (
                       <div key={c.authorName} className="flex items-center gap-4">
-                        <div
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${bg}`}
-                        >
-                          {initials}
-                        </div>
+                        {c.authorAvatar ? (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-md">
+                            <img src={c.authorAvatar} alt={c.authorName} className="h-full w-full object-cover" />
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${bg}`}
+                          >
+                            {initials}
+                          </div>
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold tracking-tight">{c.authorName}</p>
                           <p className="text-muted-foreground truncate text-[10px] font-bold tracking-widest uppercase">

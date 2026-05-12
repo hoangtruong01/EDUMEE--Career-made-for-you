@@ -9,7 +9,13 @@ import {
   LoggingInterceptor,
   TransformInterceptor,
 } from './common/interceptors';
-import { appConfig, databaseConfig, jwtConfig, redisConfig } from './config';
+import {
+  appConfig,
+  cloudinaryConfig,
+  databaseConfig,
+  jwtConfig,
+  redisConfig,
+} from './config';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -31,7 +37,7 @@ import { AppService } from './app.service';
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig, redisConfig],
+      load: [appConfig, databaseConfig, jwtConfig, redisConfig, cloudinaryConfig],
       envFilePath: ['.env', '.env.local'],
     }),
 

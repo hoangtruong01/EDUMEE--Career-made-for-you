@@ -38,6 +38,11 @@ export class CreateCommunityPostDto {
   @IsString()
   @MaxLength(80)
   authorTitle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  authorAvatar?: string;
 }
 
 export class CreateCommunityCommentDto {
@@ -58,4 +63,9 @@ export class CreateCommunityCommentDto {
   @IsString()
   @MaxLength(80)
   authorTitle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  authorAvatar?: string;
 }

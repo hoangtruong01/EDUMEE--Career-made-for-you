@@ -13,6 +13,9 @@ import { MailService } from './../../common/mail/mail.service';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserDocument } from './schemas/user.schema';
+import { CommunityPost, CommunityPostDocument } from '../community/schemas/community-post.schema';
+import { MediaService } from '../media/services/media.service';
+import type { UploadApiResponse } from 'cloudinary';
 
 @Injectable()
 export class UsersService {
@@ -20,10 +23,11 @@ export class UsersService {
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    //Thuận
+    @InjectModel(CommunityPost.name) private communityPostModel: Model<CommunityPostDocument>,
     private configService: ConfigService,
     private jwtService: JwtService,
     private MailService: MailService,
+    private mediaService: MediaService,
   ) {}
 
   // =======================================================================
@@ -363,5 +367,31 @@ export class UsersService {
       },
     );
     return { access_token };
+  }
+
+  async updateAvatar(userId: string, file: Express.Multer.File) {
+    const uploadResult = await this.mediaService.uploadImage(file);
+    const avatarUrl = (uploadResult as UploadApiResponse).secure_url;
+
+    const userObjectId = new Types.ObjectId(userId);
+
+    // Update user avatar
+    await this.userModel.findByIdAndUpdate(userObjectId, { avatar: avatarUrl }).exec();
+
+    // Sync with community posts
+    await this.communityPostModel
+      .updateMany({ authorId: userObjectId }, { $set: { authorAvatar: avatarUrl } })
+      .exec();
+
+    // Sync with comments in community posts
+    await this.communityPostModel
+      .updateMany(
+        { 'comments.authorId': userObjectId },
+        { $set: { 'comments.$[elem].authorAvatar': avatarUrl } },
+        { arrayFilters: [{ 'elem.authorId': userObjectId }] },
+      )
+      .exec();
+
+    return { avatar: avatarUrl };
   }
 }

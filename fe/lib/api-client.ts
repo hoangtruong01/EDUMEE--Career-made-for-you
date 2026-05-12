@@ -103,6 +103,41 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   return (payload ?? ({} as T)) as T;
 }
 
+export async function apiUpload<T>(path: string, formData: FormData, token?: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH', // Usually avatar upload is PATCH in our case
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: formData,
+  });
+
+  const payload = (await parseResponseBody(response)) as ApiErrorBody | ApiResponse<T> | T | null;
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      if (typeof window !== 'undefined') {
+        authStorage.clearSession();
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login?expired=true';
+        }
+      }
+    }
+    const parsedPayload = (payload || undefined) as ApiErrorBody | undefined;
+    throw new ApiError(
+      parseErrorMessage(parsedPayload, 'Đã xảy ra lỗi khi gọi API'),
+      response.status,
+      parsedPayload,
+    );
+  }
+
+  if (payload && typeof payload === 'object' && 'success' in payload && 'data' in payload) {
+    return (payload as ApiResponse<T>).data;
+  }
+  return (payload ?? ({} as T)) as T;
+}
+
 export const apiClient = {
   get: <T>(path: string, token?: string) => apiRequest<T>(path, { method: 'GET', token }),
   post: <T>(path: string, body?: unknown, token?: string) =>
@@ -113,5 +148,7 @@ export const apiClient = {
     apiRequest<T>(path, { method: 'PATCH', body, token }),
   delete: <T>(path: string, token?: string, body?: unknown) =>
     apiRequest<T>(path, { method: 'DELETE', token, body }),
+  upload: <T>(path: string, formData: FormData, token?: string) =>
+    apiUpload<T>(path, formData, token),
 };
 

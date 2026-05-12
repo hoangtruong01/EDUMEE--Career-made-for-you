@@ -11,7 +11,10 @@ import {
   Post,
   Query,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -54,6 +57,30 @@ export class UsersController {
   @Patch('me')
   async updateMe(@CurrentUser() user: RequestUser, @Body() updateData: UpdateMeDto) {
     return await this.usersService.updateMe(user.userId, updateData);
+  }
+
+  @ApiOperation({ summary: 'Cập nhật ảnh đại diện' })
+  @Patch('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  async updateAvatar(
+    @CurrentUser() user: RequestUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file ảnh');
+    }
+    console.log('Received file:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      hasBuffer: !!file.buffer,
+    });
+    try {
+      return await this.usersService.updateAvatar(user.userId, file);
+    } catch (error) {
+      console.error('Update avatar failed:', error);
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Đổi mật khẩu (Yêu cầu mật khẩu cũ)' })
