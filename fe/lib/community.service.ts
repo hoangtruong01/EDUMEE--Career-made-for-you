@@ -121,6 +121,16 @@ export const communityService = {
     );
   },
 
+  async getTopContributors(
+    accessToken: string,
+    limit = 5,
+  ): Promise<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]> {
+    return apiClient.get<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]>(
+      `/community-posts/top-contributors?limit=${limit}`,
+      accessToken,
+    );
+  },
+
   async report(
     accessToken: string,
     payload: {
