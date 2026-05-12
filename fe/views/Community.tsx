@@ -347,7 +347,7 @@ const Community = () => {
   const [tagInput, setTagInput] = useState('');
   const [menuPostId, setMenuPostId] = useState<string | null>(null);
   const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([]);
-  const [topContributors, setTopContributors] = useState<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]>([]);
+  const [topContributors, setTopContributors] = useState<{ authorName: string; authorTitle?: string; authorAvatar?: string; totalLikes: number; postCount: number }[]>([]);
 
   const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(
     null,
