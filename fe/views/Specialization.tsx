@@ -345,8 +345,9 @@ const Specialization = () => {
                 {careerList.length}+ Ngành nghề xu hướng
               </span>
             </div>
-            <h1 className="text-gradient-animate font-display text-4xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
-              Khám phá Nghề nghiệp <br /> 
+            <h1 className="font-display text-4xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
+              <span className="text-gradient-hero">Khám phá</span>{" "}
+              <span className="text-gradient-accent">Nghề nghiệp</span>
             </h1>
             <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg md:text-xl">
               Hệ thống AI phân tích và dự báo nghề nghiệp dành riêng cho Gen Z.
