@@ -259,12 +259,49 @@ export class CommunityPostService {
   }
 
   async getTrendingHashtags(limit = 10): Promise<{ tag: string; count: number }[]> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const result = await this.communityPostModel.aggregate([
+      { $match: { status: PostStatus.PUBLISHED, createdAt: { $gte: thirtyDaysAgo } } },
       { $unwind: '$hashtags' },
       { $group: { _id: '$hashtags', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: limit },
       { $project: { tag: '$_id', count: 1, _id: 0 } },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return result as any;
+  }
+
+  async getTopContributors(limit = 5): Promise<{ authorName: string; authorTitle?: string; totalLikes: number; postCount: number }[]> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const result = await this.communityPostModel.aggregate([
+      { $match: { status: PostStatus.PUBLISHED, createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: '$authorId',
+          authorName: { $first: '$authorName' },
+          authorTitle: { $first: '$authorTitle' },
+          authorAvatar: { $first: '$authorAvatar' },
+          totalLikes: { $sum: '$likeCount' },
+          postCount: { $sum: 1 },
+        },
+      },
+      { $sort: { totalLikes: -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          authorName: 1,
+          authorTitle: 1,
+          authorAvatar: 1,
+          totalLikes: 1,
+          postCount: 1,
+        },
+      },
     ]);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return result as any;

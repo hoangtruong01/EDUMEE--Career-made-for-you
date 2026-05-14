@@ -1,5 +1,6 @@
 import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
+import { Toaster as SonnerToaster } from 'sonner';
 import type { Metadata } from 'next';
 
 // Dùng đường dẫn tuyệt đối có chữ @ để không bao giờ bị lỗi path
@@ -21,6 +22,7 @@ export default function RootLayout({
         <AppProviders>
           {children}
           <Toaster />
+          <SonnerToaster position="top-right" richColors />
         </AppProviders>
       </body>
     </html>

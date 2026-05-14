@@ -68,6 +68,7 @@ export interface AdminCareer {
     trends: { year: string; description: string }[];
     salarySummary?: string;
   };
+  careerLevels?: Array<Record<string, unknown>>;
   isDraft?: boolean;
 }
 
@@ -97,13 +98,22 @@ export const adminService = {
     return apiClient.delete<void>('/admin/users/bulk-delete', token, { ids: userIds });
   },
 
-  getAllCareers(token: string, page: number = 1, limit: number = 10, search?: string, category?: string) {
+  getAllCareers(
+    token: string,
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    category?: string,
+  ) {
     const url = `/admin/careers?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}${category ? `&category=${category}` : ''}`;
     return apiClient.get<{ careers: AdminCareer[]; total: number }>(url, token);
   },
 
   checkCareerDuplicate(token: string, title: string) {
-    return apiClient.get<{ exists: boolean }>(`/admin/careers/check-duplicate?title=${encodeURIComponent(title)}`, token);
+    return apiClient.get<{ exists: boolean }>(
+      `/admin/careers/check-duplicate?title=${encodeURIComponent(title)}`,
+      token,
+    );
   },
 
   generateCareerWithAI(token: string, title: string) {
@@ -122,5 +132,7 @@ export const adminService = {
     return apiClient.delete<void>(`/admin/careers/${id}`, token);
   },
 
+  fillMissingData(token: string, id: string) {
+    return apiClient.post<AdminCareer>(`/admin/careers/${id}/fill-missing`, {}, token);
+  },
 };
-

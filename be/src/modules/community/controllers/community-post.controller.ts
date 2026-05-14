@@ -38,6 +38,13 @@ export class CommunityPostController {
     return this.communityPostService.getTrendingHashtags(limit);
   }
 
+  @Get('top-contributors')
+  @ApiOperation({ summary: 'Get top contributors' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Top contributors retrieved successfully' })
+  getTopContributors(@Query('limit') limit?: number) {
+    return this.communityPostService.getTopContributors(limit);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get community posts' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Posts retrieved successfully' })

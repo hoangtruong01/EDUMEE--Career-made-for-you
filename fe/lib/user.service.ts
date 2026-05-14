@@ -8,6 +8,7 @@ export interface UserMe {
   role?: string;
   date_of_birth?: string;
   phone_number?: string;
+  avatar?: string;
   onboarding_completed?: boolean;
 }
 
@@ -27,5 +28,11 @@ export const userService = {
 
   async updateMe(accessToken: string, payload: UpdateMePayload): Promise<UserMe> {
     return apiClient.patch<UserMe>('/users/me', payload, accessToken);
+  },
+
+  async updateAvatar(accessToken: string, file: File): Promise<{ avatar: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.upload<{ avatar: string }>('/users/me/avatar', formData, accessToken);
   },
 };

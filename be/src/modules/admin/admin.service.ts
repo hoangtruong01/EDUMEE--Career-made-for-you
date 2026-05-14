@@ -1,18 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, FilterQuery } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { Career, CareerDocument } from '../careers/schemas/career.schema';
-import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-insight.schema';
-import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
-import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
-import { UserRole, UserVerifyStatus, LoginType } from '../../common/enums';
+import { LoginType, UserRole, UserVerifyStatus } from '../../common/enums';
 import { AIService } from '../../common/services/ai.service';
+import { CareerFitResult, CareerFitResultDocument } from '../assessment/schemas/career-fit-result.schema';
+import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-insight.schema';
+import { Career, CareerCategory, CareerDocument } from '../careers/schemas/career.schema';
+import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
 
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Career.name) private careerModel: Model<CareerDocument>,
@@ -22,54 +24,102 @@ export class AdminService {
     private readonly aiService: AIService,
   ) {}
 
-  async getAllCareers(page: number = 1, limit: number = 10, search?: string) {
+  async getAllCareers(page: number = 1, limit: number = 10, search?: string, category?: string): Promise<{ careers: any[]; total: number }> {
     const skip = (page - 1) * limit;
-    
+    const normalizedCategory = this.normalizeCategory(category);
+
     // Use aggregation to merge Career and CareerInsight
-    // We want all titles from both collections
-    const curatedTitles = await this.careerModel.distinct('title');
-    const insightTitles = await this.careerInsightModel.distinct('careerTitle');
-    
-    const allTitles = [...new Set([...curatedTitles, ...insightTitles])];
-    
-    let filteredTitles = allTitles;
+    const [curatedTitles, insightTitles] = await Promise.all([
+      this.careerModel.distinct('title', normalizedCategory ? { category: normalizedCategory } : {}),
+      normalizedCategory && normalizedCategory !== 'other'
+        ? []
+        : this.careerInsightModel.distinct('careerTitle')
+    ]);
+
+    // Create a map of lowercase title -> original title (prefer curated)
+    const titleMap = new Map<string, string>();
+    curatedTitles.forEach(t => titleMap.set(t.toLowerCase(), t));
+    insightTitles.forEach(t => {
+      const lower = t.toLowerCase();
+      if (!titleMap.has(lower)) {
+        titleMap.set(lower, t);
+      }
+    });
+
+    const uniqueTitles = Array.from(titleMap.values());
+    let filteredTitles = uniqueTitles;
     if (search) {
       const searchLower = search.toLowerCase();
       filteredTitles = filteredTitles.filter(t => t.toLowerCase().includes(searchLower));
     }
-
-    // This is a bit inefficient for huge datasets, but for careers it's fine
-    // Sort alphabetically for consistency
     filteredTitles.sort((a, b) => a.localeCompare(b));
-
     const total = filteredTitles.length;
     const paginatedTitles = filteredTitles.slice(skip, skip + limit);
 
     const [curatedCareers, insights] = await Promise.all([
-      this.careerModel.find({ title: { $in: paginatedTitles } }).exec(),
-      this.careerInsightModel.find({ careerTitle: { $in: paginatedTitles } }).exec(),
+      this.careerModel.find({ title: { $in: paginatedTitles.map(t => new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) } }).exec(),
+      this.careerInsightModel.find({ careerTitle: { $in: paginatedTitles.map(t => new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) } }).exec(),
     ]);
 
     const merged = paginatedTitles.map(title => {
-      const curated = curatedCareers.find(c => c.title === title);
-      const insight = insights.find(i => i.careerTitle === title);
-      
+      const titleLower = title.toLowerCase();
+      const curated = curatedCareers.find(c => c.title.toLowerCase() === titleLower);
+      const insight = insights.find(i => i.careerTitle.toLowerCase() === titleLower);
+
       if (curated) {
-        return curated.toJSON();
+        const curatedObj = curated.toJSON();
+        if (insight && insight.analysis) {
+          if (!curatedObj.discoveryData) {
+            curatedObj.discoveryData = { pros: [], cons: [], topCompanies: [], trends: [], salarySummary: '' };
+          }
+          const disc = curatedObj.discoveryData;
+          if (!disc.pros?.length) disc.pros = insight.analysis.pros || [];
+          if (!disc.cons?.length) disc.cons = insight.analysis.cons || [];
+          if (!disc.topCompanies?.length) disc.topCompanies = insight.analysis.topCompanies || [];
+          if (!disc.trends?.length) disc.trends = insight.analysis.trends || [];
+          if (!disc.salarySummary) disc.salarySummary = insight.analysis.salaryRange || 'N/A';
+
+          if (!curatedObj.marketInfo || !curatedObj.marketInfo.demandLevel) {
+            curatedObj.marketInfo = {
+              demandLevel: (insight.analysis.demandLevel as unknown as 'low' | 'medium' | 'high' | 'very_high') || 'medium',
+              growthProjection: curatedObj.marketInfo?.growthProjection || 'N/A',
+              jobAvailability: curatedObj.marketInfo?.jobAvailability || 3,
+              competitionLevel: curatedObj.marketInfo?.competitionLevel || 'medium',
+              automationRisk: curatedObj.marketInfo?.automationRisk || 'low',
+            };
+          }
+          if (!curatedObj.description) {
+            curatedObj.description = insight.analysis.overview || '';
+          }
+        }
+        return {
+          ...curatedObj,
+          id: (curatedObj.id || curatedObj._id) as unknown as string,
+          isDraft: false,
+        };
       }
-      
-      // If only insight exists, return a skeleton career object
+
       return {
-        id: insight?._id,
-        _id: insight?._id,
+        id: insight?._id as unknown as string,
+        _id: insight?._id as unknown as string,
         title: title,
-        category: 'Other',
+        category: 'other',
         description: insight?.analysis?.overview || 'AI Discovered',
         marketInfo: {
-          demandLevel: insight?.analysis?.demandLevel || 'medium',
-          growthProjection: 'N/A'
+          demandLevel: (insight?.analysis?.demandLevel as unknown as 'low' | 'medium' | 'high' | 'very_high') || 'medium',
+          growthProjection: 'N/A',
+          jobAvailability: 3,
+          competitionLevel: 'medium',
+          automationRisk: 'low',
         },
-        isDraft: true // Flag to indicate it's not fully curated
+        discoveryData: insight ? {
+          pros: insight.analysis.pros || [],
+          cons: insight.analysis.cons || [],
+          topCompanies: insight.analysis.topCompanies || [],
+          trends: insight.analysis.trends || [],
+          salarySummary: insight.analysis.salaryRange || 'N/A'
+        } : undefined,
+        isDraft: true
       };
     });
 
@@ -86,35 +136,141 @@ export class AdminService {
     if (exists) {
       return { error: 'Ngành này đã tồn tại trong hệ thống.' };
     }
-    return this.aiService.generateFullCareerData(title);
+    const data = await this.aiService.generateFullCareerData(title);
+    return this.normalizeAIData(data);
   }
 
   async createCareer(data: Partial<Career>) {
-    const career = new this.careerModel(data);
-    if (!career.slug) {
-      if (data.title) {
+    try {
+      if (data.category) {
+        data.category = data.category.toLowerCase() as unknown as CareerCategory;
+      }
+      const career = new this.careerModel(data);
+      if (!career.slug && data.title) {
         career.slug = data.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
       }
+      const saved = await career.save();
+      await this.syncToInsight(saved);
+      return saved;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Lỗi không xác định';
+      this.logger.error('Error creating career:', error);
+      return { error: errorMessage || 'Không thể tạo nghề nghiệp' };
     }
-    const saved = await career.save();
-    await this.syncToInsight(saved);
-    return saved;
   }
 
   async updateCareer(id: string, data: Partial<Career>) {
-    const updated = await this.careerModel.findByIdAndUpdate(id, data, { new: true }).exec();
-    if (updated) {
-      await this.syncToInsight(updated);
+    if (!Types.ObjectId.isValid(id)) {
+      return { error: 'ID nghề nghiệp không hợp lệ.' };
     }
-    return updated;
+    try {
+      if (data.category) {
+        data.category = data.category.toLowerCase() as unknown as CareerCategory;
+      }
+      const oldCareer = await this.careerModel.findById(id).exec();
+      let updated = await this.careerModel.findByIdAndUpdate(id, data, { new: true }).exec();
+      if (!updated) {
+        const insight = await this.careerInsightModel.findById(id).exec();
+        if (insight) {
+          const careerData: Record<string, unknown> = { ...data };
+          delete careerData['_id'];
+          delete careerData['id'];
+          const career = new this.careerModel(careerData);
+          if (!career.slug && career.title) {
+            career.slug = career.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+          }
+          updated = await career.save();
+        } else {
+          return null;
+        }
+      }
+      if (updated) {
+        if (oldCareer && oldCareer.title.toLowerCase() !== updated.title.toLowerCase()) {
+          await this.careerInsightModel.deleteOne({ careerTitle: oldCareer.title }).exec();
+        }
+        await this.syncToInsight(updated);
+      }
+      return updated;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Lỗi không xác định';
+      this.logger.error('Error updating career:', error);
+      return { error: errorMessage || 'Không thể cập nhật nghề nghiệp' };
+    }
+  }
+
+  async fillMissingData(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      return { error: 'ID nghề nghiệp không hợp lệ.' };
+    }
+    const career = await this.careerModel.findById(id).exec();
+    let data: unknown;
+
+    if (!career) {
+      const insight = await this.careerInsightModel.findById(id).exec();
+      if (insight) {
+        data = await this.aiService.generateFullCareerData(insight.careerTitle);
+      } else {
+        return { error: 'Không tìm thấy dữ liệu.' };
+      }
+    } else {
+      data = await this.aiService.generateFullCareerData(career.title);
+    }
+
+    return this.normalizeAIData(data);
+  }
+
+  private normalizeAIData(data: unknown) {
+    if (!data || typeof data !== 'object') return data;
+
+    const result = data as Record<string, unknown>;
+
+    // Normalize category
+    if (result.category && typeof result.category === 'string') {
+      result.category = result.category.toLowerCase();
+    }
+    
+    // Normalize marketInfo
+    if (result.marketInfo && typeof result.marketInfo === 'object' && !Array.isArray(result.marketInfo)) {
+      const marketInfo = result.marketInfo as Record<string, unknown>;
+      if (marketInfo.demandLevel && typeof marketInfo.demandLevel === 'string') {
+        const dl = marketInfo.demandLevel.toLowerCase();
+        if (dl.includes('rất cao')) marketInfo.demandLevel = 'very_high';
+        else if (dl.includes('rất thấp')) marketInfo.demandLevel = 'very_low';
+        else if (dl.includes('cao')) marketInfo.demandLevel = 'high';
+        else if (dl.includes('thấp')) marketInfo.demandLevel = 'low';
+        else if (dl.includes('trung bình')) marketInfo.demandLevel = 'medium';
+        else if (dl.includes('very high')) marketInfo.demandLevel = 'very_high';
+        else if (dl.includes('very low')) marketInfo.demandLevel = 'very_low';
+        else marketInfo.demandLevel = dl;
+      }
+    }
+
+    // Normalize discoveryData
+    if (result.discoveryData && typeof result.discoveryData === 'object' && !Array.isArray(result.discoveryData)) {
+      const discoveryData = result.discoveryData as Record<string, unknown>;
+      discoveryData.salarySummary = (discoveryData.salarySummary as string) || (discoveryData.salaryRange as string) || '';
+    }
+
+    return result;
   }
 
   async deleteCareer(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      return { error: 'ID nghề nghiệp không hợp lệ.' };
+    }
     const career = await this.careerModel.findById(id).exec();
     if (career) {
       await this.careerInsightModel.deleteOne({ careerTitle: career.title }).exec();
+      return this.careerModel.findByIdAndDelete(id).exec();
     }
-    return this.careerModel.findByIdAndDelete(id).exec();
+    return this.careerInsightModel.findByIdAndDelete(id).exec();
+  }
+
+  private normalizeCategory(category?: string): string | undefined {
+    if (!category) return undefined;
+    const normalized = category.trim().toLowerCase();
+    if (!normalized || normalized === 'all') return undefined;
+    return normalized.replace(/\s+/g, '_');
   }
 
   private async syncToInsight(career: CareerDocument) {
@@ -125,8 +281,8 @@ export class AdminService {
         pros: career.discoveryData?.pros || [],
         cons: career.discoveryData?.cons || [],
         trends: career.discoveryData?.trends || [],
-        salaryRange: career.discoveryData?.salarySummary || (career.careerLevels?.length 
-          ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}` 
+        salaryRange: career.discoveryData?.salarySummary || (career.careerLevels?.length
+          ? `${career.careerLevels[0].salary[0].min}-${career.careerLevels[0].salary[0].max}`
           : 'N/A'),
         demandLevel: career.marketInfo?.demandLevel || 'medium',
         keySkills: career.skillRequirements?.technical?.map(s => s.skillName) || [],
@@ -134,12 +290,23 @@ export class AdminService {
       },
       lastAIUpdate: new Date()
     };
-
-    await this.careerInsightModel.findOneAndUpdate(
-      { careerTitle: career.title },
-      { $set: insightData },
-      { upsert: true }
-    ).exec();
+    try {
+      await this.careerInsightModel.findOneAndUpdate(
+        { careerTitle: career.title },
+        { $set: insightData },
+        { upsert: true }
+      ).exec();
+    } catch (error: unknown) {
+      const mongoError = error as { code?: number; message?: string };
+      if (mongoError.code === 11000 || mongoError.message?.includes('E11000')) {
+        await this.careerInsightModel.findOneAndUpdate(
+          { careerTitle: career.title },
+          { $set: insightData }
+        ).exec();
+      } else {
+        throw error;
+      }
+    }
   }
 
   async deleteUser(id: string) {
@@ -150,7 +317,6 @@ export class AdminService {
     return this.userModel.deleteMany({ _id: { $in: ids } });
   }
 
-
   async getDashboardStats() {
     const [totalUsers, totalTests, totalCareers, totalSessions] = await Promise.all([
       this.userModel.countDocuments(),
@@ -158,22 +324,18 @@ export class AdminService {
       this.careerModel.countDocuments(),
       this.bookingSessionModel.countDocuments(),
     ]);
-
-    // Fetch recent activities
     const recentUsers = await this.userModel
       .find()
       .sort({ created_at: -1 })
       .limit(5)
       .select('name created_at')
       .exec();
-
     const recentTests = await this.careerFitResultModel
       .find()
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('userId', 'name')
       .exec();
-
     const recentActivities = [
       ...recentUsers.map(u => ({
         title: 'Người dùng mới đăng ký',
@@ -188,12 +350,9 @@ export class AdminService {
         type: 'test',
       })),
     ].sort((a, b) => new Date(b.time as string | number | Date).getTime() - new Date(a.time as string | number | Date).getTime()).slice(0, 5);
-
-    // Popular careers stats (Industries percentage)
     const allResults = await this.careerFitResultModel.find().select('careerTitle').exec();
     const industryCounts: Record<string, number> = {};
     let totalRecommendations = 0;
-
     for (const res of allResults) {
       if (res.careerTitle) {
         totalRecommendations++;
@@ -201,8 +360,6 @@ export class AdminService {
         industryCounts[title] = (industryCounts[title] || 0) + 1;
       }
     }
-
-
     const popularCareers = Object.entries(industryCounts)
       .map(([name, count]) => ({
         name,
@@ -212,7 +369,6 @@ export class AdminService {
       }))
       .sort((a, b) => parseInt(b.views) - parseInt(a.views))
       .slice(0, 5);
-
     return {
       stats: [
         { title: 'Tổng người dùng', value: totalUsers.toLocaleString(), delta: '+0%', iconType: 'users' },
@@ -225,15 +381,12 @@ export class AdminService {
     };
   }
 
-
   async getAllUsers(page: number = 1, limit: number = 10, loginType?: string) {
     const skip = (page - 1) * limit;
     const query: FilterQuery<User> = {};
-
     if (loginType && loginType !== 'Tất cả') {
       query.login_type = loginType === 'Google' ? 'google' : 'password';
     }
-
     const [users, total] = await Promise.all([
       this.userModel
         .find(query)
@@ -243,20 +396,15 @@ export class AdminService {
         .exec(),
       this.userModel.countDocuments(query),
     ]);
-
-
-    // Fetch test counts for these users
     const userIds = users.map(u => u._id);
     const testCounts = (await this.careerFitResultModel.aggregate([
       { $match: { userId: { $in: userIds } } },
       { $group: { _id: '$userId', count: { $sum: 1 } } },
     ]));
-
     const testCountMap = (testCounts as { _id: Types.ObjectId; count: number }[]).reduce((acc: Record<string, number>, curr) => {
       acc[curr._id.toString()] = curr.count;
       return acc;
     }, {} as Record<string, number>);
-
     return {
       users: users.map(u => ({
         id: u._id,
@@ -264,8 +412,7 @@ export class AdminService {
         email: u.email,
         role: u.role,
         login_type: u.login_type === LoginType.GOOGLE ? 'Google' : 'Password',
-
-        plan: 'Free' as const, // Default for now
+        plan: 'Free' as const,
         status: u.verify === UserVerifyStatus.Banned ? 'Bị khóa' : 'Hoạt động',
         joined: u.created_at,
         tests: (testCountMap)[(u._id).toString()] || 0,
@@ -274,9 +421,8 @@ export class AdminService {
     };
   }
 
-
   async updateUserStatus(id: string, status: string) {
-    const verify = status === 'Hoạt động' ? 1 : 2; // Verified vs Banned
+    const verify = status === 'Hoạt động' ? 1 : 2;
     return this.userModel.findByIdAndUpdate(id, { verify }, { new: true });
   }
 

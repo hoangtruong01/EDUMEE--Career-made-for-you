@@ -6,10 +6,12 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { MailModule } from '../../common/mail/mail.module';
 import { UserProfile, UserProfileSchema } from './schemas/user-profile.schema';
 import { User, UserSchema } from './schemas/user.schema';
+import { CommunityPost, CommunityPostSchema } from '../community/schemas/community-post.schema';
 import { UserProfileController } from './user-profile.controller';
 import { UserProfileService } from './user-profile.service';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { UsersService } from './users.service';
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: UserProfile.name, schema: UserProfileSchema },
+      { name: CommunityPost.name, schema: CommunityPostSchema },
     ]),
 
     // JwtModule để UsersService dùng được this.jwtService.signAsync
@@ -25,6 +28,7 @@ import { UsersService } from './users.service';
     // 3. ConfigModule để dùng được this.configService lấy biến môi trường từ file .env
     ConfigModule,
     MailModule,
+    MediaModule,
   ],
   controllers: [UsersController, UserProfileController],
   providers: [UsersService, UserProfileService],

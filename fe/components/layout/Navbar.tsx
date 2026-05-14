@@ -22,6 +22,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { userService, type UserMe } from '@/lib/user.service';
 
 const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Compass },
@@ -49,6 +51,16 @@ const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoClicks, setLogoClicks] = useState(0);
   const { hasAssessmentResult } = useAssessment();
+  const { accessToken } = useAuth();
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
+
+  useEffect(() => {
+    if (accessToken) {
+      userService.getMe(accessToken).then((data) => {
+        setUserMe(data);
+      }).catch(console.error);
+    }
+  }, [accessToken]);
 
   useEffect(() => {
     if (logoClicks > 0) {
@@ -128,8 +140,13 @@ const Navbar = () => {
             {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
           <Link href="/profile">
-            <Button variant="ghost" size="icon" aria-label="Hồ sơ cá nhân">
-              <User className="h-5 w-5" />
+            <Button variant="ghost" size="icon" aria-label="Hồ sơ cá nhân" className="rounded-full overflow-hidden">
+              {userMe?.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={userMe.avatar} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                <User className="h-5 w-5" />
+              )}
             </Button>
           </Link>
         </div>

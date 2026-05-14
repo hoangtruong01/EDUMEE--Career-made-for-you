@@ -353,35 +353,6 @@ export default function CareerAnalysisDetail() {
               </div>
             </motion.div>
 
-            {/* Bottom CTA */}
-            <motion.div variants={fadeUp} className="rounded-2xl bg-gradient-to-r from-violet-600/20 via-purple-500/15 to-pink-500/10 border border-violet-500/20 p-8 text-center">
-              <h3 className="text-foreground text-xl font-bold mb-2">
-                🚀 Sẵn sàng bắt đầu hành trình?
-              </h3>
-              <p className="text-muted-foreground mb-6 text-sm max-w-md mx-auto">
-                AI sẽ tạo lộ trình học tập cá nhân hóa theo đúng hồ sơ và mục tiêu của bạn — bao gồm giai đoạn, milestone và task chi tiết.
-              </p>
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={handleStartRoadmap}
-                disabled={isGenerating}
-                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-8 py-3.5 font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 disabled:opacity-60 text-sm"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    AI đang thiết lập lộ trình của bạn...
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="h-4 w-4" />
-                    Bắt đầu lộ trình học tập
-                    <ChevronRight className="h-4 w-4" />
-                  </>
-                )}
-              </motion.button>
-            </motion.div>
           </motion.div>
         ) : (
           /* Fallback: no data */

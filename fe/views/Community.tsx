@@ -42,28 +42,6 @@ const CATEGORY_STYLES: Record<string, string> = {
   'Tuyển dụng': 'bg-coral-light text-coral',
 };
 
-// Initial mock tags, will be replaced by real data
-const initialTrending = [
-  '#kysuphanmem',
-  '#datascience',
-  '#uxdesign',
-  '#careerchange',
-  '#internship2026',
-  '#remotework',
-];
-
-const topContributors = [
-  {
-    name: 'Hoàng Minh Tuấn',
-    role: 'Product Manager',
-    posts: 45,
-    initials: 'MT',
-    bg: 'bg-emerald-500',
-  },
-  { name: 'Phạm Quỳnh Anh', role: 'UX Lead', posts: 39, initials: 'QA', bg: 'bg-pink-500' },
-  { name: 'Nguyễn Minh Khôi', role: 'Senior Dev', posts: 32, initials: 'NK', bg: 'bg-violet-500' },
-];
-
 const avatarColors = [
   'bg-violet-500',
   'bg-cyan-500',
@@ -178,11 +156,17 @@ const PostCard = ({
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
         <div className="flex items-center gap-3">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
-          >
-            {initials}
-          </div>
+          {post.authorAvatar ? (
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-sm">
+              <img src={post.authorAvatar} alt={authorName} className="h-full w-full object-cover" />
+            </div>
+          ) : (
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
+            >
+              {initials}
+            </div>
+          )}
           <div>
             <p className="text-sm font-bold tracking-tight">{authorName}</p>
             <p className="text-muted-foreground text-[11px] font-medium tracking-wider uppercase">
@@ -363,6 +347,7 @@ const Community = () => {
   const [tagInput, setTagInput] = useState('');
   const [menuPostId, setMenuPostId] = useState<string | null>(null);
   const [trendingTags, setTrendingTags] = useState<{ tag: string; count: number }[]>([]);
+  const [topContributors, setTopContributors] = useState<{ authorName: string; authorTitle?: string; authorAvatar?: string; totalLikes: number; postCount: number }[]>([]);
 
   const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(
     null,
@@ -425,6 +410,16 @@ const Community = () => {
       }
     };
     void fetchTrending();
+
+    const fetchTopContributors = async () => {
+      try {
+        const data = await communityService.getTopContributors(accessToken);
+        setTopContributors(data);
+      } catch (err) {
+        console.error('Failed to fetch top contributors', err);
+      }
+    };
+    void fetchTopContributors();
 
     return () => clearTimeout(timer);
   }, [accessToken, loadPosts]);
@@ -499,6 +494,7 @@ const Community = () => {
         hashtags,
         authorName: displayName,
         authorTitle: isAnonymous ? undefined : profile?.educationLevel || undefined,
+        authorAvatar: userMe?.avatar,
       });
       resetForm();
       setIsFormOpen(false);
@@ -924,28 +920,30 @@ const Community = () => {
                 <h3 className="text-lg font-bold">Xu hướng 🔥</h3>
               </div>
               <ul className="space-y-4">
-                {(trendingTags.length > 0
-                  ? trendingTags
-                  : initialTrending.map((t) => ({ tag: t, count: 0 }))
-                ).map((item, i) => {
-                  const tag = typeof item === 'string' ? item : item.tag;
-                  return (
-                    <li key={tag} className="group flex items-center gap-4">
-                      <span className="bg-muted text-muted-foreground group-hover:bg-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:text-white">
-                        {i + 1}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setSearch(tag);
-                          setActiveCategory('Tất cả');
-                        }}
-                        className="text-foreground hover:text-primary text-sm font-bold transition-colors"
-                      >
-                        {tag}
-                      </button>
-                    </li>
-                  );
-                })}
+                {trendingTags.length > 0 ? (
+                  trendingTags.map((item, i) => {
+                    const tag = item.tag;
+                    return (
+                      <li key={tag} className="group flex items-center gap-4">
+                        <span className="bg-muted text-muted-foreground group-hover:bg-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black transition-colors group-hover:text-white">
+                          {i + 1}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setSearch(tag);
+                            setActiveCategory('Tất cả');
+                          }}
+                          className="text-foreground hover:text-primary text-sm font-bold transition-colors"
+                        >
+                          {tag}
+                        </button>
+                        <span className="text-muted-foreground ml-auto text-[10px] font-bold">{item.count} bài</span>
+                      </li>
+                    );
+                  })
+                ) : (
+                  <p className="text-muted-foreground text-center text-xs py-4">Chưa có xu hướng mới</p>
+                )}
               </ul>
             </div>
 
@@ -984,25 +982,39 @@ const Community = () => {
                 <Sparkles className="text-primary h-4 w-4" />
               </div>
               <div className="space-y-6">
-                {topContributors.map((c) => (
-                  <div key={c.name} className="flex items-center gap-4">
-                    <div
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${c.bg}`}
-                    >
-                      {c.initials}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold tracking-tight">{c.name}</p>
-                      <p className="text-muted-foreground truncate text-[10px] font-bold tracking-widest uppercase">
-                        {c.role}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-primary text-xs font-black">{c.posts}</p>
-                      <p className="text-muted-foreground text-[9px] font-bold uppercase">Bài</p>
-                    </div>
-                  </div>
-                ))}
+                {topContributors.length > 0 ? (
+                  topContributors.map((c) => {
+                    const initials = getInitials(c.authorName);
+                    const bg = getAvatarColor(c.authorName);
+                    return (
+                      <div key={c.authorName} className="flex items-center gap-4">
+                        {c.authorAvatar ? (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-md">
+                            <img src={c.authorAvatar} alt={c.authorName} className="h-full w-full object-cover" />
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${bg}`}
+                          >
+                            {initials}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold tracking-tight">{c.authorName}</p>
+                          <p className="text-muted-foreground truncate text-[10px] font-bold tracking-widest uppercase">
+                            {c.authorTitle || 'Thành viên'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-primary text-xs font-black">{c.postCount}</p>
+                          <p className="text-muted-foreground text-[9px] font-bold uppercase">Bài</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-muted-foreground text-center text-xs py-4">Chưa có cây bút tiêu biểu</p>
+                )}
               </div>
             </div>
           </aside>

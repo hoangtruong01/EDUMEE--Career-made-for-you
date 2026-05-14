@@ -15,8 +15,10 @@ export interface CareerDetailedAnalysis {
 export interface CareerInsight {
   _id: string;
   careerTitle: string;
+  category?: string;
   analysis: CareerDetailedAnalysis;
   lastAIUpdate: string;
+  updatedAt?: string;
 }
 
 export interface RoadmapPhase {

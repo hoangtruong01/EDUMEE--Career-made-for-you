@@ -1,17 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { CareerFitResult, CareerFitResultDocument } from '../schemas/career-fit-result.schema';
-import { CreateCareerFitResultDto, UpdateCareerFitResultDto } from '../dto';
+import {
+  AIAnalysisResult,
+  AssessmentAnswerData,
+} from '../../../common/interfaces/ai-analysis.interface';
 import { AIService } from '../../../common/services/ai.service';
-import { AssessmentAnswerData, AIAnalysisResult } from '../../../common/interfaces/ai-analysis.interface';
-import { AssessmentAnswerService } from './assessment-answer.service';
-import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
-import { UsersService } from '../../users/users.service';
-import { Career, CareerDocument } from '../../careers/schemas/career.schema';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { CareerInsight, CareerInsightDocument } from '../../careers/schemas/career-insight.schema';
-
+import { Career, CareerDocument } from '../../careers/schemas/career.schema';
+import { UsersService } from '../../users/users.service';
+import { CreateCareerFitResultDto, UpdateCareerFitResultDto } from '../dto';
+import { CareerFitResult, CareerFitResultDocument } from '../schemas/career-fit-result.schema';
+import { AssessmentAnswerService } from './assessment-answer.service';
 
 interface QuestionData {
   _id?: Types.ObjectId | string;
@@ -39,8 +41,7 @@ export class CareerFitResultService {
     private readonly assessmentAnswerService: AssessmentAnswerService,
     private readonly aiQuotaService: AiQuotaService,
     private readonly usersService: UsersService,
-  ) { }
-
+  ) {}
 
   async create(createDto: CreateCareerFitResultDto): Promise<CareerFitResult> {
     const result = new this.careerFitResultModel({
@@ -145,41 +146,54 @@ export class CareerFitResultService {
 
     interface CareerInsightItem {
       careerTitle: string;
+      category?: string;
       updatedAt?: Date;
       lastAIUpdate?: Date | string | number;
       analysis?: any;
       _id?: any;
     }
 
-    const result: CareerInsightItem[] = [...insights] as unknown as CareerInsightItem[];
-    
+    const curatedMap = new Map(curated.map((career) => [career.title.toLowerCase(), career]));
+
+    const result: CareerInsightItem[] = (insights as unknown as CareerInsightDocument[]).map(
+      (doc) => {
+        const base = doc.toObject() as CareerInsightItem;
+        const match = base.careerTitle ? curatedMap.get(base.careerTitle.toLowerCase()) : undefined;
+        return {
+          ...base,
+          category: match?.category || 'other',
+        };
+      },
+    );
+
     // Add curated careers that aren't in insights yet
     for (const c of curated) {
-      const exists = result.some(i => i.careerTitle.toLowerCase() === c.title.toLowerCase());
+      const exists = result.some((i) => i.careerTitle.toLowerCase() === c.title.toLowerCase());
       if (!exists) {
         result.push({
           _id: c._id,
           careerTitle: c.title,
+          category: c.category,
           analysis: {
             overview: c.description,
             pros: [],
             cons: [],
             trends: [],
-            salaryRange: c.careerLevels?.[0]?.salary?.[0] 
-              ? `${c.careerLevels[0].salary[0].min}-${c.careerLevels[0].salary[0].max}` 
+            salaryRange: c.careerLevels?.[0]?.salary?.[0]
+              ? `${c.careerLevels[0].salary[0].min}-${c.careerLevels[0].salary[0].max}`
               : 'N/A',
             demandLevel: c.marketInfo?.demandLevel || 'medium',
-            keySkills: c.skillRequirements?.technical?.map(s => s.skillName) || [],
-            topCompanies: []
+            keySkills: c.skillRequirements?.technical?.map((s) => s.skillName) || [],
+            topCompanies: [],
           },
-          lastAIUpdate: (c as unknown as { updatedAt?: Date }).updatedAt || new Date()
+          lastAIUpdate: (c as unknown as { updatedAt?: Date }).updatedAt || new Date(),
         });
       }
     }
 
     return result.sort((a, b) => {
-      const dateA = new Date((a.updatedAt || a.lastAIUpdate || 0)).getTime();
-      const dateB = new Date((b.updatedAt || b.lastAIUpdate || 0)).getTime();
+      const dateA = new Date(a.updatedAt || a.lastAIUpdate || 0).getTime();
+      const dateB = new Date(b.updatedAt || b.lastAIUpdate || 0).getTime();
       return dateB - dateA;
     }) as unknown as Record<string, any>[];
   }
@@ -228,12 +242,15 @@ export class CareerFitResultService {
     }
   }
 
-  async generateComparisonReport(userId: string, careerIds: string[]): Promise<Record<string, any>> {
+  async generateComparisonReport(
+    userId: string,
+    careerIds: string[],
+  ): Promise<Record<string, any>> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const objectIdCareerIds = careerIds.map(id => {
+    const objectIdCareerIds = careerIds.map((id) => {
       if (!Types.ObjectId.isValid(id)) {
         throw new BadRequestException(`Invalid career ID: ${id}`);
       }
@@ -243,7 +260,7 @@ export class CareerFitResultService {
     const results = await this.careerFitResultModel
       .find({
         userId: new Types.ObjectId(userId),
-        careerId: { $in: objectIdCareerIds }
+        careerId: { $in: objectIdCareerIds },
       })
       .populate('careerId', 'title category industry')
       .sort({ overallFitScore: -1 })
@@ -251,7 +268,7 @@ export class CareerFitResultService {
 
     return {
       userId,
-      careerComparisons: results.map(result => ({
+      careerComparisons: results.map((result) => ({
         career: result.careerId,
         fitScore: result.overallFitScore,
         strengths: result.strengths,
@@ -278,31 +295,39 @@ export class CareerFitResultService {
 
       // Delete old results for this user before creating new ones
       const deleteResult = await this.careerFitResultModel.deleteMany({
-        userId: new Types.ObjectId(userId)
+        userId: new Types.ObjectId(userId),
       });
-      this.logger.log(`Deleted ${deleteResult.deletedCount} old career fit results for user ${userId}`);
+      this.logger.log(
+        `Deleted ${deleteResult.deletedCount} old career fit results for user ${userId}`,
+      );
 
       // Get AI analysis
       const analysis: AIAnalysisResult = await this.aiService.analyzePersonalityAndCareers(
         assessmentAnswers,
-        availableCareers
+        availableCareers,
       );
-      await this.aiQuotaService.consumeQuota(userId, AiFeature.CAREER_RECOMMENDATION, { requestCount: 1, tokensUsed: 0 });
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CAREER_RECOMMENDATION, {
+        requestCount: 1,
+        tokensUsed: 0,
+      });
 
       const { limits } = await this.aiQuotaService.getPlanLimits(userId);
-      const maxPerRun = typeof limits.maxCareerRecommendationsPerRun === 'number'
-        ? limits.maxCareerRecommendationsPerRun
-        : undefined;
-      const recommendations = maxPerRun ? analysis.careerRecommendations.slice(0, maxPerRun) : analysis.careerRecommendations;
+      const maxPerRun =
+        typeof limits.maxCareerRecommendationsPerRun === 'number'
+          ? limits.maxCareerRecommendationsPerRun
+          : undefined;
+      const recommendations = maxPerRun
+        ? analysis.careerRecommendations.slice(0, maxPerRun)
+        : analysis.careerRecommendations;
 
       // Seed Discovery Repository with new careers found by AI
-      try {
-        for (const rec of recommendations) {
-          const title = rec.careerTitle;
+      for (const rec of recommendations) {
+        const title = rec.careerTitle;
+        try {
           await this.careerInsightModel.findOneAndUpdate(
             { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(title)}$`, 'i') } },
-            { 
-              $setOnInsert: { 
+            {
+              $setOnInsert: {
                 careerTitle: title,
                 lastAIUpdate: new Date(0), // Set to epoch so it's considered "stale" and will be fully analyzed on first click
                 analysis: {
@@ -313,15 +338,18 @@ export class CareerFitResultService {
                   salaryRange: 'Đang cập nhật...',
                   demandLevel: 'Đang cập nhật...',
                   keySkills: [],
-                  topCompanies: []
-                }
-              } 
+                  topCompanies: [],
+                },
+              },
             },
-            { upsert: true }
+            { upsert: true },
           );
+        } catch (e: unknown) {
+          const mongoError = e as { code?: number; message?: string };
+          if (mongoError.code !== 11000 && !mongoError.message?.includes('E11000')) {
+            this.logger.error(`Failed to seed discovery repository for ${title}:`, e);
+          }
         }
-      } catch (e) {
-        this.logger.error('Failed to seed discovery repository:', e);
       }
 
       // Convert AI recommendations to CareerFitResult documents
@@ -364,7 +392,9 @@ export class CareerFitResultService {
 
           // Personality profile
           personalityProfile: analysis.personalityAnalysis.personalityProfile,
-          assessmentSessionId: assessmentSessionId ? new Types.ObjectId(assessmentSessionId) : undefined,
+          assessmentSessionId: assessmentSessionId
+            ? new Types.ObjectId(assessmentSessionId)
+            : undefined,
         };
 
         // Save to database
@@ -373,15 +403,14 @@ export class CareerFitResultService {
         careerFitResults.push(savedResult);
       }
 
-      this.logger.log(`Generated ${careerFitResults.length} career recommendations for user ${userId}`);
+      this.logger.log(
+        `Generated ${careerFitResults.length} career recommendations for user ${userId}`,
+      );
 
       // Update user's onboarding status
       await this.usersService.updateMe(userId, { onboarding_completed: true });
 
-
       return careerFitResults;
-
-
     } catch (error) {
       this.logger.error('Failed to generate AI analysis:', error);
       throw new BadRequestException('Failed to generate career analysis');
@@ -393,7 +422,7 @@ export class CareerFitResultService {
    */
   async generateAnalysisFromUserAnswers(
     userId: string,
-    availableCareers: Career[] = []
+    availableCareers: Career[] = [],
   ): Promise<CareerFitResult[]> {
     try {
       this.logger.log(`Fetching assessment answers for user ${userId}`);
@@ -402,7 +431,9 @@ export class CareerFitResultService {
       const userAnswers = await this.assessmentAnswerService.findByUser(userId);
 
       if (!userAnswers || userAnswers.length === 0) {
-        throw new BadRequestException('No assessment answers found for this user. Please complete the assessment first.');
+        throw new BadRequestException(
+          'No assessment answers found for this user. Please complete the assessment first.',
+        );
       }
 
       this.logger.log(`Found ${userAnswers.length} answers for user ${userId}`);
@@ -425,10 +456,13 @@ export class CareerFitResultService {
       }
 
       // Transform answers to AssessmentAnswerData format
-      const assessmentAnswers: AssessmentAnswerData[] = userAnswers.map(answer => {
+      const assessmentAnswers: AssessmentAnswerData[] = userAnswers.map((answer) => {
         const question = answer.questionId as QuestionData; // Populated question data
         return {
-          questionId: typeof question === 'object' ? (question._id?.toString() ?? '') : (answer.questionId?.toString() ?? ''),
+          questionId:
+            typeof question === 'object'
+              ? (question._id?.toString() ?? '')
+              : (answer.questionId?.toString() ?? ''),
           answer: answer.answer,
           questionText: question?.questionText ?? '',
           dimension: question?.dimension ?? '',
@@ -437,8 +471,12 @@ export class CareerFitResultService {
       });
 
       // Use the existing generateAIAnalysis method and pass inferred session id if any
-      return this.generateAIAnalysis(userId, assessmentAnswers, availableCareers, inferredSessionId);
-
+      return this.generateAIAnalysis(
+        userId,
+        assessmentAnswers,
+        availableCareers,
+        inferredSessionId,
+      );
     } catch (error) {
       this.logger.error('Failed to generate analysis from user answers:', error);
       if (error instanceof BadRequestException) {
@@ -451,11 +489,18 @@ export class CareerFitResultService {
   /**
    * Get enhanced career insights using AI
    */
-  async getCareerInsight(userId: string, careerTitle: string, personalityTraits: string[]): Promise<string> {
+  async getCareerInsight(
+    userId: string,
+    careerTitle: string,
+    personalityTraits: string[],
+  ): Promise<string> {
     try {
       await this.aiQuotaService.checkQuota(userId, AiFeature.CHATBOT);
       const res = await this.aiService.generateCareerInsight(careerTitle, personalityTraits);
-      await this.aiQuotaService.consumeQuota(userId, AiFeature.CHATBOT, { requestCount: 1, tokensUsed: 0 });
+      await this.aiQuotaService.consumeQuota(userId, AiFeature.CHATBOT, {
+        requestCount: 1,
+        tokensUsed: 0,
+      });
       return res;
     } catch (error) {
       this.logger.error('Failed to get career insight:', error);
@@ -466,11 +511,12 @@ export class CareerFitResultService {
   async getDetailedAnalysis(userId: string, careerTitle: string): Promise<Record<string, unknown>> {
     // 1. Check shared cache first
     const cachedInsight = await this.careerInsightModel.findOne({
-      careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') }
+      careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') },
     });
 
     const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-    const isExpired = cachedInsight && (Date.now() - cachedInsight.lastAIUpdate.getTime() > ONE_MONTH_MS);
+    const isExpired =
+      cachedInsight && Date.now() - cachedInsight.lastAIUpdate.getTime() > ONE_MONTH_MS;
 
     if (cachedInsight && !isExpired) {
       this.logger.log(`Using cached analysis for career: ${careerTitle}`);
@@ -478,7 +524,9 @@ export class CareerFitResultService {
     }
 
     // 2. Not found or expired: Call AI
-    this.logger.log(`Generating NEW analysis for career: ${careerTitle} (Personalized for user: ${userId})`);
+    this.logger.log(
+      `Generating NEW analysis for career: ${careerTitle} (Personalized for user: ${userId})`,
+    );
 
     // Get personality traits to make the AI prompt more relevant (as per current design)
     const results = await this.findByUser(userId, 5);
@@ -490,21 +538,36 @@ export class CareerFitResultService {
       }
     }
 
-    const analysis = await this.aiService.generateDetailedCareerAnalysis(
-      careerTitle,
-      [...new Set(personalityTraits)]
-    );
+    const analysis = await this.aiService.generateDetailedCareerAnalysis(careerTitle, [
+      ...new Set(personalityTraits),
+    ]);
 
     // 3. Save to shared cache for other users
-    await this.careerInsightModel.findOneAndUpdate(
-      { careerTitle: { $regex: new RegExp(`^${careerTitle}$`, 'i') } },
-      {
-        careerTitle, // Normalize title
-        analysis,
-        lastAIUpdate: new Date(),
-      },
-      { upsert: true, new: true }
-    );
+    try {
+      await this.careerInsightModel.findOneAndUpdate(
+        { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') } },
+        {
+          careerTitle, // Normalize title
+          analysis,
+          lastAIUpdate: new Date(),
+        },
+        { upsert: true, new: true },
+      );
+    } catch (error: unknown) {
+      const mongoError = error as { code?: number; message?: string };
+      if (mongoError.code === 11000 || mongoError.message?.includes('E11000')) {
+        await this.careerInsightModel.findOneAndUpdate(
+          { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') } },
+          {
+            analysis,
+            lastAIUpdate: new Date(),
+          },
+          { new: true },
+        );
+      } else {
+        throw error;
+      }
+    }
 
     return { ...analysis, careerTitle };
   }
@@ -522,34 +585,36 @@ export class CareerFitResultService {
           averageFitScore: { $avg: '$overallFitScore' },
           highFitCount: {
             $sum: {
-              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0]
-            }
+              $cond: [{ $gte: ['$overallFitScore', 80] }, 1, 0],
+            },
           },
           mediumFitCount: {
             $sum: {
               $cond: [
                 { $and: [{ $gte: ['$overallFitScore', 60] }, { $lt: ['$overallFitScore', 80] }] },
                 1,
-                0
-              ]
-            }
+                0,
+              ],
+            },
           },
           lowFitCount: {
             $sum: {
-              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0]
-            }
+              $cond: [{ $lt: ['$overallFitScore', 60] }, 1, 0],
+            },
           },
-        }
-      }
+        },
+      },
     ]);
 
-    return stats[0] || {
-      totalResults: 0,
-      averageFitScore: 0,
-      highFitCount: 0,
-      mediumFitCount: 0,
-      lowFitCount: 0,
-    };
+    return (
+      stats[0] || {
+        totalResults: 0,
+        averageFitScore: 0,
+        highFitCount: 0,
+        mediumFitCount: 0,
+        lowFitCount: 0,
+      }
+    );
   }
 
   private generateRecommendations(results: CareerFitResult[]): Record<string, unknown> {
@@ -561,7 +626,7 @@ export class CareerFitResultService {
       topRecommendation: topResult.careerId,
       reasonsForRecommendation: topResult.strengths?.slice(0, 3) || [],
       developmentSuggestions: topResult.developmentAreas?.slice(0, 3) || [],
-      alternativeOptions: results.slice(1, 4).map(r => r.careerId),
+      alternativeOptions: results.slice(1, 4).map((r) => r.careerId),
     };
   }
 
