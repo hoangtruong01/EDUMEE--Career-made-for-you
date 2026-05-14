@@ -16,12 +16,19 @@ import type { AuthUserLike } from '../../../common/auth';
 import { getAuthUserId, isAdmin } from '../../../common/auth';
 import { AiPlanPricingSummary, AiPlanService } from '../../ai/services/ai-plan.service';
 import { AiSubscriptionService } from '../../ai/services/ai-subscription.service';
+import { BillingCycle } from '../../users/schemas/user-subscriptions';
 import {
   CreateAiPlanPurchaseDto,
+  CreateMentorBookingPurchaseDto,
   PaymentWebhookTestDto,
   RefundPaymentDto,
   TestPaymentEventType,
 } from '../dto';
+import {
+  BookingSession,
+  BookingSessionDocument,
+  BookingStatus,
+} from '../../mentoring/schemas/booking-session.schema';
 import {
   DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS,
   SepayPaymentMethod,
@@ -29,6 +36,7 @@ import {
 import {
   Payment,
   PaymentDocument,
+  PaymentPurpose,
   PaymentProvider,
   PaymentStatus,
 } from '../schema/payment.schema';
@@ -70,6 +78,8 @@ export class PaymentService {
     private readonly paymentModel: Model<PaymentDocument>,
     @InjectModel(PaymentTransaction.name)
     private readonly paymentTransactionModel: Model<PaymentTransactionDocument>,
+    @InjectModel(BookingSession.name)
+    private readonly bookingSessionModel: Model<BookingSessionDocument>,
     private readonly aiPlanService: AiPlanService,
     private readonly aiSubscriptionService: AiSubscriptionService,
     private readonly configService: ConfigService,
@@ -91,7 +101,22 @@ export class PaymentService {
       throw new ConflictException('User already has an active AI subscription');
     }
 
-    const reusablePendingPayment = await this.findReusablePendingAiPlanPayment(userId);
+    const plan = await this.aiPlanService.findOne(dto.planId);
+    if (plan.price <= 0) {
+      throw new BadRequestException('Selected plan is not purchasable until a positive price is configured');
+    }
+    if (plan.isActive === false) {
+      throw new BadRequestException('Selected plan is not available for purchase');
+    }
+    if (!this.aiPlanService.isBillingCycleAllowed(plan, dto.billingCycle)) {
+      throw new BadRequestException('Selected billing cycle is not available for this plan');
+    }
+
+    const reusablePendingPayment = await this.findReusablePendingAiPlanPayment(
+      userId,
+      dto.planId,
+      dto.billingCycle,
+    );
     if (reusablePendingPayment) {
       const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
       return {
@@ -99,11 +124,6 @@ export class PaymentService {
         checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
         redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
       };
-    }
-
-    const plan = await this.aiPlanService.findOne(dto.planId);
-    if (plan.price <= 0) {
-      throw new BadRequestException('Selected plan is not purchasable until a positive price is configured');
     }
 
     const checkoutReference = this.generateCheckoutReference();
@@ -114,6 +134,7 @@ export class PaymentService {
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       planId: new Types.ObjectId(dto.planId),
+      purpose: PaymentPurpose.AI_PLAN,
       billingCycle: dto.billingCycle,
       amount: pricing.total,
       currency: plan.currency || 'USD',
@@ -129,6 +150,77 @@ export class PaymentService {
     });
 
     const savedPayment = await payment.save();
+    return {
+      paymentId: savedPayment._id.toString(),
+      checkoutReference,
+      redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken),
+    };
+  }
+
+  async purchaseMentorBooking(
+    userId: string,
+    dto: CreateMentorBookingPurchaseDto,
+  ): Promise<{
+    paymentId: string;
+    checkoutReference: string;
+    redirectUrl: string;
+  }> {
+    if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
+    if (!Types.ObjectId.isValid(dto.bookingSessionId)) {
+      throw new BadRequestException('Invalid bookingSessionId');
+    }
+
+    const booking = await this.bookingSessionModel.findById(dto.bookingSessionId).exec();
+    if (!booking) throw new NotFoundException('Booking session not found');
+    if (booking.menteeId.toString() !== userId) throw new ForbiddenException('Forbidden');
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
+      throw new ConflictException('Booking is not awaiting payment');
+    }
+
+    const price = Number(booking.paymentInfo?.sessionPrice ?? 0);
+    const currency = booking.paymentInfo?.currency || 'VND';
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new BadRequestException('Booking does not require a positive payment amount');
+    }
+
+    const reusablePendingPayment = await this.findReusablePendingMentorBookingPayment(
+      userId,
+      dto.bookingSessionId,
+    );
+    if (reusablePendingPayment) {
+      const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
+      return {
+        paymentId: reusablePendingPayment._id.toString(),
+        checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
+        redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
+      };
+    }
+
+    const checkoutReference = this.generateCheckoutReference();
+    const checkoutToken = this.generateCheckoutToken();
+    const payment = new this.paymentModel({
+      userId: new Types.ObjectId(userId),
+      bookingSessionId: booking._id,
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      amount: price,
+      currency,
+      provider: PaymentProvider.SEPAY,
+      paymentMethod: dto.paymentMethod || SepayPaymentMethod.BANK_TRANSFER,
+      checkoutReference,
+      checkoutTokenHash: this.hashCheckoutToken(checkoutToken),
+      checkoutTokenExpiresAt: new Date(Date.now() + DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS),
+      successUrl: dto.returnUrls?.success,
+      errorUrl: dto.returnUrls?.error,
+      cancelUrl: dto.returnUrls?.cancel,
+      status: PaymentStatus.PENDING,
+    });
+
+    const savedPayment = await payment.save();
+    await this.bookingSessionModel.findByIdAndUpdate(booking._id, {
+      'paymentInfo.paymentStatus': 'pending',
+      'paymentInfo.transactionId': savedPayment._id.toString(),
+    }).exec();
+
     return {
       paymentId: savedPayment._id.toString(),
       checkoutReference,
@@ -278,7 +370,13 @@ export class PaymentService {
       payload: { refundAmount, reason: payment.refundReason },
     });
 
-    const revokedSubscription = await this.aiSubscriptionService.revokeSubscriptionForPayment(payment._id.toString());
+    let revokedSubscription = false;
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      await this.updateMentorBookingPaymentState(payment, 'refunded');
+    } else {
+      const revoked = await this.aiSubscriptionService.revokeSubscriptionForPayment(payment._id.toString());
+      revokedSubscription = Boolean(revoked);
+    }
     return { payment, revokedSubscription: Boolean(revokedSubscription) };
   }
 
@@ -567,23 +665,27 @@ export class PaymentService {
       throw new ConflictException(`Payment is not in a mutable pending state for ${params.sourceLabel}`);
     }
 
-    if (!payment.planId) {
-      throw new ConflictException('Payment is missing a linked AI plan');
-    }
-
     payment.status = PaymentStatus.PAID;
     payment.paidAt = new Date();
     payment.failureReason = undefined;
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
 
-    await this.aiSubscriptionService.activateSubscriptionFromPayment({
-      userId: payment.userId.toString(),
-      planId: payment.planId.toString(),
-      paymentId: payment._id.toString(),
-      billingCycle: payment.billingCycle,
-      startDate: payment.paidAt,
-    });
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      await this.activateMentorBookingFromPayment(payment);
+    } else {
+      if (!payment.planId || !payment.billingCycle) {
+        throw new ConflictException('Payment is missing a linked AI plan');
+      }
+
+      await this.aiSubscriptionService.activateSubscriptionFromPayment({
+        userId: payment.userId.toString(),
+        planId: payment.planId.toString(),
+        paymentId: payment._id.toString(),
+        billingCycle: payment.billingCycle,
+        startDate: payment.paidAt,
+      });
+    }
 
     await this.paymentTransactionModel.create({
       paymentId: payment._id,
@@ -631,6 +733,10 @@ export class PaymentService {
     payment.failureReason = params.failureReason || 'Payment failed';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
+
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      await this.updateMentorBookingPaymentState(payment, 'failed');
+    }
 
     await this.paymentTransactionModel.create({
       paymentId: payment._id,
@@ -686,7 +792,11 @@ export class PaymentService {
         payload: params.payload,
       });
 
-      await this.aiSubscriptionService.revokeSubscriptionForPayment(payment._id.toString());
+      if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+        await this.updateMentorBookingPaymentState(payment, 'refunded');
+      } else {
+        await this.aiSubscriptionService.revokeSubscriptionForPayment(payment._id.toString());
+      }
       return {
         payment,
         idempotent: false,
@@ -701,6 +811,10 @@ export class PaymentService {
     payment.failureReason = params.failureReason || 'Payment cancelled';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
+
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      await this.updateMentorBookingPaymentState(payment, 'cancelled');
+    }
 
     await this.paymentTransactionModel.create({
       paymentId: payment._id,
@@ -814,16 +928,76 @@ export class PaymentService {
 
   private async findReusablePendingAiPlanPayment(
     userId: string,
+    planId: string,
+    billingCycle: BillingCycle,
   ): Promise<PaymentDocument | null> {
     return this.paymentModel
       .findOne({
         userId: new Types.ObjectId(userId),
+        planId: new Types.ObjectId(planId),
+        billingCycle,
         provider: PaymentProvider.SEPAY,
         status: PaymentStatus.PENDING,
-        planId: { $exists: true, $ne: null },
       })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  private async findReusablePendingMentorBookingPayment(
+    userId: string,
+    bookingSessionId: string,
+  ): Promise<PaymentDocument | null> {
+    return this.paymentModel
+      .findOne({
+        userId: new Types.ObjectId(userId),
+        bookingSessionId: new Types.ObjectId(bookingSessionId),
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        provider: PaymentProvider.SEPAY,
+        status: PaymentStatus.PENDING,
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  private async activateMentorBookingFromPayment(payment: PaymentDocument): Promise<void> {
+    if (!payment.bookingSessionId) {
+      throw new ConflictException('Payment is missing a linked mentor booking');
+    }
+
+    const booking = await this.bookingSessionModel.findById(payment.bookingSessionId).exec();
+    if (!booking) throw new NotFoundException('Booking session not found');
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
+      return;
+    }
+
+    await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, {
+      status: BookingStatus.PENDING,
+      'paymentInfo.paymentStatus': 'paid',
+      'paymentInfo.paymentDate': payment.paidAt,
+      'paymentInfo.transactionId': payment._id.toString(),
+    }).exec();
+  }
+
+  private async updateMentorBookingPaymentState(
+    payment: PaymentDocument,
+    paymentStatus: 'failed' | 'cancelled' | 'refunded',
+  ): Promise<void> {
+    if (!payment.bookingSessionId) return;
+
+    const update: Record<string, unknown> = {
+      'paymentInfo.paymentStatus': paymentStatus,
+      'paymentInfo.transactionId': payment._id.toString(),
+    };
+    if (paymentStatus === 'refunded') {
+      update['paymentInfo.refundInfo'] = {
+        refundAmount: payment.amount,
+        refundDate: payment.refundedAt || new Date(),
+        refundReason: payment.refundReason || 'Admin refund',
+        refundStatus: 'completed',
+      };
+    }
+
+    await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, update).exec();
   }
 
   private async refreshCheckoutTokenForPayment(

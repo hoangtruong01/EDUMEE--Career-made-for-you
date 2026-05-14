@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AiModule } from '../ai/ai.module';
+import { PaymentModule } from '../payment/payment.module';
+import { User, UserSchema } from '../users/schemas/user.schema';
 import { TutorProfile, TutorProfileSchema } from './schemas/tutor-profile.schema';
 import { TutoringSession, TutoringSessionSchema } from './schemas/tutoring-session.schema';
 import { BookingSession, BookingSessionSchema } from './schemas/booking-session.schema';
@@ -19,11 +22,14 @@ import {
 
 @Module({
   imports: [
+    AiModule,
+    PaymentModule,
     MongooseModule.forFeature([
       { name: TutorProfile.name, schema: TutorProfileSchema },
       { name: TutoringSession.name, schema: TutoringSessionSchema },
       { name: BookingSession.name, schema: BookingSessionSchema },
       { name: SessionReview.name, schema: SessionReviewSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [

@@ -6,6 +6,7 @@ export type UserSubscriptionDocument = UserSubscription & Document;
 export enum BillingCycle {
     MONTHLY = 'monthly',
     THREE_MONTHS = 'three_months',
+    SIX_MONTHS = 'six_months',
     FIVE_MONTHS = 'five_months',
     NINE_MONTHS = 'nine_months',
     YEARLY = 'yearly',

@@ -127,7 +127,7 @@ export default function AdminUsersPage() {
       const cycle = ['Sinh viên', 'Mentor', 'Admin'];
       const roleMap = { 'Sinh viên': 'user', 'Mentor': 'mentor', 'Admin': 'admin' };
       const idx = cycle.indexOf(user.role);
-      const nextRoleLabel = cycle[(idx + 1) % cycle.length];
+      const nextRoleLabel = cycle[(idx + 1) % cycle.length] === 'Mentor' ? 'Admin' : cycle[(idx + 1) % cycle.length];
       const nextRoleValue = roleMap[nextRoleLabel as keyof typeof roleMap];
 
       await adminService.updateUserRole(token, id, nextRoleValue);

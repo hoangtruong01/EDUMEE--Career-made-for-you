@@ -11,6 +11,7 @@ import {
 } from './schema/payment-transaction.schema';
 import { Payment, PaymentSchema } from './schema/payment.schema';
 import { PaymentService } from './services';
+import { BookingSession, BookingSessionSchema } from '../mentoring/schemas/booking-session.schema';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PaymentService } from './services';
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
+      { name: BookingSession.name, schema: BookingSessionSchema },
     ]),
   ],
   controllers: [PaymentController, PaymentPublicController],

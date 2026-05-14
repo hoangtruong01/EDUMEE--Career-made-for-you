@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AiPlan, AiPlanSchema } from './schema/ai-plan.schema';
 import { AiUsageLog, AiUsageLogSchema } from './schema/ai-usage-logs.schema';
 import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-subscriptions';
+import { AssessmentSession, AssessmentSessionSchema } from '../assessment/schemas/assessment-sesions.schema';
 import { AiQuotaService } from './services/ai-quota.service';
 import { AiPlanService } from './services/ai-plan.service';
 import { AiSubscriptionService } from './services/ai-subscription.service';
@@ -15,6 +16,7 @@ import { AiSubscriptionController } from './controllers/ai-subscription.controll
       { name: AiPlan.name, schema: AiPlanSchema },
       { name: AiUsageLog.name, schema: AiUsageLogSchema },
       { name: UserSubscription.name, schema: UserSubscriptionSchema },
+      { name: AssessmentSession.name, schema: AssessmentSessionSchema },
     ]),
   ],
   controllers: [AiPlanController, AiSubscriptionController],

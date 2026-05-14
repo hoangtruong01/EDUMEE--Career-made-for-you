@@ -139,6 +139,9 @@ export class AiSubscriptionService {
       case BillingCycle.THREE_MONTHS:
         endDate.setMonth(endDate.getMonth() + 3);
         return endDate;
+      case BillingCycle.SIX_MONTHS:
+        endDate.setMonth(endDate.getMonth() + 6);
+        return endDate;
       case BillingCycle.FIVE_MONTHS:
         endDate.setMonth(endDate.getMonth() + 5);
         return endDate;

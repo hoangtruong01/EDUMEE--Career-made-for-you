@@ -13,7 +13,7 @@ export class UpsertAiSubscriptionDto {
 
   @ApiPropertyOptional({
     enum: BillingCycle,
-    description: 'Supported values: monthly, three_months, five_months, nine_months, yearly',
+    description: 'Supported values are plan-dependent. Current pricing flow uses monthly, three_months, and six_months.',
   })
   @IsOptional()
   @IsEnum(BillingCycle)

@@ -62,10 +62,10 @@ export class User {
   @Prop({ default: '' })
   forgot_password_token!: string;
 
-  @Prop({ enum: UserVerifyStatus, default: UserVerifyStatus.Unverified })
+  @Prop({ type: Number, enum: UserVerifyStatus, default: UserVerifyStatus.Unverified })
   verify!: UserVerifyStatus;
 
-  @Prop({ enum: UserRole, default: UserRole.USER })
+  @Prop({ type: String, enum: UserRole, default: UserRole.USER })
   role!: UserRole;
 
   @Prop({ default: '' })
@@ -77,7 +77,7 @@ export class User {
   @Prop({ default: '' })
   avatar!: string;
 
-  @Prop({ enum: LoginType, default: LoginType.PASSWORD })
+  @Prop({ type: String, enum: LoginType, default: LoginType.PASSWORD })
   login_type!: LoginType;
 
   @Prop({ default: false })

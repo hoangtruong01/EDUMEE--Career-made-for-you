@@ -22,7 +22,7 @@ export class AssessmentSession {
     @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
     userId!: Types.ObjectId;
 
-    @Prop({ enum: SessionStatus, default: SessionStatus.IN_PROGRESS })
+    @Prop({ type: String, enum: SessionStatus, default: SessionStatus.IN_PROGRESS })
     status!: SessionStatus;
 
     @Prop({ default: 0 })

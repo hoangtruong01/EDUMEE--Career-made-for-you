@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, FilterQuery } from 'mongoose';
+import { Model, FilterQuery, Types } from 'mongoose';
 import { TutorProfile, TutorProfileDocument, TutorStatus } from '../schemas/tutor-profile.schema';
 import { CreateTutorProfileDto, UpdateTutorProfileDto } from '../dto';
+import { User, UserDocument } from '../../users/schemas/user.schema';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 type CreateTutorProfileInput = CreateTutorProfileDto & { userId?: string };
 
@@ -11,10 +13,15 @@ export class TutorProfileService {
   constructor(
     @InjectModel(TutorProfile.name)
     private tutorProfileModel: Model<TutorProfileDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
   ) { }
 
   async create(createDto: CreateTutorProfileInput): Promise<TutorProfileDocument> {
-    const profile = new this.tutorProfileModel(createDto);
+    const profile = new this.tutorProfileModel({
+      ...createDto,
+      status: TutorStatus.PENDING_APPROVAL,
+    });
     return profile.save();
   }
 
@@ -61,8 +68,30 @@ export class TutorProfileService {
     return profile;
   }
 
-  async updateStatus(id: string, status: string): Promise<TutorProfileDocument> {
-    return this.update(id, { status: status as TutorStatus });
+  async updateStatus(id: string, status: string, actorId?: string, reason?: string): Promise<TutorProfileDocument> {
+    if (!Object.values(TutorStatus).includes(status as TutorStatus)) {
+      throw new BadRequestException('Invalid tutor status');
+    }
+
+    const update: Record<string, unknown> = {
+      status: status as TutorStatus,
+    };
+
+    if (status === TutorStatus.ACTIVE) {
+      update['adminInfo.approvedBy'] = actorId && Types.ObjectId.isValid(actorId) ? new Types.ObjectId(actorId) : undefined;
+      update['adminInfo.approvalDate'] = new Date();
+      update['adminInfo.rejectionReason'] = undefined;
+    }
+    if (status === TutorStatus.REJECTED) {
+      update['adminInfo.rejectionReason'] = reason || 'Rejected by admin';
+    }
+
+    const profile = await this.update(id, update as Partial<UpdateTutorProfileDto>);
+    if (status === TutorStatus.ACTIVE) {
+      await this.userModel.findByIdAndUpdate(profile.userId, { role: UserRole.MENTOR }).exec();
+    }
+
+    return profile;
   }
 
   async remove(id: string): Promise<TutorProfileDocument> {
@@ -78,7 +107,11 @@ export class TutorProfileService {
   ): Promise<TutorProfileDocument[]> {
     const query: FilterQuery<TutorProfileDocument> = { status: 'active' };
     if (criteria.expertise) {
-      query['expertiseAreas.primaryCareerPath'] = criteria.expertise;
+      query.$or = [
+        { 'mentoringExpertise.careerExpertise.careerTitle': { $regex: criteria.expertise, $options: 'i' } },
+        { 'mentoringExpertise.skillExpertise.skillName': { $regex: criteria.expertise, $options: 'i' } },
+        { 'mentoringExpertise.specializations': { $regex: criteria.expertise, $options: 'i' } },
+      ];
     }
     if (criteria.industries) {
       query['professionalBackground.industries'] = { $in: criteria.industries };

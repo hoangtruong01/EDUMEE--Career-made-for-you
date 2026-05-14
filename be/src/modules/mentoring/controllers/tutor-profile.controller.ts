@@ -33,7 +33,10 @@ export class TutorProfileController {
   @ApiOperation({ summary: 'Create a new tutor profile' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Profile created successfully' })
   create(@Body() createDto: CreateTutorProfileDto, @CurrentUser() user: AuthUserLike) {
-    return this.tutorProfileService.create({ ...createDto, userId: getAuthUserId(user) });
+    const sanitized: Partial<CreateTutorProfileDto> = { ...createDto };
+    delete sanitized.status;
+    const input = sanitized as CreateTutorProfileDto;
+    return this.tutorProfileService.create({ ...input, userId: getAuthUserId(user) });
   }
 
   @Get()
@@ -44,9 +47,11 @@ export class TutorProfileController {
     @Query('limit') limit?: number,
     @Query('status') status?: string,
     @Query('tutorLevel') tutorLevel?: string,
+    @CurrentUser() user?: AuthUserLike,
   ) {
     const filters = {
-      ...(status ? { status } : {}),
+      ...(isAdmin(user) && status ? { status } : {}),
+      ...(!isAdmin(user) ? { status: 'active' } : {}),
       ...(tutorLevel ? { tutorLevel } : {}),
     } as Parameters<TutorProfileService['findAll']>[2];
 
@@ -96,6 +101,8 @@ export class TutorProfileController {
       // Non-admin cannot update status directly.
       const rest: Partial<UpdateTutorProfileDto> = { ...updateDto };
       delete (rest as Record<string, unknown>).status;
+      delete (rest as Record<string, unknown>).adminInfo;
+      delete (rest as Record<string, unknown>).performanceMetrics;
       return this.tutorProfileService.update(id, rest);
     }
 
@@ -107,8 +114,12 @@ export class TutorProfileController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Status updated successfully' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  updateStatus(@Param('id') id: string, @Body() body: { status: string }) {
-    return this.tutorProfileService.updateStatus(id, body.status);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string; reason?: string },
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.tutorProfileService.updateStatus(id, body.status, getAuthUserId(user), body.reason);
   }
 
   @Delete(':id')

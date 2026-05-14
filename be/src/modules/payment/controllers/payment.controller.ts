@@ -7,7 +7,12 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import type { AuthUserLike } from '../../../common/auth';
 import { getAuthUserId } from '../../../common/auth';
 import { UserRole } from '../../../common/enums/user-role.enum';
-import { CreateAiPlanPurchaseDto, PaymentWebhookTestDto, RefundPaymentDto } from '../dto';
+import {
+  CreateAiPlanPurchaseDto,
+  CreateMentorBookingPurchaseDto,
+  PaymentWebhookTestDto,
+  RefundPaymentDto,
+} from '../dto';
 import { PaymentService } from '../services';
 
 @ApiTags('payments')
@@ -21,6 +26,12 @@ export class PaymentController {
   @ApiOperation({ summary: 'Create a pending AI plan SePay purchase and return a browser redirect URL' })
   purchaseAiPlan(@Body() dto: CreateAiPlanPurchaseDto, @CurrentUser() user: AuthUserLike) {
     return this.paymentService.purchaseAiPlan(getAuthUserId(user), dto);
+  }
+
+  @Post('mentor-booking/purchase')
+  @ApiOperation({ summary: 'Create a pending mentor booking SePay purchase and return a browser redirect URL' })
+  purchaseMentorBooking(@Body() dto: CreateMentorBookingPurchaseDto, @CurrentUser() user: AuthUserLike) {
+    return this.paymentService.purchaseMentorBooking(getAuthUserId(user), dto);
   }
 
   @Post(':id/sepay/sync')

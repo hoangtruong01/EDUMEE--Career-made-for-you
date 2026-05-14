@@ -1,16 +1,9 @@
 import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
 
 // Dùng đường dẫn tuyệt đối có chữ @ để không bao giờ bị lỗi path
 import './globals.css';
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: '--font-plus-jakarta',
-  subsets: ['latin', 'vietnamese'],
-  weight: ['200', '300', '400', '500', '600', '700', '800'],
-});
 
 export const metadata: Metadata = {
   title: 'EDUMEE - Career made for you',
@@ -24,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body suppressHydrationWarning className={`${plusJakartaSans.variable} antialiased`}>
+      <body suppressHydrationWarning className="antialiased">
         <AppProviders>
           {children}
           <Toaster />

@@ -9,6 +9,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 import { AiFeature, AiUsageLog, AiUsageLogDocument } from '../schema/ai-usage-logs.schema';
+import { AssessmentSession, AssessmentSessionDocument } from '../../assessment/schemas/assessment-sesions.schema';
+import { SessionStatus } from '../../assessment/enums/assessment.enum';
 import {
   SubscriptionStatus,
   UserSubscription,
@@ -21,7 +23,8 @@ type LimitKey =
   | 'simulationsPerMonth'
   | 'careerRecommendationRunsPerMonth'
   | 'careerComparisonsPerMonth'
-  | 'personalizedRoadmapsPerMonth';
+  | 'personalizedRoadmapsPerMonth'
+  | 'mentorBookingsPerMonth';
 
 const FEATURE_TO_LIMIT_KEY: Partial<Record<AiFeature, LimitKey>> = {
   [AiFeature.ASSESSMENT]: 'assessmentsPerMonth',
@@ -30,6 +33,7 @@ const FEATURE_TO_LIMIT_KEY: Partial<Record<AiFeature, LimitKey>> = {
   [AiFeature.CAREER_RECOMMENDATION]: 'careerRecommendationRunsPerMonth',
   [AiFeature.CAREER_COMPARISON]: 'careerComparisonsPerMonth',
   [AiFeature.PERSONALIZED_ROADMAP]: 'personalizedRoadmapsPerMonth',
+  [AiFeature.MENTOR_BOOKING]: 'mentorBookingsPerMonth',
 };
 
 const FEATURE_TO_FLAG_KEY: Partial<Record<AiFeature, keyof AiPlan['features']>> = {
@@ -51,6 +55,8 @@ export class AiQuotaService {
     private readonly aiPlanModel: Model<AiPlanDocument>,
     @InjectModel(AiUsageLog.name)
     private readonly aiUsageLogModel: Model<AiUsageLogDocument>,
+    @InjectModel(AssessmentSession.name)
+    private readonly assessmentSessionModel: Model<AssessmentSessionDocument>,
   ) {}
 
   async getActivePlanForUser(userId: string): Promise<AiPlanDocument | null> {
@@ -82,6 +88,10 @@ export class AiQuotaService {
 
     const limitKey = FEATURE_TO_LIMIT_KEY[feature];
     if (!limitKey) return; // No limit configured for this feature.
+
+    if (feature === AiFeature.ASSESSMENT) {
+      await this.assertAssessmentLifetimeLimit(plan, userId);
+    }
 
     const limit = plan.limits?.[limitKey];
     if (typeof limit !== 'number') return; // Unlimited when not specified.
@@ -143,12 +153,6 @@ export class AiQuotaService {
     if (!flagKey) return;
 
     const enabled = plan.features?.[flagKey];
-    
-    // Bypass for Career Comparison during development/testing
-    if (feature === AiFeature.CAREER_COMPARISON) {
-      return;
-    }
-
     if (enabled !== true) {
       throw new ForbiddenException('AI feature is not available in your plan');
     }
@@ -171,6 +175,23 @@ export class AiQuotaService {
     if (!plan) throw new ForbiddenException('AI plan is required');
     this.assertFeatureEnabled(plan, feature);
 
+    if (feature === AiFeature.ASSESSMENT) {
+      const lifetimeLimit = plan.limits?.assessmentsLifetimeLimit;
+      if (typeof lifetimeLimit === 'number') {
+        const used = await this.getCompletedAssessmentCount(userId);
+        const remaining = Math.max(0, lifetimeLimit - used);
+        return {
+          feature,
+          month: now.getMonth() + 1,
+          year: now.getFullYear(),
+          limit: lifetimeLimit,
+          used,
+          remaining,
+          unlimited: false,
+        };
+      }
+    }
+
     const { month, year } = this.getMonthYear(now);
     const limitKey = FEATURE_TO_LIMIT_KEY[feature];
     const limit = limitKey ? plan.limits?.[limitKey] : undefined;
@@ -189,6 +210,25 @@ export class AiQuotaService {
     const plan = await this.getPlanForUserOrFree(userId);
     if (!plan) throw new ForbiddenException('AI plan is required');
     return { plan, limits: plan.limits || {} };
+  }
+
+  private async assertAssessmentLifetimeLimit(plan: AiPlan, userId: string): Promise<void> {
+    const lifetimeLimit = plan.limits?.assessmentsLifetimeLimit;
+    if (typeof lifetimeLimit !== 'number') return;
+
+    const completedAssessments = await this.getCompletedAssessmentCount(userId);
+    if (completedAssessments >= lifetimeLimit) {
+      throw new HttpException('AI quota exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private async getCompletedAssessmentCount(userId: string): Promise<number> {
+    return this.assessmentSessionModel
+      .countDocuments({
+        userId: new Types.ObjectId(userId),
+        status: SessionStatus.COMPLETED,
+      })
+      .exec();
   }
 
   private async expireStaleSubscriptions(userId: string): Promise<void> {

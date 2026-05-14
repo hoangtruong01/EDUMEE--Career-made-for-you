@@ -27,21 +27,37 @@ export class AiPlan {
     @Prop({ type: String, required: true, trim: true })
     name!: string;
 
+    @Prop({ type: String, trim: true, default: '' })
+    description!: string;
+
     @Prop({ type: Number, default: 0 })
     price!: number;
 
     @Prop({ type: String, default: 'USD' })
     currency!: string;
 
+    @Prop({ type: Boolean, default: true })
+    isActive!: boolean;
+
     @Prop({ type: Boolean, default: false })
     isDefaultPlan!: boolean;
+
+    @Prop({ type: Number, min: 0, default: 0 })
+    displayOrder!: number;
 
     @Prop({ type: Object, default: {} })
     billingCycleDiscounts!: Partial<Record<BillingCycle, number>>;
 
+    @Prop({ type: [String], enum: BillingCycle, default: [BillingCycle.MONTHLY] })
+    allowedBillingCycles!: BillingCycle[];
+
+    @Prop({ type: Number, min: 1 })
+    seatLimit?: number;
+
     @Prop({ type: Object, default: {} })
     limits!: {
         assessmentsPerMonth?: number;
+        assessmentsLifetimeLimit?: number;
         chatMessagesPerMonth?: number;
         simulationsPerMonth?: number;
         careerRecommendationRunsPerMonth?: number;
@@ -49,6 +65,7 @@ export class AiPlan {
         careerComparisonsPerMonth?: number;
         maxCareersPerComparison?: number;
         personalizedRoadmapsPerMonth?: number;
+        mentorBookingsPerMonth?: number;
     };
 
     @Prop({ type: Object, default: {} })
@@ -59,6 +76,9 @@ export class AiPlan {
         careerComparison?: boolean;
         aiChatbot?: boolean;
         personalizedRoadmap?: boolean;
+        teamDashboard?: boolean;
+        reportExport?: boolean;
+        multiUserManagement?: boolean;
     };
 }
 

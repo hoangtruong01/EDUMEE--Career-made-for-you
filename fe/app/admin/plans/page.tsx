@@ -1,876 +1,1120 @@
 'use client';
 
-import { AdminPanel, AdminSectionHeader } from '@/components/admin/AdminPrimitives';
-import { cn } from '@/lib/utils';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Building2,
-  Check,
-  Crown,
-  Edit3,
+  ArrowDownUp,
+  CreditCard,
   Eye,
-  Star,
-  ToggleLeft,
-  ToggleRight,
-  UserRound,
-  Users,
-  X,
-  Zap,
+  Layers3,
+  Loader2,
+  PencilLine,
+  Plus,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { toast } from 'sonner';
+import { AdminPanel, AdminSectionHeader, AdminStatCard } from '@/components/admin/AdminPrimitives';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/context/auth-context';
+import { ApiError } from '@/lib/api-client';
+import {
+  adminAiPlanService,
+  type AdminAiPlan,
+  type AdminAiPlanPayload,
+  type AiPlanFeatures,
+  type AiPlanLimits,
+  type BillingCycle,
+} from '@/lib/admin-ai-plan.service';
+import { cn } from '@/lib/utils';
 
-/* -- types & data --------------------------------------------------------- */
+type SheetMode = 'create' | 'detail' | 'edit';
+type LimitKey = keyof AiPlanLimits;
+type FeatureKey = keyof AiPlanFeatures;
 
-type PlanAudience = 'individual_monthly' | 'individual_multi' | 'business';
-
-type FeatureValue = boolean | string;
-
-interface PlanFeature {
-  label: string;
-  values: Record<string, FeatureValue>;
-}
-
-interface PlanData {
-  tier: string;
+type PlanFormState = {
   name: string;
-  price: number;
-  period: string;
-  badge: string;
-  color: string;
-  bgGradient: string;
-  icon: typeof Star;
-  iconBg: string;
-  subscribers: number;
-  subscribersLabel: string;
-  revenue: string;
-  popular: boolean;
-  active: boolean;
-  locked: boolean;
   description: string;
-  tableBadgeClass: string;
-  tablePriceClass: string;
-}
-
-interface PlanStat {
-  label: string;
-  value: string;
-  color: string;
-}
-
-interface PlanConfig {
-  subtitle: string;
-  plans: PlanData[];
-  features: PlanFeature[];
-  stats: PlanStat[];
-}
-
-const planConfigs: Record<PlanAudience, PlanConfig> = {
-  individual_monthly: {
-    subtitle: 'Quản lý các gói Free, Plus và Pro: định giá, tính năng và trạng thái.',
-    plans: [
-      {
-        tier: 'Free',
-        name: 'Free',
-        price: 0,
-        period: 'tháng',
-        badge: 'Cơ bản',
-        color: 'text-slate-600',
-        bgGradient: 'from-slate-50 to-slate-100',
-        icon: Star,
-        iconBg: 'bg-slate-500',
-        subscribers: 8742,
-        subscribersLabel: 'người dùng',
-        revenue: '0',
-        popular: false,
-        active: true,
-        locked: true,
-        description: 'Dùng thử miễn phí, truy cập các tính năng cơ bản của Career AI.',
-        tableBadgeClass: 'bg-slate-100 text-slate-700',
-        tablePriceClass: 'text-slate-600',
-      },
-      {
-        tier: 'Plus',
-        name: 'Plus',
-        price: 99000,
-        period: 'tháng',
-        badge: 'Phổ biến',
-        color: 'text-amber-600',
-        bgGradient: 'from-amber-50 to-orange-50',
-        icon: Zap,
-        iconBg: 'bg-amber-500',
-        subscribers: 2847,
-        subscribersLabel: 'người dùng',
-        revenue: '281,853,000',
-        popular: true,
-        active: true,
-        locked: false,
-        description: 'Mở khóa bài test nâng cao, lộ trình học tập và kết nối mentor.',
-        tableBadgeClass: 'bg-amber-100 text-amber-700',
-        tablePriceClass: 'text-amber-700',
-      },
-      {
-        tier: 'Pro',
-        name: 'Pro',
-        price: 249000,
-        period: 'tháng',
-        badge: 'Cao cấp',
-        color: 'text-violet-600',
-        bgGradient: 'from-violet-50 to-indigo-50',
-        icon: Crown,
-        iconBg: 'bg-violet-500',
-        subscribers: 864,
-        subscribersLabel: 'người dùng',
-        revenue: '215,136,000',
-        popular: false,
-        active: true,
-        locked: false,
-        description: 'Toàn bộ tính năng. AI cá nhân hóa, mentor 1-1, chứng chỉ.',
-        tableBadgeClass: 'bg-violet-100 text-violet-700',
-        tablePriceClass: 'text-violet-700',
-      },
-    ],
-    features: [
-      {
-        label: 'Bài test tính cách (Holland, MBTI)',
-        values: { Free: '1 lần', Plus: '3 lần', Pro: '5 lần' },
-      },
-      { label: 'Gợi ý nghề nghiệp AI', values: { Free: '1 nghề', Plus: '3 nghề', Pro: '5 nghề' } },
-      { label: 'Lộ trình học tập cá nhân', values: { Free: false, Plus: true, Pro: true } },
-      { label: 'So sánh nghề nghiệp', values: { Free: false, Plus: '3 nghề', Pro: '10 nghề' } },
-      { label: 'Mô phỏng nghề nghiệp', values: { Free: false, Plus: false, Pro: true } },
-      {
-        label: 'Cộng đồng thảo luận',
-        values: { Free: 'Đọc', Plus: 'Đọc và viết', Pro: 'Đọc và viết' },
-      },
-      { label: 'Báo cáo phân tích chi tiết', values: { Free: false, Plus: true, Pro: true } },
-      { label: 'Xuất PDF hồ sơ nghề nghiệp', values: { Free: false, Plus: false, Pro: true } },
-      { label: 'Chứng chỉ hoàn thành lộ trình', values: { Free: false, Plus: false, Pro: true } },
-    ],
-    stats: [
-      {
-        label: 'Tổng doanh thu (tháng)',
-        value: '496,989,000 VND',
-        color: 'bg-emerald-100 text-emerald-600',
-      },
-      { label: 'Tổng người đăng ký', value: '12,453', color: 'bg-indigo-100 text-indigo-600' },
-      {
-        label: 'Tỷ lệ chuyển đổi Free -> Plus',
-        value: '18.4%',
-        color: 'bg-amber-100 text-amber-600',
-      },
-      {
-        label: 'Tỷ lệ chuyển đổi Plus -> Pro',
-        value: '9.2%',
-        color: 'bg-violet-100 text-violet-600',
-      },
-    ],
-  },
-  individual_multi: {
-    subtitle:
-      'Quản lý gói cá nhân dài hạn 3 và 12 tháng với mức giảm giá để tăng tỷ lệ giữ chân người dùng.',
-    plans: [
-      {
-        tier: '3M',
-        name: 'Plus 3 tháng',
-        price: 261000,
-        period: '3 tháng',
-        badge: 'Tiết kiệm 12%',
-        color: 'text-amber-600',
-        bgGradient: 'from-amber-50 to-orange-50',
-        icon: Zap,
-        iconBg: 'bg-amber-500',
-        subscribers: 1342,
-        subscribersLabel: 'người dùng',
-        revenue: '350,262,000',
-        popular: true,
-        active: true,
-        locked: false,
-        description:
-          'Gói cá nhân 3 tháng, phù hợp người dùng muốn cam kết trung hạn với chi phí hợp lý.',
-        tableBadgeClass: 'bg-amber-100 text-amber-700',
-        tablePriceClass: 'text-amber-700',
-      },
-      {
-        tier: '12M',
-        name: 'Pro 12 tháng',
-        price: 2091600,
-        period: '12 tháng',
-        badge: 'Tiết kiệm 30%',
-        color: 'text-violet-600',
-        bgGradient: 'from-violet-50 to-indigo-50',
-        icon: Crown,
-        iconBg: 'bg-violet-500',
-        subscribers: 527,
-        subscribersLabel: 'người dùng',
-        revenue: '1,102,273,200',
-        popular: false,
-        active: true,
-        locked: false,
-        description: 'Gói cá nhân 12 tháng, tối ưu chi phí cho người dùng muốn đồng hành dài hạn.',
-        tableBadgeClass: 'bg-violet-100 text-violet-700',
-        tablePriceClass: 'text-violet-700',
-      },
-    ],
-    features: [
-      {
-        label: 'Bài test tính cách (Holland, MBTI)',
-        values: { 'Plus 3 tháng': '10 lần', 'Pro 12 tháng': 'Không giới hạn' },
-      },
-      {
-        label: 'Gợi ý nghề nghiệp AI',
-        values: { 'Plus 3 tháng': '8 nghề', 'Pro 12 tháng': 'Không giới hạn' },
-      },
-      {
-        label: 'Lộ trình học tập cá nhân',
-        values: { 'Plus 3 tháng': true, 'Pro 12 tháng': true },
-      },
-      {
-        label: 'So sánh nghề nghiệp',
-        values: { 'Plus 3 tháng': '10 nghề', 'Pro 12 tháng': 'Không giới hạn' },
-      },
-      {
-        label: 'Mô phỏng nghề nghiệp',
-        values: { 'Plus 3 tháng': true, 'Pro 12 tháng': true },
-      },
-      {
-        label: 'Cộng đồng thảo luận',
-        values: { 'Plus 3 tháng': 'Đọc và viết', 'Pro 12 tháng': 'Đọc và viết' },
-      },
-      {
-        label: 'Báo cáo phân tích chi tiết',
-        values: { 'Plus 3 tháng': true, 'Pro 12 tháng': true },
-      },
-      {
-        label: 'Xuất PDF hồ sơ nghề nghiệp',
-        values: { 'Plus 3 tháng': true, 'Pro 12 tháng': true },
-      },
-      {
-        label: 'Mentor 1-1',
-        values: { 'Plus 3 tháng': '2 buổi/tháng', 'Pro 12 tháng': '4 buổi/tháng' },
-      },
-    ],
-    stats: [
-      {
-        label: 'Doanh thu gói dài hạn (tháng)',
-        value: '1,452,535,200 VND',
-        color: 'bg-emerald-100 text-emerald-600',
-      },
-      {
-        label: 'Tổng thuê bao dài hạn',
-        value: '1,869',
-        color: 'bg-indigo-100 text-indigo-600',
-      },
-      {
-        label: 'Tỷ lệ chọn gói 3 tháng',
-        value: '71.8%',
-        color: 'bg-amber-100 text-amber-600',
-      },
-      {
-        label: 'Tỷ lệ gia hạn sau 12 tháng',
-        value: '64.5%',
-        color: 'bg-violet-100 text-violet-600',
-      },
-    ],
-  },
-  business: {
-    subtitle:
-      'Quản lý gói doanh nghiệp duy nhất: dành cho công ty triển khai toàn diện AI tư vấn nghề nghiệp nội bộ.',
-    plans: [
-      {
-        tier: 'Enterprise',
-        name: 'Gói Doanh nghiệp',
-        price: 8990000,
-        period: 'tháng',
-        badge: 'Toàn diện',
-        color: 'text-rose-700',
-        bgGradient: 'from-rose-50 to-orange-50',
-        icon: Building2,
-        iconBg: 'bg-rose-500',
-        subscribers: 219,
-        subscribersLabel: 'doanh nghiệp',
-        revenue: '1,968,810,000',
-        popular: true,
-        active: true,
-        locked: false,
-        description:
-          'Áp dụng cho tổ chức cần quản trị kỹ năng nhân sự, lộ trình nghề nghiệp và báo cáo tập trung.',
-        tableBadgeClass: 'bg-rose-100 text-rose-700',
-        tablePriceClass: 'text-rose-700',
-      },
-    ],
-    features: [
-      {
-        label: 'Số lượng tài khoản nhân sự',
-        values: { 'Gói Doanh nghiệp': 'Không giới hạn' },
-      },
-      {
-        label: 'Bài test năng lực & tính cách theo phòng ban',
-        values: { 'Gói Doanh nghiệp': 'Không giới hạn' },
-      },
-      {
-        label: 'Dashboard phân tích kỹ năng đội ngũ',
-        values: { 'Gói Doanh nghiệp': true },
-      },
-      {
-        label: 'AI gợi ý lộ trình upskill theo vị trí',
-        values: { 'Gói Doanh nghiệp': true },
-      },
-      {
-        label: 'Theo dõi KPI học tập theo team',
-        values: { 'Gói Doanh nghiệp': true },
-      },
-      {
-        label: 'Tích hợp ATS/LMS',
-        values: { 'Gói Doanh nghiệp': 'Không giới hạn' },
-      },
-      {
-        label: 'SSO + phân quyền theo phòng ban',
-        values: { 'Gói Doanh nghiệp': true },
-      },
-      {
-        label: 'API dữ liệu báo cáo',
-        values: { 'Gói Doanh nghiệp': 'Nâng cao' },
-      },
-      {
-        label: 'Chuyên gia triển khai riêng',
-        values: { 'Gói Doanh nghiệp': true },
-      },
-    ],
-    stats: [
-      {
-        label: 'Doanh thu gói doanh nghiệp (tháng)',
-        value: '1,968,810,000 VND',
-        color: 'bg-emerald-100 text-emerald-700',
-      },
-      { label: 'Số doanh nghiệp đang dùng', value: '219', color: 'bg-sky-100 text-sky-700' },
-      {
-        label: 'Tỷ lệ gia hạn hằng năm',
-        value: '91.3%',
-        color: 'bg-teal-100 text-teal-700',
-      },
-      {
-        label: 'NPS doanh nghiệp',
-        value: '61',
-        color: 'bg-rose-100 text-rose-700',
-      },
-    ],
-  },
+  price: string;
+  currency: string;
+  isActive: boolean;
+  isDefaultPlan: boolean;
+  displayOrder: string;
+  allowedBillingCycles: BillingCycle[];
+  billingCycleDiscounts: Record<BillingCycle, string>;
+  seatLimit: string;
+  limits: Record<LimitKey, string>;
+  features: Record<FeatureKey, boolean>;
 };
 
-/* -- component ------------------------------------------------------------- */
+const BILLING_CYCLE_OPTIONS: Array<{ value: BillingCycle; label: string; months: number }> = [
+  { value: 'monthly', label: 'Hàng tháng', months: 1 },
+  { value: 'three_months', label: '3 tháng', months: 3 },
+  { value: 'six_months', label: '6 tháng', months: 6 },
+  { value: 'five_months', label: '5 tháng', months: 5 },
+  { value: 'nine_months', label: '9 tháng', months: 9 },
+  { value: 'yearly', label: '1 năm', months: 12 },
+];
 
-export default function AdminPlansPage() {
-  const [audience, setAudience] = useState<PlanAudience>('individual_monthly');
-  const [plansByAudience, setPlansByAudience] = useState<Record<PlanAudience, PlanData[]>>({
-    individual_monthly: planConfigs.individual_monthly.plans,
-    individual_multi: planConfigs.individual_multi.plans,
-    business: planConfigs.business.plans,
-  });
-  const [message, setMessage] = useState('');
-  const [editingPlan, setEditingPlan] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [detailPlan, setDetailPlan] = useState<string | null>(null);
+const LIMIT_FIELDS: Array<{ key: LimitKey; label: string }> = [
+  { key: 'assessmentsPerMonth', label: 'Assessments / tháng' },
+  { key: 'assessmentsLifetimeLimit', label: 'Assessments trọn đời' },
+  { key: 'chatMessagesPerMonth', label: 'Tin nhắn AI / tháng' },
+  { key: 'simulationsPerMonth', label: 'Simulation / tháng' },
+  { key: 'careerRecommendationRunsPerMonth', label: 'Career recommendation / tháng' },
+  { key: 'maxCareerRecommendationsPerRun', label: 'Career recommendation tối đa / lần' },
+  { key: 'careerComparisonsPerMonth', label: 'Career comparison / tháng' },
+  { key: 'maxCareersPerComparison', label: 'Career tối đa / comparison' },
+  { key: 'personalizedRoadmapsPerMonth', label: 'Roadmap / tháng' },
+  { key: 'mentorBookingsPerMonth', label: 'Mentor booking / tháng' },
+];
 
-  const config = planConfigs[audience];
-  const plans = plansByAudience[audience];
-  const priceRowLabel = audience === 'individual_monthly' ? 'Giá hàng tháng' : 'Giá gói';
+const FEATURE_FIELDS: Array<{ key: FeatureKey; label: string }> = [
+  { key: 'careerRecommendation', label: 'Career Recommendation' },
+  { key: 'jobSimulation', label: 'Job Simulation' },
+  { key: 'mentorBooking', label: 'Mentor Booking' },
+  { key: 'careerComparison', label: 'Career Comparison' },
+  { key: 'aiChatbot', label: 'AI Chatbot' },
+  { key: 'personalizedRoadmap', label: 'Personalized Roadmap' },
+  { key: 'teamDashboard', label: 'Team Dashboard' },
+  { key: 'reportExport', label: 'Report Export' },
+  { key: 'multiUserManagement', label: 'Multi User Management' },
+];
 
-  function flash(msg: string) {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 3000);
+const BILLING_CYCLE_MONTHS = BILLING_CYCLE_OPTIONS.reduce<Record<BillingCycle, number>>(
+  (acc, option) => {
+    acc[option.value] = option.months;
+    return acc;
+  },
+  {
+    monthly: 1,
+    three_months: 3,
+    six_months: 6,
+    five_months: 5,
+    nine_months: 9,
+    yearly: 12,
+  },
+);
+
+function createEmptyDiscounts(): Record<BillingCycle, string> {
+  return {
+    monthly: '',
+    three_months: '',
+    six_months: '',
+    five_months: '',
+    nine_months: '',
+    yearly: '',
+  };
+}
+
+function createEmptyLimits(): Record<LimitKey, string> {
+  return {
+    assessmentsPerMonth: '',
+    assessmentsLifetimeLimit: '',
+    chatMessagesPerMonth: '',
+    simulationsPerMonth: '',
+    careerRecommendationRunsPerMonth: '',
+    maxCareerRecommendationsPerRun: '',
+    careerComparisonsPerMonth: '',
+    maxCareersPerComparison: '',
+    personalizedRoadmapsPerMonth: '',
+    mentorBookingsPerMonth: '',
+  };
+}
+
+function createEmptyFeatures(): Record<FeatureKey, boolean> {
+  return {
+    careerRecommendation: false,
+    jobSimulation: false,
+    mentorBooking: false,
+    careerComparison: false,
+    aiChatbot: false,
+    personalizedRoadmap: false,
+    teamDashboard: false,
+    reportExport: false,
+    multiUserManagement: false,
+  };
+}
+
+function createInitialFormState(): PlanFormState {
+  return {
+    name: '',
+    description: '',
+    price: '0',
+    currency: 'VND',
+    isActive: true,
+    isDefaultPlan: false,
+    displayOrder: '0',
+    allowedBillingCycles: ['monthly'],
+    billingCycleDiscounts: createEmptyDiscounts(),
+    seatLimit: '',
+    limits: createEmptyLimits(),
+    features: createEmptyFeatures(),
+  };
+}
+
+function buildFormState(plan: AdminAiPlan): PlanFormState {
+  const state = createInitialFormState();
+
+  return {
+    name: plan.name || '',
+    description: plan.description || '',
+    price: String(plan.price ?? 0),
+    currency: plan.currency || 'VND',
+    isActive: plan.isActive !== false,
+    isDefaultPlan: plan.isDefaultPlan === true,
+    displayOrder: String(plan.displayOrder ?? 0),
+    allowedBillingCycles: plan.allowedBillingCycles?.length ? plan.allowedBillingCycles : ['monthly'],
+    billingCycleDiscounts: {
+      ...state.billingCycleDiscounts,
+      ...Object.fromEntries(
+        Object.entries(plan.billingCycleDiscounts || {}).map(([key, value]) => [
+          key,
+          value === undefined ? '' : String(value),
+        ]),
+      ),
+    } as Record<BillingCycle, string>,
+    seatLimit: plan.seatLimit === undefined || plan.seatLimit === null ? '' : String(plan.seatLimit),
+    limits: {
+      ...state.limits,
+      ...Object.fromEntries(
+        Object.entries(plan.limits || {}).map(([key, value]) => [key, value === undefined ? '' : String(value)]),
+      ),
+    } as Record<LimitKey, string>,
+    features: {
+      ...state.features,
+      ...Object.fromEntries(
+        Object.entries(plan.features || {}).map(([key, value]) => [key, value === true]),
+      ),
+    } as Record<FeatureKey, boolean>,
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    return error.message;
   }
 
-  const resetDrawers = () => {
-    setEditingPlan(null);
-    setDetailPlan(null);
-    setEditPrice('');
-    setEditDesc('');
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function formatBillingCycleLabel(cycle: BillingCycle): string {
+  return BILLING_CYCLE_OPTIONS.find((option) => option.value === cycle)?.label ?? cycle;
+}
+
+function formatBillingCycles(cycles?: BillingCycle[]): string {
+  if (!cycles?.length) return '--';
+  return cycles.map((cycle) => formatBillingCycleLabel(cycle)).join(', ');
+}
+
+function formatCurrency(amount: number | undefined, currency = 'VND'): string {
+  const numericAmount = amount ?? 0;
+
+  if (currency.toUpperCase() === 'VND') {
+    return `${new Intl.NumberFormat('vi-VN').format(numericAmount)} đ`;
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(numericAmount);
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '--';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function buildPlanPayload(formState: PlanFormState): AdminAiPlanPayload {
+  const payload: AdminAiPlanPayload = {
+    name: formState.name.trim(),
+    price: Number(formState.price.trim() || '0'),
+    currency: formState.currency.trim() || 'VND',
+    isActive: formState.isDefaultPlan ? true : formState.isActive,
+    isDefaultPlan: formState.isDefaultPlan,
+    displayOrder: Number(formState.displayOrder.trim() || '0'),
+    allowedBillingCycles: formState.allowedBillingCycles,
+    features: FEATURE_FIELDS.reduce<Record<FeatureKey, boolean>>((acc, field) => {
+      acc[field.key] = formState.features[field.key];
+      return acc;
+    }, createEmptyFeatures()),
   };
 
-  const getFeatureValue = (feature: PlanFeature, plan: PlanData): FeatureValue => {
-    return feature.values[plan.name] ?? feature.values[plan.tier] ?? false;
+  const description = formState.description.trim();
+  if (description) {
+    payload.description = description;
+  }
+
+  const billingCycleDiscounts = formState.allowedBillingCycles.reduce<Partial<Record<BillingCycle, number>>>(
+    (acc, cycle) => {
+      const numericValue = parseOptionalNumber(formState.billingCycleDiscounts[cycle]);
+      if (numericValue !== undefined) {
+        acc[cycle] = numericValue;
+      }
+      return acc;
+    },
+    {},
+  );
+  if (Object.keys(billingCycleDiscounts).length > 0) {
+    payload.billingCycleDiscounts = billingCycleDiscounts;
+  }
+
+  const seatLimit = parseOptionalNumber(formState.seatLimit);
+  if (seatLimit !== undefined) {
+    payload.seatLimit = seatLimit;
+  }
+
+  const limits = LIMIT_FIELDS.reduce<Partial<Record<LimitKey, number>>>((acc, field) => {
+    const numericValue = parseOptionalNumber(formState.limits[field.key]);
+    if (numericValue !== undefined) {
+      acc[field.key] = numericValue;
+    }
+    return acc;
+  }, {});
+  if (Object.keys(limits).length > 0) {
+    payload.limits = limits;
+  }
+
+  return payload;
+}
+
+function validatePlanForm(formState: PlanFormState): string | null {
+  if (!formState.name.trim()) {
+    return 'Tên gói là bắt buộc.';
+  }
+
+  const price = parseOptionalNumber(formState.price);
+  if (price === undefined || price < 0) {
+    return 'Giá gói phải là số lớn hơn hoặc bằng 0.';
+  }
+
+  const displayOrder = parseOptionalNumber(formState.displayOrder);
+  if (displayOrder === undefined || displayOrder < 0) {
+    return 'Display order phải là số lớn hơn hoặc bằng 0.';
+  }
+
+  if (!formState.allowedBillingCycles.length) {
+    return 'Cần chọn ít nhất một billing cycle.';
+  }
+
+  const seatLimit = parseOptionalNumber(formState.seatLimit);
+  if (seatLimit !== undefined && seatLimit < 1) {
+    return 'Seat limit phải lớn hơn hoặc bằng 1.';
+  }
+
+  for (const cycle of formState.allowedBillingCycles) {
+    const discountValue = parseOptionalNumber(formState.billingCycleDiscounts[cycle]);
+    if (discountValue !== undefined && (discountValue < 0 || discountValue > 100)) {
+      return `Discount của ${formatBillingCycleLabel(cycle)} phải nằm trong khoảng 0 đến 100.`;
+    }
+  }
+
+  for (const field of LIMIT_FIELDS) {
+    const limitValue = parseOptionalNumber(formState.limits[field.key]);
+    if (limitValue !== undefined && limitValue < 0) {
+      return `${field.label} phải lớn hơn hoặc bằng 0.`;
+    }
+  }
+
+  return null;
+}
+
+export default function AdminPlansPage() {
+  const { accessToken } = useAuth();
+  const [plans, setPlans] = useState<AdminAiPlan[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<SheetMode>('detail');
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<AdminAiPlan | null>(null);
+  const [isSheetLoading, setIsSheetLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [togglingPlanId, setTogglingPlanId] = useState<string | null>(null);
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
+  const [formState, setFormState] = useState<PlanFormState>(createInitialFormState());
+
+  const loadPlans = useCallback(async () => {
+    if (!accessToken) return;
+
+    try {
+      setIsLoading(true);
+      const response = await adminAiPlanService.getAdminAiPlans(accessToken);
+      setPlans(response);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể tải danh sách gói AI.'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void loadPlans();
+  }, [loadPlans]);
+
+  const stats = useMemo(() => {
+    const activePlans = plans.filter((plan) => plan.isActive !== false).length;
+    const defaultPlan = plans.find((plan) => plan.isDefaultPlan);
+    const multiCyclePlans = plans.filter((plan) => (plan.allowedBillingCycles?.length || 0) > 1).length;
+
+    return {
+      totalPlans: plans.length,
+      activePlans,
+      defaultPlanName: defaultPlan?.name || 'Chưa đặt',
+      multiCyclePlans,
+    };
+  }, [plans]);
+
+  const pricingPreview = useMemo(() => {
+    const basePrice = Number(formState.price.trim() || '0');
+    if (!Number.isFinite(basePrice) || basePrice < 0) {
+      return [];
+    }
+
+    return formState.allowedBillingCycles.map((cycle) => {
+      const months = BILLING_CYCLE_MONTHS[cycle];
+      const subtotal = basePrice * months;
+      const discountPercentage = Number(formState.billingCycleDiscounts[cycle] || '0');
+      const safeDiscount = Number.isFinite(discountPercentage)
+        ? Math.min(Math.max(discountPercentage, 0), 100)
+        : 0;
+      const discountAmount = (subtotal * safeDiscount) / 100;
+      const total = Math.max(subtotal - discountAmount, 0);
+
+      return {
+        cycle,
+        subtotal,
+        discountPercentage: safeDiscount,
+        total,
+      };
+    });
+  }, [formState.allowedBillingCycles, formState.billingCycleDiscounts, formState.price]);
+
+  const openCreateSheet = () => {
+    setSheetMode('create');
+    setSelectedPlanId(null);
+    setSelectedPlan(null);
+    setFormState(createInitialFormState());
+    setIsSheetOpen(true);
   };
 
-  const handleToggleActive = (tier: string) => {
-    const currentPlan = plans.find((p) => p.tier === tier);
-    if (!currentPlan) return;
+  const openPlanSheet = async (mode: SheetMode, planId: string) => {
+    if (!accessToken) return;
 
-    if (currentPlan.locked) {
-      flash(`Không thể tắt gói ${currentPlan.name} vì đây là gói mặc định.`);
+    try {
+      setSheetMode(mode);
+      setSelectedPlanId(planId);
+      setIsSheetOpen(true);
+      setIsSheetLoading(true);
+      const plan = await adminAiPlanService.getAdminAiPlanById(accessToken, planId);
+      setSelectedPlan(plan);
+      setFormState(buildFormState(plan));
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể tải chi tiết gói AI.'));
+      setIsSheetOpen(false);
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const handleToggleActive = async (plan: AdminAiPlan, nextChecked: boolean) => {
+    if (!accessToken || plan.isDefaultPlan) return;
+
+    try {
+      setTogglingPlanId(plan.id);
+      const updatedPlan = await adminAiPlanService.updateAdminAiPlan(accessToken, plan.id, {
+        isActive: nextChecked,
+      });
+      setPlans((currentPlans) =>
+        currentPlans.map((currentPlan) => (currentPlan.id === plan.id ? updatedPlan : currentPlan)),
+      );
+
+      if (selectedPlan?.id === plan.id) {
+        setSelectedPlan(updatedPlan);
+        setFormState(buildFormState(updatedPlan));
+      }
+
+      toast.success(`Đã ${nextChecked ? 'bật' : 'tắt'} gói ${plan.name}.`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể cập nhật trạng thái gói.'));
+    } finally {
+      setTogglingPlanId(null);
+    }
+  };
+
+  const handleDeletePlan = async (plan: AdminAiPlan) => {
+    if (!accessToken || plan.isDefaultPlan) return;
+
+    const confirmed = window.confirm(`Bạn có chắc muốn xóa gói "${plan.name}" không?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingPlanId(plan.id);
+      await adminAiPlanService.deleteAdminAiPlan(accessToken, plan.id);
+      toast.success(`Đã xóa gói ${plan.name}.`);
+      if (selectedPlanId === plan.id) {
+        setIsSheetOpen(false);
+      }
+      await loadPlans();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể xóa gói AI.'));
+    } finally {
+      setDeletingPlanId(null);
+    }
+  };
+
+  const handleSavePlan = async () => {
+    if (!accessToken) return;
+
+    const validationError = validatePlanForm(formState);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
-    setPlansByAudience((prev) => ({
-      ...prev,
-      [audience]: prev[audience].map((p) => (p.tier === tier ? { ...p, active: !p.active } : p)),
-    }));
-    flash(`Đã ${currentPlan.active ? 'tắt' : 'bật'} gói ${currentPlan.name}`);
-  };
+    const payload = buildPlanPayload(formState);
 
-  const startEdit = (tier: string) => {
-    const plan = plans.find((p) => p.tier === tier);
-    if (!plan) return;
-    setEditingPlan(tier);
-    setEditPrice(plan.price.toString());
-    setEditDesc(plan.description);
-  };
+    try {
+      setIsSaving(true);
 
-  const saveEdit = () => {
-    if (!editingPlan) return;
-    const price = parseInt(editPrice, 10);
-    if (isNaN(price) || price < 0) {
-      flash('Giá không hợp lệ');
-      return;
+      if (sheetMode === 'create') {
+        await adminAiPlanService.createAdminAiPlan(accessToken, payload);
+        toast.success('Đã tạo gói AI mới.');
+      } else if (selectedPlanId) {
+        await adminAiPlanService.updateAdminAiPlan(accessToken, selectedPlanId, payload);
+        toast.success('Đã cập nhật gói AI.');
+      }
+
+      setIsSheetOpen(false);
+      await loadPlans();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể lưu gói AI.'));
+    } finally {
+      setIsSaving(false);
     }
-
-    const selectedPlan = plans.find((p) => p.tier === editingPlan);
-    setPlansByAudience((prev) => ({
-      ...prev,
-      [audience]: prev[audience].map((p) =>
-        p.tier === editingPlan ? { ...p, price, description: editDesc } : p,
-      ),
-    }));
-
-    flash(`Đã cập nhật gói ${selectedPlan?.name ?? editingPlan}`);
-    setEditingPlan(null);
   };
 
-  const formatPrice = (price: number) => {
-    if (price === 0) return 'Miễn phí';
-    return price.toLocaleString('vi-VN') + ' VND';
-  };
+  const isReadOnly = sheetMode === 'detail';
 
   return (
     <div className="w-full">
+      <AdminSectionHeader
+        title="Gói AI"
+        subtitle="Quản lý catalog gói AI, pricing theo billing cycle, limits và feature flags từ dữ liệu thật của backend."
+        right={
+          <Button className="h-11 rounded-xl bg-violet-600 px-5 font-bold hover:bg-violet-700" onClick={openCreateSheet}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo gói mới
+          </Button>
+        }
+      />
 
-      <AdminSectionHeader title="Gói dịch vụ" subtitle={config.subtitle} />
-
-      <div className="mb-4 inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-        <button
-          type="button"
-          onClick={() => {
-            setAudience('individual_monthly');
-            setMessage('');
-            resetDrawers();
-          }}
-          className={cn(
-            'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition',
-            audience === 'individual_monthly'
-              ? 'bg-violet-500 text-white shadow'
-              : 'text-slate-600 hover:bg-slate-100',
-          )}
-        >
-          <UserRound className="h-4 w-4" />
-          Cá nhân từng tháng
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setAudience('individual_multi');
-            setMessage('');
-            resetDrawers();
-          }}
-          className={cn(
-            'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition',
-            audience === 'individual_multi'
-              ? 'bg-violet-500 text-white shadow'
-              : 'text-slate-600 hover:bg-slate-100',
-          )}
-        >
-          <Zap className="h-4 w-4" />
-          Cá nhân nhiều tháng
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setAudience('business');
-            setMessage('');
-            resetDrawers();
-          }}
-          className={cn(
-            'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition',
-            audience === 'business'
-              ? 'bg-violet-500 text-white shadow'
-              : 'text-slate-600 hover:bg-slate-100',
-          )}
-        >
-          <Building2 className="h-4 w-4" />
-          Doanh nghiệp
-        </button>
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <AdminStatCard title="Tổng số gói" value={String(stats.totalPlans)} icon={CreditCard} iconClassName="bg-violet-500" />
+        <AdminStatCard title="Gói đang active" value={String(stats.activePlans)} icon={ShieldCheck} iconClassName="bg-emerald-500" />
+        <AdminStatCard title="Default plan" value={stats.defaultPlanName} icon={Layers3} iconClassName="bg-sky-500" />
+        <AdminStatCard title="Gói nhiều chu kỳ" value={String(stats.multiCyclePlans)} icon={ArrowDownUp} iconClassName="bg-amber-500" />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {config.stats.map((s) => (
-          <article
-            key={s.label}
-            className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
-          >
-            <p className="mb-2 text-xs text-slate-500">{s.label}</p>
-            <div className={`rounded-lg px-3 py-2 text-2xl font-bold ${s.color}`}>{s.value}</div>
-          </article>
-        ))}
-      </div>
+      <AdminPanel className="overflow-hidden p-0">
+        <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Danh sách gói AI</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Inline toggle chỉ cập nhật `isActive`. Các cấu hình sâu hơn được chỉnh trong drawer chi tiết.
+          </p>
+        </div>
 
-      <div
-        className={cn(
-          'mt-6 grid gap-5',
-          plans.length === 1 && 'max-w-xl grid-cols-1',
-          plans.length === 2 && 'lg:grid-cols-2',
-          plans.length >= 3 && 'lg:grid-cols-3',
-        )}
-      >
-        {plans.map((plan) => (
-          <div
-            key={plan.tier}
-            className={cn(
-              'relative flex flex-col rounded-2xl border-2 bg-linear-to-b p-5 shadow-sm transition',
-              plan.popular ? 'border-amber-300' : 'border-slate-200',
-              plan.bgGradient,
-              !plan.active && 'opacity-50',
-            )}
-          >
-            {plan.popular && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-3 py-0.5 text-xs font-bold text-white shadow">
-                Phổ biến nhất
-              </div>
-            )}
+        {isLoading ? (
+          <div className="flex h-72 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+          </div>
+        ) : plans.length === 0 ? (
+          <div className="flex h-72 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+            Chưa có plan nào. Hãy tạo gói AI đầu tiên.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tên gói</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Default</TableHead>
+                <TableHead>Giá</TableHead>
+                <TableHead>Billing cycles</TableHead>
+                <TableHead>Seat limit</TableHead>
+                <TableHead>Order</TableHead>
+                <TableHead>Cập nhật</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plans.map((plan) => {
+                const isPlanActive = plan.isActive !== false;
 
-            <div className="mb-4 flex items-center gap-3">
-              <div
-                className={cn(
-                  'flex h-11 w-11 items-center justify-center rounded-xl text-white',
-                  plan.iconBg,
-                )}
-              >
-                <plan.icon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className={cn('text-lg font-bold', plan.color)}>{plan.name}</p>
-                <span className="text-xs text-slate-500">{plan.badge}</span>
-              </div>
-            </div>
-
-            <div className="mb-1">
-              <span className="text-3xl font-extrabold text-slate-900">
-                {formatPrice(plan.price)}
-              </span>
-              {plan.price > 0 && (
-                <span className="ml-1 text-sm text-slate-500">/ {plan.period}</span>
-              )}
-            </div>
-            <p className="mb-5 text-sm text-slate-500">{plan.description}</p>
-
-            <div className="mb-5 flex items-center gap-2 rounded-xl bg-white/60 px-3 py-2">
-              <Users className="h-4 w-4 text-slate-500" />
-              <span className="text-sm font-semibold text-slate-700">
-                {plan.subscribers.toLocaleString('vi-VN')} {plan.subscribersLabel}
-              </span>
-            </div>
-
-            <div className="mb-5 flex-1 space-y-2">
-              {config.features.slice(0, 5).map((f) => {
-                const val = getFeatureValue(f, plan);
-                const enabled = val !== false;
                 return (
-                  <div key={f.label} className="flex items-start gap-2 text-sm">
-                    {enabled ? (
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    ) : (
-                      <X className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                    )}
-                    <span className={enabled ? 'text-slate-700' : 'text-slate-400'}>
-                      {f.label}
-                      {typeof val === 'string' && (
-                        <span className="ml-1 text-xs font-medium text-slate-500">({val})</span>
+                  <TableRow key={plan.id}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">{plan.name}</p>
+                          {plan.description ? (
+                            <Badge variant="outline" className="border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                              Có mô tả
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="line-clamp-2 text-xs text-slate-500 dark:text-slate-400">
+                          {plan.description || 'Chưa có mô tả'}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={isPlanActive}
+                          disabled={plan.isDefaultPlan || togglingPlanId === plan.id}
+                          onCheckedChange={(checked) => {
+                            void handleToggleActive(plan, checked);
+                          }}
+                        />
+                        <Badge
+                          className={cn(
+                            'border-0',
+                            isPlanActive
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+                          )}
+                        >
+                          {isPlanActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {plan.isDefaultPlan ? (
+                        <Badge className="border-0 bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+                          Default
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-slate-400 dark:text-slate-500">--</span>
                       )}
-                    </span>
-                  </div>
+                    </TableCell>
+                    <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
+                      {formatCurrency(plan.price, plan.currency || 'VND')}
+                    </TableCell>
+                    <TableCell className="max-w-56 text-sm text-slate-600 dark:text-slate-300">
+                      {formatBillingCycles(plan.allowedBillingCycles)}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-600 dark:text-slate-300">
+                      {plan.seatLimit ?? '--'}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-600 dark:text-slate-300">
+                      {plan.displayOrder ?? 0}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-500 dark:text-slate-400">
+                      {formatDateTime(plan.updatedAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => {
+                            void openPlanSheet('detail', plan.id);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => {
+                            void openPlanSheet('edit', plan.id);
+                          }}
+                        >
+                          <PencilLine className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-500/20 dark:text-rose-300"
+                          disabled={plan.isDefaultPlan || deletingPlanId === plan.id}
+                          onClick={() => {
+                            void handleDeletePlan(plan);
+                          }}
+                        >
+                          {deletingPlanId === plan.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setDetailPlan(plan.tier)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Eye className="h-4 w-4" />
-                Chi tiết
-              </button>
-              <button
-                type="button"
-                onClick={() => startEdit(plan.tier)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-500 py-2 text-sm font-semibold text-white hover:bg-violet-600"
-              >
-                <Edit3 className="h-4 w-4" />
-                Chỉnh sửa
-              </button>
-              <button
-                type="button"
-                onClick={() => handleToggleActive(plan.tier)}
-                title={plan.active ? 'Tắt gói' : 'Bật gói'}
-                className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 text-slate-500 hover:bg-slate-50"
-              >
-                {plan.active ? (
-                  <ToggleRight className="h-5 w-5 text-emerald-500" />
-                ) : (
-                  <ToggleLeft className="h-5 w-5" />
-                )}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <AdminPanel title="So sánh tính năng chi tiết" className="mt-6">
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
-              <tr>
-                <th className="px-4 py-3">Tính năng</th>
-                {plans.map((plan) => (
-                  <th key={plan.tier} className="px-4 py-3 text-center">
-                    <span className={cn('rounded-full px-2 py-0.5', plan.tableBadgeClass)}>
-                      {plan.name}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {config.features.map((feature) => (
-                <tr key={feature.label} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-700">{feature.label}</td>
-                  {plans.map((plan) => (
-                    <FeatureCell
-                      key={`${feature.label}-${plan.tier}`}
-                      value={getFeatureValue(feature, plan)}
-                    />
-                  ))}
-                </tr>
-              ))}
-              <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                <td className="px-4 py-3 text-slate-900">{priceRowLabel}</td>
-                {plans.map((plan) => (
-                  <td key={plan.tier} className={cn('px-4 py-3 text-center', plan.tablePriceClass)}>
-                    {formatPrice(plan.price)}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        )}
       </AdminPanel>
 
-      {message && (
-        <p className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-          {message}
-        </p>
-      )}
+      <Sheet
+        open={isSheetOpen}
+        onOpenChange={(open) => {
+          setIsSheetOpen(open);
+          if (!open && !isSaving) {
+            setSelectedPlanId(null);
+            setSelectedPlan(null);
+            setFormState(createInitialFormState());
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-4xl">
+          <SheetHeader className="pr-8">
+            <SheetTitle>
+              {sheetMode === 'create'
+                ? 'Tạo gói AI mới'
+                : sheetMode === 'edit'
+                  ? `Chỉnh sửa ${selectedPlan?.name || 'gói AI'}`
+                  : `Chi tiết ${selectedPlan?.name || 'gói AI'}`}
+            </SheetTitle>
+            <SheetDescription>
+              Quản lý metadata cơ bản, pricing theo billing cycle, limits sử dụng và feature flags cho từng plan.
+            </SheetDescription>
+          </SheetHeader>
 
-      {editingPlan && (
-        <Overlay onClose={() => setEditingPlan(null)}>
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-lg font-bold text-slate-900">
-              Chỉnh sửa gói {plans.find((p) => p.tier === editingPlan)?.name ?? editingPlan}
-            </h2>
-            <button
-              type="button"
-              onClick={() => setEditingPlan(null)}
-              className="rounded-lg p-1 text-slate-400 hover:text-slate-700"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-5">
-            <label className="mb-1 block text-sm font-semibold text-slate-700">
-              Giá (VND / tháng)
-            </label>
-            <input
-              type="number"
-              value={editPrice}
-              onChange={(e) => setEditPrice(e.target.value)}
-              min={0}
-              step={1000}
-              className="mb-4 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
-              disabled={plans.find((p) => p.tier === editingPlan)?.locked ?? false}
-            />
-
-            <label className="mb-1 block text-sm font-semibold text-slate-700">Mô tả</label>
-            <textarea
-              value={editDesc}
-              onChange={(e) => setEditDesc(e.target.value)}
-              rows={3}
-              className="mb-4 w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-violet-400"
-            />
-
-            <button
-              type="button"
-              onClick={saveEdit}
-              className="w-full rounded-xl bg-violet-500 py-2.5 text-sm font-semibold text-white hover:bg-violet-600"
-            >
-              Lưu thay đổi
-            </button>
-          </div>
-        </Overlay>
-      )}
-
-      {detailPlan &&
-        (() => {
-          const plan = plans.find((p) => p.tier === detailPlan);
-          if (!plan) return null;
-          return (
-            <Overlay onClose={() => setDetailPlan(null)}>
-              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                <h2 className="text-lg font-bold text-slate-900">Chi tiết gói {plan.name}</h2>
-                <button
-                  type="button"
-                  onClick={() => setDetailPlan(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-slate-700"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <div
-                    className={cn(
-                      'flex h-12 w-12 items-center justify-center rounded-2xl text-white',
-                      plan.iconBg,
-                    )}
-                  >
-                    <plan.icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className={cn('text-xl font-bold', plan.color)}>{plan.name}</p>
-                    <p className="text-sm text-slate-500">{plan.badge}</p>
-                  </div>
-                </div>
-
-                <p className="mb-4 text-sm text-slate-600">{plan.description}</p>
-
-                <div className="mb-4 space-y-3">
-                  <InfoRow
-                    label="Giá:"
-                    value={formatPrice(plan.price) + (plan.price > 0 ? ' / tháng' : '')}
-                  />
-                  <InfoRow
-                    label="Đăng ký:"
-                    value={`${plan.subscribers.toLocaleString('vi-VN')} ${plan.subscribersLabel}`}
-                  />
-                  <InfoRow label="Doanh thu:" value={plan.revenue + ' VND'} />
-                  <InfoRow
-                    label="Trạng thái:"
-                    value={plan.active ? 'Đang hoạt động' : 'Đã tắt'}
-                    valueClass={plan.active ? 'text-emerald-600' : 'text-rose-500'}
+          {isSheetLoading ? (
+            <div className="flex h-[60vh] items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-6">
+              {selectedPlan && sheetMode !== 'create' ? (
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60 md:grid-cols-4">
+                  <InlineInfo label="ID" value={selectedPlan.id} />
+                  <InlineInfo label="Updated" value={formatDateTime(selectedPlan.updatedAt)} />
+                  <InlineInfo label="Created" value={formatDateTime(selectedPlan.createdAt)} />
+                  <InlineInfo
+                    label="Public status"
+                    value={selectedPlan.isActive !== false ? 'Active' : 'Inactive'}
+                    highlight={selectedPlan.isActive !== false ? 'success' : 'danger'}
                   />
                 </div>
+              ) : null}
 
-                <h3 className="mb-2 text-sm font-bold text-slate-800">Tính năng bao gồm:</h3>
-                <div className="space-y-2">
-                  {config.features.map((feature) => {
-                    const val = getFeatureValue(feature, plan);
-                    const enabled = val !== false;
-                    return (
-                      <div key={feature.label} className="flex items-start gap-2 text-sm">
-                        {enabled ? (
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                        ) : (
-                          <X className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                        )}
-                        <span className={enabled ? 'text-slate-700' : 'text-slate-400'}>
-                          {feature.label}
-                          {typeof val === 'string' && (
-                            <span className="ml-1 text-xs font-medium text-slate-500">({val})</span>
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="basic">Basic</TabsTrigger>
+                  <TabsTrigger value="pricing">Pricing</TabsTrigger>
+                  <TabsTrigger value="limits">Limits</TabsTrigger>
+                  <TabsTrigger value="features">Features</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="basic" className="space-y-6 pt-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldBlock label="Tên gói">
+                      <Input
+                        value={formState.name}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          setFormState((current) => ({ ...current, name: event.target.value }));
+                        }}
+                        placeholder="Ví dụ: Plus"
+                      />
+                    </FieldBlock>
+
+                    <FieldBlock label="Currency">
+                      <Input
+                        value={formState.currency}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          setFormState((current) => ({ ...current, currency: event.target.value.toUpperCase() }));
+                        }}
+                        placeholder="VND"
+                      />
+                    </FieldBlock>
+
+                    <FieldBlock label="Display order">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={formState.displayOrder}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          setFormState((current) => ({ ...current, displayOrder: event.target.value }));
+                        }}
+                      />
+                    </FieldBlock>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <ToggleBlock label="Active">
+                        <Switch
+                          checked={formState.isDefaultPlan ? true : formState.isActive}
+                          disabled={isReadOnly || formState.isDefaultPlan}
+                          onCheckedChange={(checked) => {
+                            setFormState((current) => ({ ...current, isActive: checked }));
+                          }}
+                        />
+                      </ToggleBlock>
+
+                      <ToggleBlock label="Default plan">
+                        <Switch
+                          checked={formState.isDefaultPlan}
+                          disabled={isReadOnly}
+                          onCheckedChange={(checked) => {
+                            setFormState((current) => ({
+                              ...current,
+                              isDefaultPlan: checked,
+                              isActive: checked ? true : current.isActive,
+                            }));
+                          }}
+                        />
+                      </ToggleBlock>
+                    </div>
+                  </div>
+
+                  <FieldBlock label="Mô tả">
+                    <Textarea
+                      rows={5}
+                      value={formState.description}
+                      disabled={isReadOnly}
+                      onChange={(event) => {
+                        setFormState((current) => ({ ...current, description: event.target.value }));
+                      }}
+                      placeholder="Mô tả ngắn về gói AI, đối tượng sử dụng hoặc nội dung hiển thị ngoài public."
+                    />
+                  </FieldBlock>
+                </TabsContent>
+
+                <TabsContent value="pricing" className="space-y-6 pt-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldBlock label="Giá cơ sở">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={formState.price}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          setFormState((current) => ({ ...current, price: event.target.value }));
+                        }}
+                      />
+                    </FieldBlock>
+
+                    <FieldBlock label="Seat limit">
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={formState.seatLimit}
+                        disabled={isReadOnly}
+                        onChange={(event) => {
+                          setFormState((current) => ({ ...current, seatLimit: event.target.value }));
+                        }}
+                        placeholder="Để trống nếu không áp dụng"
+                      />
+                    </FieldBlock>
+                  </div>
+
+                  <FieldBlock label="Billing cycles">
+                    <div className="grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800 md:grid-cols-2 xl:grid-cols-3">
+                      {BILLING_CYCLE_OPTIONS.map((option) => (
+                        <label
+                          key={option.value}
+                          className={cn(
+                            'flex items-center gap-3 rounded-xl border px-3 py-3 text-sm',
+                            formState.allowedBillingCycles.includes(option.value)
+                              ? 'border-violet-300 bg-violet-50 dark:border-violet-500/40 dark:bg-violet-500/10'
+                              : 'border-slate-200 dark:border-slate-800',
+                            isReadOnly && 'opacity-80',
                           )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                        >
+                          <Checkbox
+                            checked={formState.allowedBillingCycles.includes(option.value)}
+                            disabled={isReadOnly}
+                            onCheckedChange={(checked) => {
+                              setFormState((current) => {
+                                const isChecked = checked === true;
+                                const nextCycles = isChecked
+                                  ? Array.from(new Set([...current.allowedBillingCycles, option.value]))
+                                  : current.allowedBillingCycles.filter((cycle) => cycle !== option.value);
 
-                <div className="mt-6 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailPlan(null);
-                      startEdit(plan.tier);
-                    }}
-                    className="flex-1 rounded-xl bg-violet-500 py-2 text-sm font-semibold text-white hover:bg-violet-600"
-                  >
-                    Chỉnh sửa
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailPlan(null);
-                      handleToggleActive(plan.tier);
-                    }}
-                    className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    {plan.active ? 'Tắt gói' : 'Bật gói'}
-                  </button>
-                </div>
+                                return {
+                                  ...current,
+                                  allowedBillingCycles: nextCycles,
+                                  billingCycleDiscounts: isChecked
+                                    ? current.billingCycleDiscounts
+                                    : {
+                                        ...current.billingCycleDiscounts,
+                                        [option.value]: '',
+                                      },
+                                };
+                              });
+                            }}
+                          />
+                          <div>
+                            <p className="font-semibold text-slate-900 dark:text-slate-100">{option.label}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{option.months} tháng</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </FieldBlock>
+
+                  <FieldBlock label="Discount theo chu kỳ (%)">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {formState.allowedBillingCycles.map((cycle) => (
+                        <div key={cycle} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                          <Label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            {formatBillingCycleLabel(cycle)}
+                          </Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={formState.billingCycleDiscounts[cycle]}
+                            disabled={isReadOnly}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              setFormState((current) => ({
+                                ...current,
+                                billingCycleDiscounts: {
+                                  ...current.billingCycleDiscounts,
+                                  [cycle]: nextValue,
+                                },
+                              }));
+                            }}
+                            placeholder="0"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </FieldBlock>
+
+                  <FieldBlock label="Pricing preview">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {pricingPreview.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                          Chưa có billing cycle nào được chọn.
+                        </div>
+                      ) : (
+                        pricingPreview.map((preview) => (
+                          <div key={preview.cycle} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              {formatBillingCycleLabel(preview.cycle)}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              Giá gốc: {formatCurrency(preview.subtotal, formState.currency || 'VND')}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              Discount: {preview.discountPercentage}%
+                            </p>
+                            <p className="mt-3 text-lg font-bold text-violet-600 dark:text-violet-300">
+                              {formatCurrency(preview.total, formState.currency || 'VND')}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </FieldBlock>
+                </TabsContent>
+
+                <TabsContent value="limits" className="space-y-6 pt-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {LIMIT_FIELDS.map((field) => (
+                      <FieldBlock key={field.key} label={field.label}>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={formState.limits[field.key]}
+                          disabled={isReadOnly}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setFormState((current) => ({
+                              ...current,
+                              limits: {
+                                ...current.limits,
+                                [field.key]: nextValue,
+                              },
+                            }));
+                          }}
+                          placeholder="Để trống nếu không áp dụng"
+                        />
+                      </FieldBlock>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="features" className="space-y-4 pt-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {FEATURE_FIELDS.map((field) => (
+                      <label
+                        key={field.key}
+                        className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-4 dark:border-slate-800"
+                      >
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">{field.label}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Feature flag được bật hoặc tắt theo plan này.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={formState.features[field.key]}
+                          disabled={isReadOnly}
+                          onCheckedChange={(checked) => {
+                            setFormState((current) => ({
+                              ...current,
+                              features: {
+                                ...current.features,
+                                [field.key]: checked,
+                              },
+                            }));
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          <SheetFooter className="mt-8 border-t border-slate-100 pt-6 dark:border-slate-800">
+            {sheetMode === 'detail' ? (
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={() => setIsSheetOpen(false)}>
+                  Đóng
+                </Button>
+                <Button
+                  className="bg-violet-600 hover:bg-violet-700"
+                  onClick={() => {
+                    setSheetMode('edit');
+                  }}
+                >
+                  <PencilLine className="mr-2 h-4 w-4" />
+                  Chuyển sang chỉnh sửa
+                </Button>
               </div>
-            </Overlay>
-          );
-        })()}
+            ) : (
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button variant="outline" disabled={isSaving} onClick={() => setIsSheetOpen(false)}>
+                  Hủy
+                </Button>
+                <Button className="bg-violet-600 hover:bg-violet-700" disabled={isSaving} onClick={handleSavePlan}>
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                  {sheetMode === 'create' ? 'Tạo gói' : 'Lưu thay đổi'}
+                </Button>
+              </div>
+            )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-/* -- helpers --------------------------------------------------------------- */
-
-function FeatureCell({ value }: { value: FeatureValue }) {
-  if (value === false) {
-    return (
-      <td className="px-4 py-3 text-center">
-        <X className="mx-auto h-4 w-4 text-slate-300" />
-      </td>
-    );
-  }
-  if (value === true) {
-    return (
-      <td className="px-4 py-3 text-center">
-        <Check className="mx-auto h-4 w-4 text-emerald-500" />
-      </td>
-    );
-  }
-  return <td className="px-4 py-3 text-center text-xs font-medium text-slate-600">{value}</td>;
-}
-
-function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+function FieldBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-end">
-      <div
-        className="absolute inset-0 bg-black/20"
-        onClick={onClose}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        role="button"
-        tabIndex={0}
-        aria-label="Đóng"
-      />
-      <aside className="relative z-10 flex h-full w-96 flex-col bg-white shadow-xl">
-        {children}
-      </aside>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</Label>
+      {children}
     </div>
   );
 }
 
-function InfoRow({
+function ToggleBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{label}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Cập nhật trạng thái trực tiếp trên plan.</p>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function InlineInfo({
   label,
   value,
-  valueClass,
+  highlight,
 }: {
   label: string;
   value: string;
-  valueClass?: string;
+  highlight?: 'success' | 'danger';
 }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className={cn('font-semibold text-slate-700', valueClass)}>{value}</span>
+    <div>
+      <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</p>
+      <p
+        className={cn(
+          'mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100',
+          highlight === 'success' && 'text-emerald-600 dark:text-emerald-300',
+          highlight === 'danger' && 'text-rose-600 dark:text-rose-300',
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }

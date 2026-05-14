@@ -36,10 +36,30 @@ export class CreateAiPlanPurchaseDto {
 
   @ApiProperty({
     enum: BillingCycle,
-    description: 'Supported values: monthly, three_months, five_months, nine_months, yearly',
+    description: 'Plan-dependent values. Current pricing flow uses monthly, three_months, and six_months.',
   })
   @IsEnum(BillingCycle)
   billingCycle!: BillingCycle;
+
+  @ApiPropertyOptional({
+    enum: SepayPaymentMethod,
+    description: 'SePay payment method. Defaults to BANK_TRANSFER.',
+  })
+  @IsOptional()
+  @IsEnum(SepayPaymentMethod)
+  paymentMethod?: SepayPaymentMethod;
+
+  @ApiPropertyOptional({ type: PaymentReturnUrlsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentReturnUrlsDto)
+  returnUrls?: PaymentReturnUrlsDto;
+}
+
+export class CreateMentorBookingPurchaseDto {
+  @ApiProperty()
+  @IsString()
+  bookingSessionId!: string;
 
   @ApiPropertyOptional({
     enum: SepayPaymentMethod,

@@ -23,7 +23,7 @@ export type AiPlanPricingSummary = {
 };
 
 export type AiPlanCatalogItem = AiPlan & {
-  pricingByBillingCycle: Record<BillingCycle, AiPlanPricingSummary>;
+  pricingByBillingCycle: Partial<Record<BillingCycle, AiPlanPricingSummary>>;
 };
 
 @Injectable()
@@ -38,19 +38,24 @@ export class AiPlanService {
   async create(dto: CreateAiPlanDto): Promise<AiPlanDocument> {
     const existing = await this.aiPlanModel.findOne({ name: dto.name }).exec();
     if (existing) throw new ConflictException('Plan name already exists');
-    if (dto.isDefaultPlan) {
+    const nextDto = this.normalizePlanPayload(dto);
+    if (nextDto.isDefaultPlan) {
       await this.unsetOtherDefaultPlans();
     }
-    const plan = new this.aiPlanModel(dto);
+    const plan = new this.aiPlanModel(nextDto);
     return plan.save();
   }
 
   async findAll(): Promise<AiPlanDocument[]> {
-    return this.aiPlanModel.find().sort({ createdAt: -1 }).exec();
+    return this.aiPlanModel.find().sort({ displayOrder: 1, createdAt: -1 }).exec();
   }
 
   async findCatalog(): Promise<AiPlanCatalogItem[]> {
-    const plans = await this.aiPlanModel.find().sort({ price: 1, createdAt: 1 }).exec();
+    const plans = await this.aiPlanModel
+      .find({ isActive: { $ne: false } })
+      .sort({ displayOrder: 1, price: 1, createdAt: 1 })
+      .exec();
+
     return plans.map((plan) => ({
       ...(plan.toJSON() as AiPlan),
       pricingByBillingCycle: this.buildPricingByBillingCycle(plan),
@@ -66,17 +71,25 @@ export class AiPlanService {
 
   async update(id: string, dto: UpdateAiPlanDto): Promise<AiPlanDocument> {
     if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid plan id');
+    const currentPlan = await this.aiPlanModel.findById(id).exec();
+    if (!currentPlan) throw new NotFoundException('AI plan not found');
+
+    if (currentPlan.isDefaultPlan && dto.isActive === false) {
+      throw new BadRequestException('Default plan must remain active');
+    }
+
     if (dto.name) {
       const existing = await this.aiPlanModel
         .findOne({ name: dto.name, _id: { $ne: new Types.ObjectId(id) } })
         .exec();
       if (existing) throw new ConflictException('Plan name already exists');
     }
-    if (dto.isDefaultPlan) {
+    const nextDto = this.normalizePlanPayload(dto);
+    if (nextDto.isDefaultPlan) {
       await this.unsetOtherDefaultPlans(new Types.ObjectId(id));
     }
     const plan = await this.aiPlanModel
-      .findByIdAndUpdate(id, dto, { new: true, runValidators: true })
+      .findByIdAndUpdate(id, nextDto, { new: true, runValidators: true })
       .exec();
     if (!plan) throw new NotFoundException('AI plan not found');
     return plan;
@@ -84,6 +97,12 @@ export class AiPlanService {
 
   async remove(id: string): Promise<void> {
     if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid plan id');
+    const plan = await this.aiPlanModel.findById(id).exec();
+    if (!plan) throw new NotFoundException('AI plan not found');
+    if (plan.isDefaultPlan) {
+      throw new BadRequestException('Cannot delete default plan');
+    }
+
     const activeSubs = await this.userSubscriptionModel
       .countDocuments({ planId: new Types.ObjectId(id), status: SubscriptionStatus.ACTIVE })
       .exec();
@@ -117,15 +136,20 @@ export class AiPlanService {
   }
 
   private buildPricingByBillingCycle(
-    plan: Pick<AiPlan, 'price' | 'currency' | 'billingCycleDiscounts'>,
-  ): Record<BillingCycle, AiPlanPricingSummary> {
-    return {
-      [BillingCycle.MONTHLY]: this.calculatePricing(plan, BillingCycle.MONTHLY),
-      [BillingCycle.THREE_MONTHS]: this.calculatePricing(plan, BillingCycle.THREE_MONTHS),
-      [BillingCycle.FIVE_MONTHS]: this.calculatePricing(plan, BillingCycle.FIVE_MONTHS),
-      [BillingCycle.NINE_MONTHS]: this.calculatePricing(plan, BillingCycle.NINE_MONTHS),
-      [BillingCycle.YEARLY]: this.calculatePricing(plan, BillingCycle.YEARLY),
-    };
+    plan: Pick<AiPlan, 'price' | 'currency' | 'billingCycleDiscounts' | 'allowedBillingCycles'>,
+  ): Partial<Record<BillingCycle, AiPlanPricingSummary>> {
+    const cycles = this.resolveAllowedBillingCycles(plan);
+    return cycles.reduce<Partial<Record<BillingCycle, AiPlanPricingSummary>>>((acc, cycle) => {
+      acc[cycle] = this.calculatePricing(plan, cycle);
+      return acc;
+    }, {});
+  }
+
+  isBillingCycleAllowed(
+    plan: Pick<AiPlan, 'allowedBillingCycles'>,
+    billingCycle: BillingCycle,
+  ): boolean {
+    return this.resolveAllowedBillingCycles(plan).includes(billingCycle);
   }
 
   private resolveDiscountPercentage(
@@ -143,6 +167,8 @@ export class AiPlanService {
     switch (billingCycle) {
       case BillingCycle.THREE_MONTHS:
         return 3;
+      case BillingCycle.SIX_MONTHS:
+        return 6;
       case BillingCycle.FIVE_MONTHS:
         return 5;
       case BillingCycle.NINE_MONTHS:
@@ -159,6 +185,26 @@ export class AiPlanService {
     return Number(value.toFixed(2));
   }
 
+  private resolveAllowedBillingCycles(
+    plan: Pick<AiPlan, 'allowedBillingCycles'>,
+  ): BillingCycle[] {
+    const configuredCycles = (plan.allowedBillingCycles || []).filter((cycle) =>
+      Object.values(BillingCycle).includes(cycle),
+    );
+    if (configuredCycles.length > 0) {
+      return configuredCycles;
+    }
+
+    return [
+      BillingCycle.MONTHLY,
+      BillingCycle.THREE_MONTHS,
+      BillingCycle.SIX_MONTHS,
+      BillingCycle.FIVE_MONTHS,
+      BillingCycle.NINE_MONTHS,
+      BillingCycle.YEARLY,
+    ];
+  }
+
   private async unsetOtherDefaultPlans(currentPlanId?: unknown): Promise<void> {
     await this.aiPlanModel
       .updateMany(
@@ -169,5 +215,16 @@ export class AiPlanService {
         { $set: { isDefaultPlan: false } },
       )
       .exec();
+  }
+
+  private normalizePlanPayload<T extends CreateAiPlanDto | UpdateAiPlanDto>(dto: T): T {
+    if (!dto.isDefaultPlan) {
+      return dto;
+    }
+
+    return {
+      ...dto,
+      isActive: true,
+    };
   }
 }

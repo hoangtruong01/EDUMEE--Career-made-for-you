@@ -21,6 +21,11 @@ export enum PaymentStatus {
     REFUNDED = 'refunded',
 }
 
+export enum PaymentPurpose {
+    AI_PLAN = 'ai_plan',
+    MENTOR_BOOKING = 'mentor_booking',
+}
+
 @Schema({
     timestamps: true,
     collection: 'payments',
@@ -43,8 +48,14 @@ export class Payment {
     @Prop({ type: Types.ObjectId, ref: 'AiPlan' })
     planId?: Types.ObjectId;
 
-    @Prop({ type: String, enum: BillingCycle, required: true })
-    billingCycle!: BillingCycle;
+    @Prop({ type: Types.ObjectId, ref: 'BookingSession' })
+    bookingSessionId?: Types.ObjectId;
+
+    @Prop({ type: String, enum: PaymentPurpose, default: PaymentPurpose.AI_PLAN })
+    purpose!: PaymentPurpose;
+
+    @Prop({ type: String, enum: BillingCycle })
+    billingCycle?: BillingCycle;
 
     @Prop({ type: Number, required: true })
     amount!: number;
@@ -98,6 +109,8 @@ export class Payment {
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ userId: 1 });
 PaymentSchema.index({ planId: 1 });
+PaymentSchema.index({ bookingSessionId: 1 });
+PaymentSchema.index({ purpose: 1, status: 1 });
 PaymentSchema.index({ providerPaymentId: 1 });
 PaymentSchema.index({ checkoutReference: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ checkoutTokenHash: 1 }, { sparse: true });

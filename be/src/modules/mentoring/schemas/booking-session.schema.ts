@@ -4,6 +4,7 @@ import { Document, Types } from 'mongoose';
 export type BookingSessionDocument = BookingSession & Document;
 
 export enum BookingStatus {
+  AWAITING_PAYMENT = 'awaiting_payment',
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
   CANCELLED_BY_MENTEE = 'cancelled_by_mentee',

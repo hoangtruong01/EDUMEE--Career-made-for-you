@@ -11,6 +11,13 @@ import { UpsertAiSubscriptionDto } from '../dto';
 import { AiSubscriptionService } from '../services/ai-subscription.service';
 import { AiQuotaService } from '../services/ai-quota.service';
 import { AiFeature } from '../schema/ai-usage-logs.schema';
+import { BillingCycle } from '../../users/schemas/user-subscriptions';
+
+type QuotaView = {
+  used: number;
+  limit: number;
+  remaining: number;
+};
 
 @ApiTags('ai-subscriptions')
 @ApiBearerAuth('JWT-auth')
@@ -50,23 +57,83 @@ export class AiSubscriptionController {
   async me(@CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
     const plan = await this.aiQuotaService.getPlanForUserOrFree(userId);
-    const featuresToShow: AiFeature[] = [
-      AiFeature.ASSESSMENT,
-      AiFeature.CAREER_RECOMMENDATION,
-      AiFeature.CAREER_COMPARISON,
-      AiFeature.PERSONALIZED_ROADMAP,
-      AiFeature.SIMULATION,
-      AiFeature.CHATBOT,
-    ];
-    const quotas = await Promise.all(
-      featuresToShow.map(async (f) => {
+    const activeSubscription = await this.aiSubscriptionService.getActiveSubscriptionForUser(userId);
+    const featuresToShow: Record<string, AiFeature> = {
+      assessment: AiFeature.ASSESSMENT,
+      careerComparison: AiFeature.CAREER_COMPARISON,
+      aiChat: AiFeature.CHATBOT,
+      roadmap: AiFeature.PERSONALIZED_ROADMAP,
+      simulation: AiFeature.SIMULATION,
+      mentorBooking: AiFeature.MENTOR_BOOKING,
+    };
+    const quotaEntries = await Promise.all(
+      Object.entries(featuresToShow).map(async ([key, feature]) => {
         try {
-          return await this.aiQuotaService.getRemainingQuota(userId, f);
+          const quota = await this.aiQuotaService.getRemainingQuota(userId, feature);
+          return [key, this.toQuotaView(quota)] as const;
         } catch {
-          return { feature: f, month: new Date().getMonth() + 1, year: new Date().getFullYear(), used: 0, unlimited: false, remaining: 0 };
+          return [key, this.toQuotaView()] as const;
         }
       }),
     );
-    return { plan, quotas };
+
+    return {
+      currentPlan: this.resolveCurrentPlanCode(plan?.name),
+      source: activeSubscription ? this.resolveSubscriptionSource(plan?.name) : 'default',
+      subscriptionStatus: activeSubscription?.status || null,
+      billingCycle: activeSubscription?.billingCycle || null,
+      expiresAt: activeSubscription?.endDate || null,
+      seatLimit: plan?.seatLimit || null,
+      plan,
+      quotas: Object.fromEntries(quotaEntries),
+      features: {
+        careerComparison: plan?.features?.careerComparison === true,
+        personalizedRoadmap: plan?.features?.personalizedRoadmap === true,
+        jobSimulation: plan?.features?.jobSimulation === true,
+        mentorBooking: plan?.features?.mentorBooking === true,
+        teamDashboard: plan?.features?.teamDashboard === true,
+        reportExport: plan?.features?.reportExport === true,
+        multiUserManagement: plan?.features?.multiUserManagement === true,
+      },
+      subscription: activeSubscription
+        ? {
+            status: activeSubscription.status,
+            billingCycle: activeSubscription.billingCycle,
+            startDate: activeSubscription.startDate,
+            endDate: activeSubscription.endDate,
+          }
+        : null,
+      availableBillingCycles: plan?.allowedBillingCycles || [BillingCycle.MONTHLY],
+    };
+  }
+
+  private resolveCurrentPlanCode(planName?: string | null): 'free' | 'plus' | 'business' {
+    const normalized = planName?.trim().toLowerCase();
+    if (normalized === 'business') return 'business';
+    if (normalized === 'plus') return 'plus';
+    return 'free';
+  }
+
+  private resolveSubscriptionSource(planName?: string | null): 'personal_subscription' | 'business_subscription' {
+    return this.resolveCurrentPlanCode(planName) === 'business'
+      ? 'business_subscription'
+      : 'personal_subscription';
+  }
+
+  private toQuotaView(quota?: {
+    limit?: number;
+    used: number;
+    remaining?: number;
+    unlimited: boolean;
+  }): QuotaView {
+    if (!quota || quota.unlimited) {
+      return { used: quota?.used || 0, limit: 0, remaining: 0 };
+    }
+
+    return {
+      used: quota.used,
+      limit: quota.limit ?? 0,
+      remaining: quota.remaining ?? 0,
+    };
   }
 }

@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
 @import 'tailwindcss';
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -49,8 +48,8 @@
   --color-gold-light: hsl(var(--gold-light));
 
   --radius: 0.75rem;
-  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-sans: var(--font-body);
+  --font-display: var(--font-body);
 }
 
 :root {
@@ -102,8 +101,9 @@
   --shadow-card: 0 2px 12px -2px hsl(220 25% 12% / 0.08);
   --shadow-elevated: 0 8px 30px -6px hsl(205 90% 55% / 0.2);
 
-  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial,
+    'Noto Sans', sans-serif;
 
   --sidebar-background: 0 0% 98%;
   --sidebar-foreground: 240 5.3% 26.1%;

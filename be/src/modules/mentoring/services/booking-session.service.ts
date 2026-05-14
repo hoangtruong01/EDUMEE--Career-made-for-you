@@ -45,7 +45,8 @@ export class BookingSessionService {
       menteeId: new Types.ObjectId(menteeId),
       tutorProfileId: tutor._id,
       mentorId: tutor.userId,
-      status: BookingStatus.PENDING,
+      status: BookingStatus.AWAITING_PAYMENT,
+      paymentInfo: this.buildInitialPaymentInfo(tutor, createDto),
     });
     return booking.save();
   }
@@ -90,6 +91,13 @@ export class BookingSessionService {
 
   async findPending(): Promise<BookingSessionDocument[]> {
     return this.bookingSessionModel.find({ status: BookingStatus.PENDING }).sort({ createdAt: 1 }).exec();
+  }
+
+  async markFreeBookingPending(id: string): Promise<BookingSessionDocument> {
+    return this.update(id, {
+      status: BookingStatus.PENDING,
+      'paymentInfo.paymentStatus': 'free',
+    });
   }
 
   async confirmBooking(
@@ -214,5 +222,26 @@ export class BookingSessionService {
         throw new ConflictException('Booking overlaps with an existing confirmed session');
       }
     }
+  }
+
+  private buildInitialPaymentInfo(
+    tutor: TutorProfileDocument,
+    createDto: CreateBookingInput,
+  ): BookingSession['paymentInfo'] {
+    const sessionType = String(createDto.sessionType || '');
+    const duration = Number((createDto.schedulingDetails as { duration?: number } | undefined)?.duration || 0);
+    const rates = tutor.pricing?.sessionRates || [];
+    const matchingRate =
+      rates.find((rate) => rate.sessionType === sessionType && rate.duration === duration) ||
+      rates.find((rate) => rate.sessionType === sessionType) ||
+      rates[0];
+
+    const sessionPrice = Number(matchingRate?.pricePerSession ?? 0);
+    return {
+      sessionPrice: Number.isFinite(sessionPrice) ? sessionPrice : 0,
+      currency: tutor.pricing?.currency || 'VND',
+      paymentMethod: sessionPrice > 0 ? 'bank_transfer' : 'free_session',
+      paymentStatus: sessionPrice > 0 ? 'pending' : 'free',
+    };
   }
 }

@@ -1,585 +1,597 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { authStorage } from '@/lib/auth-storage';
+import {
+  BookingSession,
+  CreateBookingPayload,
+  mentorService,
+  TutorProfile,
+} from '@/lib/mentor.service';
 import { AnimatePresence, motion } from 'framer-motion';
-import { GraduationCap, MapPin, MessageCircle, Search, Star, Users, Video, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  Calendar,
+  CheckCircle2,
+  Clock,
+  GraduationCap,
+  Loader2,
+  Search,
+  Star,
+  Users,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-/* ─── Types ─── */
-type SessionType = {
-  id: string;
-  label: string;
-  desc: string;
-  price: string;
-  icon: React.ElementType;
+const statusLabel: Record<string, string> = {
+  awaiting_payment: 'Cho thanh toan',
+  pending: 'Cho mentor xac nhan',
+  confirmed: 'Da xac nhan',
+  completed: 'Da hoan thanh',
+  cancelled_by_mentee: 'Hoc vien da huy',
+  cancelled_by_mentor: 'Mentor da huy',
+  rescheduled: 'De xuat doi lich',
+  no_show_mentee: 'Hoc vien vang',
+  no_show_mentor: 'Mentor vang',
 };
 
-type Mentor = {
-  id: string;
-  name: string;
-  role: string;
-  company: string;
-  location: string;
-  initials: string;
-  gradientFrom: string;
-  gradientTo: string;
-  badge: string | null;
-  badgeColor: string;
-  rating: number;
-  reviews: number;
-  category: string;
-  bio: string;
-  skills: string[];
-  schedule: string;
-  price: string;
-  sessions: number;
-  sessionTypes: SessionType[];
-};
+function formatMoney(amount?: number, currency = 'VND') {
+  if (!amount) return 'Mien phi';
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
-/* ─── Data ─── */
-const CATEGORIES = [
-  'Tất cả',
-  'Công nghệ',
-  'Dữ liệu & AI',
-  'Thiết kế',
-  'Marketing',
-  'Quản lý sản phẩm',
-];
+function getMentorName(profile?: TutorProfile) {
+  if (!profile) return 'Mentor';
+  return profile.professionalBackground?.currentPosition || 'Mentor';
+}
 
-const mentors: Mentor[] = [
-  {
-    id: 'm1',
-    name: 'Nguyễn Thị Lan Anh',
-    role: 'Senior UX Designer',
-    company: 'Shopee',
-    location: 'TP. Hồ Chí Minh',
-    initials: 'LA',
-    gradientFrom: '#a78bfa',
-    gradientTo: '#818cf8',
-    badge: 'Top Mentor',
-    badgeColor: 'bg-yellow-400 text-yellow-900',
-    rating: 4.9,
-    reviews: 127,
-    category: 'Thiết kế',
-    bio: '8 năm kinh nghiệm thiết kế sản phẩm số tại các công ty lớn như Shopee, Lazada và nhiều công ty quốc tế.',
-    skills: ['UX Research', 'UI Design', 'Design System'],
-    schedule: 'Thứ 2–6, 19:00–22:00',
-    price: '300,000 VND/giờ',
-    sessions: 340,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '300,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'chat',
-        label: 'Chat Tư vấn',
-        desc: 'Hỏi đáp qua chat',
-        price: '150,000 VND/giờ',
-        icon: MessageCircle,
-      },
-      {
-        id: 'cv',
-        label: 'Review CV/Portfolio',
-        desc: 'Review hồ sơ của bạn',
-        price: '200,000 VND/lần',
-        icon: GraduationCap,
-      },
-    ],
-  },
-  {
-    id: 'm2',
-    name: 'Trần Minh Hoàng',
-    role: 'Engineering Manager',
-    company: 'VNG',
-    location: 'Hà Nội',
-    initials: 'MH',
-    gradientFrom: '#38bdf8',
-    gradientTo: '#6366f1',
-    badge: 'Expert',
-    badgeColor: 'bg-blue-500 text-white',
-    rating: 4.8,
-    reviews: 98,
-    category: 'Công nghệ',
-    bio: '10 năm là Engineering Manager tại VNG và MoMo. Đã mentored 50+ engineers và giúp nhiều người thăng tiến lên senior.',
-    skills: ['Backend Dev', 'System Design', 'Leadership'],
-    schedule: 'Thứ 7, CN, 9:00–17:00',
-    price: '400,000 VND/giờ',
-    sessions: 380,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '400,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'chat',
-        label: 'Chat Tư vấn',
-        desc: 'Hỏi đáp qua chat',
-        price: '200,000 VND/giờ',
-        icon: MessageCircle,
-      },
-    ],
-  },
-  {
-    id: 'm3',
-    name: 'Lê Phương Thảo',
-    role: 'Data Science Lead',
-    company: 'VinAI Research',
-    location: 'Hà Nội',
-    initials: 'PT',
-    gradientFrom: '#c084fc',
-    gradientTo: '#7c3aed',
-    badge: 'PhD',
-    badgeColor: 'bg-purple-600 text-white',
-    rating: 4.9,
-    reviews: 76,
-    category: 'Dữ liệu & AI',
-    bio: 'PhD AI, hiện đang là Data Science Lead tại VinAI. Giúp bạn định hướng con đường AI/ML, từ học thuật đến industry.',
-    skills: ['Machine Learning', 'Deep Learning', 'Python'],
-    schedule: 'Thứ 3, 5, 7, 18:00–21:00',
-    price: '350,000 VND/giờ',
-    sessions: 190,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '350,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'cv',
-        label: 'Review CV/Portfolio',
-        desc: 'Review hồ sơ của bạn',
-        price: '250,000 VND/lần',
-        icon: GraduationCap,
-      },
-    ],
-  },
-  {
-    id: 'm4',
-    name: 'Vũ Quốc Anh',
-    role: 'Product Manager',
-    company: 'Tiki',
-    location: 'Hồ Chí Minh',
-    initials: 'QA',
-    gradientFrom: '#34d399',
-    gradientTo: '#0ea5e9',
-    badge: null,
-    badgeColor: '',
-    rating: 4.7,
-    reviews: 83,
-    category: 'Quản lý sản phẩm',
-    bio: '7 năm làm PM tại Tiki và các startup e-commerce. Chuyên tư vấn về career transition từ các ngành khác sang PM.',
-    skills: ['Product Strategy', 'Agile', 'User Research'],
-    schedule: 'Thứ 4, 7, 8:00–12:00',
-    price: '280,000 VND/giờ',
-    sessions: 195,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '280,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'chat',
-        label: 'Chat Tư vấn',
-        desc: 'Hỏi đáp qua chat',
-        price: '120,000 VND/giờ',
-        icon: MessageCircle,
-      },
-    ],
-  },
-  {
-    id: 'm5',
-    name: 'Đỗ Thị Mai Linh',
-    role: 'Marketing Director',
-    company: 'Grab Vietnam',
-    location: 'Hồ Chí Minh',
-    initials: 'ML',
-    gradientFrom: '#f97316',
-    gradientTo: '#f43f5e',
-    badge: null,
-    badgeColor: '',
-    rating: 4.8,
-    reviews: 80,
-    category: 'Marketing',
-    bio: '9 năm kinh nghiệm marketing tại Grab, Momo. Chuyên đào tạo trẻ định hướng con đường Marketing & Brand Strategy.',
-    skills: ['Digital Marketing', 'Brand Strategy', 'Growth Hacking'],
-    schedule: 'Thứ 2, 4, 6, 20:00–22:00',
-    price: '320,000 VND/giờ',
-    sessions: 240,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '320,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'cv',
-        label: 'Review CV/Portfolio',
-        desc: 'Review hồ sơ của bạn',
-        price: '200,000 VND/lần',
-        icon: GraduationCap,
-      },
-    ],
-  },
-  {
-    id: 'm6',
-    name: 'Nguyễn Trung Kiên',
-    role: 'Full-Stack Developer',
-    company: 'Axon Active Vietnam',
-    location: 'Đà Nẵng',
-    initials: 'TK',
-    gradientFrom: '#10b981',
-    gradientTo: '#0d9488',
-    badge: 'Affordable',
-    badgeColor: 'bg-green-500 text-white',
-    rating: 4.6,
-    reviews: 54,
-    category: 'Công nghệ',
-    bio: '5 năm kinh nghiệm Full-Stack, chuyên giúp các bạn mới bắt đầu học lập trình và chuẩn bị cho phỏng vấn kỹ thuật.',
-    skills: ['React', 'Node.js', 'TypeScript'],
-    schedule: 'Hàng ngày, 21:00–23:00',
-    price: '200,000 VND/giờ',
-    sessions: 100,
-    sessionTypes: [
-      {
-        id: 'video',
-        label: '1-1 Video Call',
-        desc: 'Tư vấn riêng qua video',
-        price: '200,000 VND/giờ',
-        icon: Video,
-      },
-      {
-        id: 'chat',
-        label: 'Chat Tư vấn',
-        desc: 'Hỏi đáp qua chat',
-        price: '80,000 VND/giờ',
-        icon: MessageCircle,
-      },
-      {
-        id: 'cv',
-        label: 'Review CV/Portfolio',
-        desc: 'Review hồ sơ của bạn',
-        price: '150,000 VND/lần',
-        icon: GraduationCap,
-      },
-    ],
-  },
-];
+function getPrimaryRate(profile: TutorProfile) {
+  return profile.pricing?.sessionRates?.[0];
+}
 
-/* ─── Booking Modal ─── */
-const BookingModal = ({ mentor, onClose }: { mentor: Mentor; onClose: () => void }) => {
-  const [selectedType, setSelectedType] = useState(mentor.sessionTypes[0].id);
+function getSessionTypes(profile: TutorProfile) {
+  const fromAvailability = profile.availability?.sessionPreferences?.sessionTypes || [];
+  const fromPricing = profile.pricing?.sessionRates?.map((rate) => rate.sessionType) || [];
+  return Array.from(new Set([...fromAvailability, ...fromPricing])).filter(Boolean);
+}
+
+function MentorCard({
+  mentor,
+  onBook,
+}: {
+  mentor: TutorProfile;
+  onBook: (mentor: TutorProfile) => void;
+}) {
+  const skills = mentor.mentoringExpertise?.skillExpertise?.slice(0, 4) || [];
+  const careers = mentor.mentoringExpertise?.careerExpertise?.slice(0, 2) || [];
+  const rate = getPrimaryRate(mentor);
+  const rating = mentor.performanceMetrics?.ratings?.averageRating || 0;
+  const reviews = mentor.performanceMetrics?.ratings?.totalReviews || 0;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass-card flex flex-col overflow-hidden rounded-2xl"
+    >
+      <div className="bg-gradient-hero h-20" />
+      <div className="flex flex-1 flex-col p-5">
+        <div className="-mt-12 mb-4 flex items-end justify-between">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-background bg-primary text-xl font-bold text-primary-foreground shadow-lg">
+            {(mentor.professionalBackground?.currentPosition || 'M').charAt(0)}
+          </div>
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+            Verified
+          </span>
+        </div>
+
+        <div className="mb-3">
+          <h3 className="font-display text-lg font-bold">{getMentorName(mentor)}</h3>
+          <p className="text-muted-foreground text-sm">
+            {mentor.professionalBackground?.company || 'Independent'} ·{' '}
+            {mentor.professionalBackground?.yearsOfExperience || 0} nam kinh nghiem
+          </p>
+        </div>
+
+        <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {careers.map((career) => (
+            <span key={career.careerTitle} className="rounded-full bg-muted px-2.5 py-1">
+              {career.careerTitle}
+            </span>
+          ))}
+        </div>
+
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {skills.map((skill) => (
+            <span
+              key={skill.skillName}
+              className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+            >
+              {skill.skillName}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-auto space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-1 text-amber-500">
+              <Star className="h-4 w-4 fill-current" />
+              {rating ? rating.toFixed(1) : 'Moi'} ({reviews})
+            </span>
+            <span className="font-bold text-primary">
+              {formatMoney(rate?.pricePerSession, mentor.pricing?.currency)}
+            </span>
+          </div>
+          <Button className="w-full" variant="hero" onClick={() => onBook(mentor)}>
+            <Calendar className="h-4 w-4" />
+            Dat lich
+          </Button>
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
+function BookingModal({
+  mentor,
+  onClose,
+  onBooked,
+}: {
+  mentor: TutorProfile;
+  onClose: () => void;
+  onBooked: () => void;
+}) {
+  const token = authStorage.getAccessToken();
+  const sessionTypes = getSessionTypes(mentor);
+  const firstRate = getPrimaryRate(mentor);
+  const [sessionType, setSessionType] = useState(sessionTypes[0] || 'general_mentoring');
+  const [requestedDateTime, setRequestedDateTime] = useState('');
+  const [duration, setDuration] = useState(firstRate?.duration || 60);
+  const [topics, setTopics] = useState('');
+  const [currentSituation, setCurrentSituation] = useState('');
+  const [desiredOutcomes, setDesiredOutcomes] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!requestedDateTime || !topics.trim() || !currentSituation.trim() || !desiredOutcomes.trim()) {
+      setMessage('Vui long nhap du muc tieu, thoi gian va noi dung can trao doi.');
+      return;
+    }
+
+    const payload: CreateBookingPayload = {
+      tutorProfileId: mentor.id,
+      sessionType,
+      schedulingDetails: {
+        requestedDateTime,
+        duration,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Ho_Chi_Minh',
+        meetingPlatform: 'google_meet',
+      },
+      bookingRequest: {
+        topicsToDiscuss: topics.split(',').map((item) => item.trim()).filter(Boolean),
+        currentSituation,
+        desiredOutcomes: desiredOutcomes.split(',').map((item) => item.trim()).filter(Boolean),
+        additionalNotes: message,
+        isFirstSession: true,
+        urgencyLevel: 'medium',
+      },
+    };
+
+    setIsSubmitting(true);
+    setMessage('');
+    try {
+      const result = await mentorService.createBooking(token, payload);
+      onBooked();
+      if (result.payment?.redirectUrl) {
+        window.location.href = result.payment.redirectUrl;
+        return;
+      }
+      setMessage('Dat lich thanh cong. Mentor se xac nhan lich som.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Khong the tao booking.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <button className="absolute inset-0 bg-black/60" onClick={onClose} aria-label="Dong" />
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-background relative w-full max-w-md overflow-hidden rounded-2xl shadow-2xl"
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-background shadow-2xl"
       >
-        {/* Title bar */}
-        <div className="border-border flex items-center justify-between border-b px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-              style={{
-                background: `linear-gradient(135deg, ${mentor.gradientFrom}, ${mentor.gradientTo})`,
-              }}
-            >
-              {mentor.initials}
-            </div>
-            <div>
-              <p className="font-semibold">{mentor.name}</p>
-              <p className="text-muted-foreground text-xs">
-                {mentor.role} tại {mentor.company}
-              </p>
-            </div>
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <h2 className="font-display text-xl font-bold">Dat lich voi mentor</h2>
+            <p className="text-sm text-muted-foreground">{getMentorName(mentor)}</p>
           </div>
-          <button onClick={onClose} className="hover:bg-muted rounded-full p-1.5 transition-colors">
-            <X className="text-muted-foreground h-4 w-4" />
+          <button className="rounded-full p-2 hover:bg-muted" onClick={onClose}>
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="space-y-4 p-5">
-          {/* Session type selection */}
-          <div>
-            <p className="mb-2.5 text-sm font-medium">Chọn loại buổi học:</p>
-            <div className="space-y-2">
-              {mentor.sessionTypes.map((type) => (
-                <label
-                  key={type.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${
-                    selectedType === type.id
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="sessionType"
-                    value={type.id}
-                    checked={selectedType === type.id}
-                    onChange={() => setSelectedType(type.id)}
-                    className="accent-primary"
-                  />
-                  <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-                      selectedType === type.id
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <type.icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{type.label}</p>
-                    <p className="text-muted-foreground text-xs">{type.desc}</p>
-                  </div>
-                  <span className="text-primary shrink-0 text-sm font-bold">{type.price}</span>
-                </label>
-              ))}
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-sm font-medium">
+              Loai buoi
+              <select
+                value={sessionType}
+                onChange={(event) => setSessionType(event.target.value)}
+                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              >
+                {sessionTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium">
+              Thoi luong
+              <select
+                value={duration}
+                onChange={(event) => setDuration(Number(event.target.value))}
+                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              >
+                {(mentor.availability?.sessionPreferences?.preferredDuration || [60, 90]).map((item) => (
+                  <option key={item} value={item}>
+                    {item} phut
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          {/* Schedule */}
-          <div className="border-border rounded-xl border p-3">
-            <p className="mb-1.5 text-sm font-medium">Lịch khả dụng:</p>
-            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-              <span>📅</span>
-              <span>{mentor.schedule}</span>
-            </div>
-          </div>
+          <label className="space-y-1 text-sm font-medium">
+            Thoi gian mong muon
+            <input
+              type="datetime-local"
+              value={requestedDateTime}
+              onChange={(event) => setRequestedDateTime(event.target.value)}
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+            />
+          </label>
 
-          {/* Buttons */}
-          <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>
-              Đóng
+          <label className="space-y-1 text-sm font-medium">
+            Chu de can trao doi
+            <input
+              value={topics}
+              onChange={(event) => setTopics(event.target.value)}
+              placeholder="VD: CV, phong van, lo trinh backend"
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 text-sm font-medium">
+            Tinh huong hien tai
+            <textarea
+              value={currentSituation}
+              onChange={(event) => setCurrentSituation(event.target.value)}
+              className="min-h-24 w-full rounded-xl border border-input bg-background p-3 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 text-sm font-medium">
+            Ket qua mong muon
+            <textarea
+              value={desiredOutcomes}
+              onChange={(event) => setDesiredOutcomes(event.target.value)}
+              className="min-h-20 w-full rounded-xl border border-input bg-background p-3 text-sm"
+            />
+          </label>
+
+          {message && <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
+
+          <div className="flex gap-3">
+            <Button className="flex-1" variant="outline" onClick={onClose}>
+              Dong
             </Button>
-            <Button variant="hero" className="flex-1">
-              Xác nhận đặt lịch
+            <Button className="flex-1" variant="hero" onClick={submit} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Xac nhan va thanh toan
             </Button>
           </div>
         </div>
       </motion.div>
     </div>
   );
-};
+}
 
-/* ─── Mentor Card ─── */
-const MentorCard = ({
-  mentor,
-  index,
-  onBook,
-}: {
-  mentor: Mentor;
-  index: number;
-  onBook: (m: Mentor) => void;
-}) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: index * 0.07 }}
-    className="glass-card flex flex-col overflow-hidden rounded-2xl"
-  >
-    {/* Gradient header */}
-    <div
-      className="relative h-24"
-      style={{
-        background: `linear-gradient(135deg, ${mentor.gradientFrom}55, ${mentor.gradientTo}55)`,
-      }}
-    >
-      {mentor.badge && (
-        <span
-          className={`absolute top-3 right-3 rounded-full px-2.5 py-0.5 text-xs font-bold ${mentor.badgeColor}`}
-        >
-          {mentor.badge}
-        </span>
-      )}
-      {/* Avatar */}
-      <div
-        className="border-background absolute -bottom-5 left-5 flex h-14 w-14 items-center justify-center rounded-full border-4 text-base font-bold text-white shadow-lg"
-        style={{
-          background: `linear-gradient(135deg, ${mentor.gradientFrom}, ${mentor.gradientTo})`,
-        }}
-      >
-        {mentor.initials}
-      </div>
-    </div>
+function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
+  const token = authStorage.getAccessToken();
+  const [isOpen, setIsOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [form, setForm] = useState({
+    currentPosition: '',
+    company: '',
+    yearsOfExperience: '3',
+    industries: '',
+    careerTitle: '',
+    skills: '',
+    specializations: '',
+    price: '200000',
+  });
 
-    <div className="flex flex-1 flex-col p-5 pt-8">
-      {/* Name + rating */}
-      <div className="mb-1 flex items-start justify-between gap-2">
+  const submit = async () => {
+    if (!form.currentPosition || !form.company || !form.careerTitle || !form.skills) {
+      setMessage('Vui long nhap du vi tri, cong ty, nghe va ky nang mentor.');
+      return;
+    }
+
+    try {
+      await mentorService.applyTutorProfile(token, {
+        professionalBackground: {
+          currentPosition: form.currentPosition,
+          company: form.company,
+          yearsOfExperience: Number(form.yearsOfExperience) || 0,
+          industries: form.industries.split(',').map((item) => item.trim()).filter(Boolean),
+          seniority: 'mid',
+        },
+        mentoringExpertise: {
+          careerExpertise: [
+            {
+              careerTitle: form.careerTitle,
+              yearsInField: Number(form.yearsOfExperience) || 0,
+              confidenceLevel: 4,
+            },
+          ],
+          skillExpertise: form.skills.split(',').map((skill) => ({
+            skillName: skill.trim(),
+            skillCategory: 'technical',
+            proficiencyLevel: 4,
+            teachingExperience: 1,
+          })),
+          specializations: form.specializations.split(',').map((item) => item.trim()).filter(Boolean),
+          targetMenteeLevels: ['beginner', 'mid'],
+        },
+        availability: {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          weeklyAvailability: [
+            {
+              day: 'saturday',
+              timeSlots: [{ startTime: '09:00', endTime: '17:00', available: true }],
+            },
+          ],
+          sessionPreferences: {
+            preferredDuration: [60, 90],
+            sessionTypes: ['career_guidance', 'skill_coaching', 'interview_preparation'],
+            communicationMethods: ['video'],
+          },
+        },
+        pricing: {
+          currency: 'VND',
+          sessionRates: [
+            { sessionType: 'career_guidance', duration: 60, pricePerSession: Number(form.price) || 0 },
+            { sessionType: 'skill_coaching', duration: 60, pricePerSession: Number(form.price) || 0 },
+          ],
+          freeSessionOffered: false,
+        },
+      });
+      setMessage('Da gui ho so mentor. Admin se duyet truoc khi hien thi cong khai.');
+      onSubmitted();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Khong the gui ho so mentor.');
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-display font-semibold">{mentor.name}</p>
-          <p className="text-muted-foreground text-xs">{mentor.role}</p>
+          <h2 className="font-display text-xl font-bold">Dang ky lam mentor</h2>
+          <p className="text-sm text-muted-foreground">Ho so se o trang thai cho duyet truoc khi len danh sach.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-          <span className="text-sm font-semibold">{mentor.rating}</span>
-          <span className="text-muted-foreground text-xs">({mentor.reviews})</span>
-        </div>
-      </div>
-
-      {/* Company + location */}
-      <div className="text-muted-foreground mb-3 flex flex-wrap gap-2 text-xs">
-        <span className="flex items-center gap-1">
-          <span className="text-foreground font-medium">{mentor.company}</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> {mentor.location}
-        </span>
-      </div>
-
-      {/* Bio */}
-      <p className="text-muted-foreground mb-3 line-clamp-2 flex-1 text-sm">{mentor.bio}</p>
-
-      {/* Skills */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {mentor.skills.map((s) => (
-          <span
-            key={s}
-            className="bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-xs font-medium"
-          >
-            {s}
-          </span>
-        ))}
-      </div>
-
-      {/* Schedule + sessions */}
-      <div className="text-muted-foreground mb-4 flex items-center justify-between text-xs">
-        <span>📅 {mentor.schedule}</span>
-        <span>{mentor.sessions} buổi đã dạy</span>
-      </div>
-
-      {/* Price + buttons */}
-      <div className="flex items-center gap-2">
-        <span className="text-primary flex-1 text-sm font-bold">{mentor.price}</span>
-        <button className="border-border hover:bg-muted flex h-8 w-8 items-center justify-center rounded-xl border transition-colors">
-          <MessageCircle className="text-muted-foreground h-4 w-4" />
-        </button>
-        <Button variant="hero" size="sm" onClick={() => onBook(mentor)}>
-          Đặt lịch
+        <Button variant="outline" onClick={() => setIsOpen((value) => !value)}>
+          {isOpen ? 'Thu gon' : 'Mo form'}
         </Button>
       </div>
-    </div>
-  </motion.div>
-);
 
-/* ─── Main component ─── */
-const MentorMatching = () => {
-  const [activeCategory, setActiveCategory] = useState('Tất cả');
-  const [search, setSearch] = useState('');
-  const [bookingMentor, setBookingMentor] = useState<Mentor | null>(null);
+      {isOpen && (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {[
+            ['currentPosition', 'Vi tri hien tai'],
+            ['company', 'Cong ty'],
+            ['yearsOfExperience', 'So nam kinh nghiem'],
+            ['industries', 'Linh vuc, cach nhau boi dau phay'],
+            ['careerTitle', 'Nghe co the mentor'],
+            ['skills', 'Ky nang mentor'],
+            ['specializations', 'Chuyen de mentor'],
+            ['price', 'Gia moi buoi 60 phut'],
+          ].map(([key, label]) => (
+            <label key={key} className="space-y-1 text-sm font-medium">
+              {label}
+              <input
+                value={form[key as keyof typeof form]}
+                onChange={(event) => setForm((prev) => ({ ...prev, [key]: event.target.value }))}
+                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              />
+            </label>
+          ))}
+          <div className="sm:col-span-2">
+            <Button variant="hero" onClick={submit}>
+              Gui ho so cho admin duyet
+            </Button>
+          </div>
+        </div>
+      )}
+      {message && <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
+    </section>
+  );
+}
 
-  const filtered = mentors.filter((m) => {
-    const matchCat = activeCategory === 'Tất cả' || m.category === activeCategory;
-    const matchSearch =
-      !search.trim() ||
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.skills.some((s) => s.toLowerCase().includes(search.toLowerCase()));
-    return matchCat && matchSearch;
+function BookingList({ title, bookings }: { title: string; bookings: BookingSession[] }) {
+  return (
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <h2 className="mb-4 font-display text-xl font-bold">{title}</h2>
+      {bookings.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Chua co booking nao.</p>
+      ) : (
+        <div className="space-y-3">
+          {bookings.slice(0, 5).map((booking) => (
+            <div key={booking.id} className="rounded-xl border border-border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">{booking.sessionType.replace(/_/g, ' ')}</span>
+                <span className="rounded-full bg-muted px-2.5 py-1 text-xs">
+                  {statusLabel[booking.status] || booking.status}
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                {new Date(
+                  booking.schedulingDetails.confirmedDateTime || booking.schedulingDetails.requestedDateTime,
+                ).toLocaleString('vi-VN')}{' '}
+                · {booking.schedulingDetails.duration} phut
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function MentorMatching() {
+  const [mentors, setMentors] = useState<TutorProfile[]>([]);
+  const [bookings, setBookings] = useState<{ asMentee: BookingSession[]; asMentor: BookingSession[] }>({
+    asMentee: [],
+    asMentor: [],
   });
+  const [search, setSearch] = useState('');
+  const [activeMentor, setActiveMentor] = useState<TutorProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [message, setMessage] = useState('');
+
+  const loadData = useCallback(async () => {
+    const token = authStorage.getAccessToken();
+    if (!token) return;
+    setIsLoading(true);
+    try {
+      const [profiles, myBookings] = await Promise.all([
+        mentorService.getActiveMentors(token),
+        mentorService.getMyBookings(token),
+      ]);
+      setMentors(profiles);
+      setBookings(myBookings);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Khong the tai du lieu mentor.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const filteredMentors = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return mentors;
+    return mentors.filter((mentor) => {
+      const text = [
+        mentor.professionalBackground?.currentPosition,
+        mentor.professionalBackground?.company,
+        mentor.mentoringExpertise?.careerExpertise?.map((item) => item.careerTitle).join(' '),
+        mentor.mentoringExpertise?.skillExpertise?.map((item) => item.skillName).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [mentors, search]);
 
   return (
     <>
       <div className="min-h-screen pb-20">
-        {/* Header */}
         <div className="bg-gradient-card">
-          <div className="container py-10 text-center">
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
-                <GraduationCap className="h-4 w-4" /> 500+ mentor chuyên nghiệp
+          <div className="container py-10">
+            <div className="mx-auto max-w-3xl text-center">
+              <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                <GraduationCap className="h-4 w-4" />
+                Mentor duoc admin xac thuc
               </span>
-              <h1 className="font-display text-3xl font-bold md:text-4xl">Kết nối với Mentor</h1>
-              <p className="text-muted-foreground mt-2">
-                Học hỏi trực tiếp từ các chuyên gia đang làm việc tại các công ty hàng đầu Việt Nam
+              <h1 className="font-display text-3xl font-bold md:text-4xl">Ket noi voi Mentor</h1>
+              <p className="mt-2 text-muted-foreground">
+                Dat lich 1-1, thanh toan qua SePay va theo doi trang thai xac nhan tu mentor.
               </p>
-            </motion.div>
+            </div>
           </div>
         </div>
 
         <div className="container mt-6 space-y-6">
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { icon: Users, value: '500+', label: 'Mentors' },
-              { icon: Video, value: '15,000+', label: 'Buổi học' },
-              { icon: Star, value: '4.8/5', label: 'Đánh giá' },
-            ].map(({ icon: Icon, value, label }) => (
-              <div key={label} className="glass-card rounded-2xl p-3 text-center sm:p-4">
-                <Icon className="text-primary mx-auto mb-2 h-5 w-5" />
-                <p className="text-xl font-bold">{value}</p>
-                <p className="text-muted-foreground text-xs">{label}</p>
+              { icon: Users, label: 'Mentor active', value: mentors.length.toString() },
+              { icon: Calendar, label: 'Booking cua toi', value: bookings.asMentee.length.toString() },
+              { icon: CheckCircle2, label: 'Mentor queue', value: bookings.asMentor.length.toString() },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="glass-card rounded-2xl p-4 text-center">
+                <Icon className="mx-auto mb-2 h-5 w-5 text-primary" />
+                <p className="text-2xl font-bold">{value}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
               </div>
             ))}
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="text-muted-foreground absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm mentor theo tên, kỹ năng..."
-              className="border-input bg-background focus:ring-ring h-11 w-full rounded-xl border pr-4 pl-10 text-sm outline-none focus:ring-2"
-            />
-          </div>
+          <ApplyMentorForm onSubmitted={loadData} />
 
-          {/* Category tabs */}
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                  activeCategory === cat
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
+          <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Tim theo vi tri, cong ty, ky nang..."
+                  className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
 
-          {/* Grid */}
-          {filtered.length > 0 ? (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((mentor, i) => (
-                <MentorCard key={mentor.id} mentor={mentor} index={i} onBook={setBookingMentor} />
-              ))}
+              {message && <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
+
+              {isLoading ? (
+                <div className="flex h-48 items-center justify-center rounded-2xl border border-border">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : filteredMentors.length === 0 ? (
+                <div className="rounded-2xl border border-border p-10 text-center text-muted-foreground">
+                  Chua co mentor phu hop.
+                </div>
+              ) : (
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredMentors.map((mentor) => (
+                    <MentorCard key={mentor.id} mentor={mentor} onBook={setActiveMentor} />
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="py-16 text-center">
-              <p className="text-muted-foreground">Không tìm thấy mentor phù hợp.</p>
-            </div>
-          )}
+
+            <aside className="space-y-5">
+              <BookingList title="Lich cua toi" bookings={bookings.asMentee} />
+              <BookingList title="Lich can mentor xu ly" bookings={bookings.asMentor} />
+              <section className="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
+                <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
+                  <Clock className="h-4 w-4" />
+                  Payment workflow
+                </div>
+                Booking co phi se o trang thai cho thanh toan, sau khi SePay xac nhan thanh cong moi vao hang cho mentor xac nhan.
+              </section>
+            </aside>
+          </div>
         </div>
       </div>
 
-      {/* Booking modal */}
       <AnimatePresence>
-        {bookingMentor && (
-          <BookingModal mentor={bookingMentor} onClose={() => setBookingMentor(null)} />
+        {activeMentor && (
+          <BookingModal mentor={activeMentor} onClose={() => setActiveMentor(null)} onBooked={loadData} />
         )}
       </AnimatePresence>
     </>
   );
-};
-
-export default MentorMatching;
+}

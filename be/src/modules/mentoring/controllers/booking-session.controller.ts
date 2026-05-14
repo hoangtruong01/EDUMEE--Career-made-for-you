@@ -21,19 +21,43 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import { getAuthUserId, isAdmin } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
 import { CreateBookingSessionDto } from '../dto/booking-session.dto';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
+import { PaymentService } from '../../payment/services';
 
 @ApiTags('booking-sessions')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('booking-sessions')
 export class BookingSessionController {
-  constructor(private readonly bookingSessionService: BookingSessionService) { }
+  constructor(
+    private readonly bookingSessionService: BookingSessionService,
+    private readonly aiQuotaService: AiQuotaService,
+    private readonly paymentService: PaymentService,
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new booking session' })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Booking created successfully' })
-  create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
-    return this.bookingSessionService.createForMentee(getAuthUserId(user), createDto as unknown as { tutorProfileId: string;[key: string]: unknown });
+  async create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
+    const userId = getAuthUserId(user);
+    await this.aiQuotaService.checkQuota(userId, AiFeature.MENTOR_BOOKING);
+    const booking = await this.bookingSessionService.createForMentee(
+      userId,
+      createDto as unknown as { tutorProfileId: string; [key: string]: unknown },
+    );
+    await this.aiQuotaService.consumeQuota(userId, AiFeature.MENTOR_BOOKING, { requestCount: 1, tokensUsed: 0 });
+
+    const sessionPrice = Number(booking.paymentInfo?.sessionPrice ?? 0);
+    if (sessionPrice <= 0) {
+      const freeBooking = await this.bookingSessionService.markFreeBookingPending(booking._id.toString());
+      return { booking: freeBooking, payment: null };
+    }
+
+    const payment = await this.paymentService.purchaseMentorBooking(userId, {
+      bookingSessionId: booking._id.toString(),
+    });
+    return { booking, payment };
   }
 
   @Get()
@@ -144,7 +168,19 @@ export class BookingSessionController {
   @ApiOperation({ summary: 'Update a booking session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Booking not found' })
-  update(@Param('id') id: string, @Body() updateDto: Record<string, unknown>) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: Record<string, unknown>,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    const userId = getAuthUserId(user);
+    const booking = await this.bookingSessionService.findOne(id);
+    const ok = booking.menteeId.toString() === userId || booking.mentorId.toString() === userId;
+    if (!ok && !isAdmin(user)) throw new ForbiddenException('Forbidden');
+    delete updateDto.status;
+    delete updateDto.menteeId;
+    delete updateDto.mentorId;
+    delete updateDto.paymentInfo;
     return this.bookingSessionService.update(
       id,
       updateDto,
