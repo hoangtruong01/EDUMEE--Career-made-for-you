@@ -33,7 +33,7 @@ export default function AdminLoginScreen() {
 
     setIsLoading(true);
     try {
-      const response = await api.post('/auth/admin/login', { email, password });
+      const response = await api.post('/auth/admin-login', { email, password });
       console.log('Admin login success');
       const { accessToken } = response.data;
       await setAuthToken(accessToken);
