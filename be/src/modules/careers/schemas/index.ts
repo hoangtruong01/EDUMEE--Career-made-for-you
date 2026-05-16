@@ -6,3 +6,5 @@ export { CareerSimulation, CareerSimulationSchema } from './career-simulation.sc
 export type { CareerSimulationDocument } from './career-simulation.schema';
 export { CareerInsight, CareerInsightSchema } from './career-insight.schema';
 export type { CareerInsightDocument } from './career-insight.schema';
+export { SkillTag, SkillTagSchema } from './skill-tag.schema';
+export type { SkillTagDocument, SkillTagCategory } from './skill-tag.schema';

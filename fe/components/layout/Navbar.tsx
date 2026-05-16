@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Menu,
   Moon,
+  ShieldCheck,
   Sun,
   TrendingUp,
   User,
@@ -51,7 +52,7 @@ const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoClicks, setLogoClicks] = useState(0);
   const { hasAssessmentResult } = useAssessment();
-  const { accessToken } = useAuth();
+  const { accessToken, role } = useAuth();
   const [userMe, setUserMe] = useState<UserMe | null>(null);
 
   useEffect(() => {
@@ -94,9 +95,11 @@ const Navbar = () => {
     window.dispatchEvent(new StorageEvent('storage'));
   }, [darkMode]);
 
-  const navItems = hasAssessmentResult
-    ? [...baseNavItems, { href: '/assessment-result', label: 'Kết quả', icon: ClipboardCheck }]
-    : baseNavItems;
+  const navItems = [
+    ...baseNavItems,
+    ...(role === 'mentor' ? [{ href: '/mentor-dashboard', label: 'Cổng mentor', icon: ShieldCheck }] : []),
+    ...(hasAssessmentResult ? [{ href: '/assessment-result', label: 'Kết quả', icon: ClipboardCheck }] : []),
+  ];
 
   return (
     <nav className="glass-card sticky top-0 z-50 border-b">

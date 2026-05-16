@@ -7,3 +7,5 @@ export { TutoringSession, TutoringSessionSchema } from './schemas/tutoring-sessi
 export type { TutoringSessionDocument, SessionStatus } from './schemas/tutoring-session.schema';
 export { SessionReview, SessionReviewSchema } from './schemas/session-review.schema';
 export type { SessionReviewDocument, ReviewerType, ReviewStatus } from './schemas/session-review.schema';
+export { MentorAvailabilitySlot, MentorAvailabilitySlotSchema } from './schemas/mentor-availability-slot.schema';
+export type { MentorAvailabilitySlotDocument, MentorAvailabilitySlotStatus } from './schemas/mentor-availability-slot.schema';

@@ -14,6 +14,7 @@ interface AuthState {
 }
 
 interface LoginResult {
+  role: UserRole;
   redirectTo?: string;
 }
 
@@ -126,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
 
-    return { redirectTo: response.redirectTo };
+    return { role: response.result.role, redirectTo: response.redirectTo };
   }, []);
 
   const adminLogin = useCallback(async (payload: LoginPayload) => {
@@ -149,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
 
-    return { redirectTo: response.redirectTo };
+    return { role: response.result.role, redirectTo: response.redirectTo };
   }, []);
 
   const completeOAuthLogin = useCallback((payload: OAuthLoginPayload) => {

@@ -9,3 +9,8 @@ export {
   UpdateBookingSessionDto,
   BookingSessionResponseDto,
 } from './booking-session.dto';
+
+export {
+  BulkAvailabilitySlotStartDto,
+  CreateBulkAvailabilitySlotsDto,
+} from './mentor-availability.dto';

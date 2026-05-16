@@ -28,6 +28,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserDocument } from './schemas';
+import type { UploadedImageFile } from '../media/services/media.service';
 
 export interface RequestUser {
   userId: string;
@@ -64,7 +65,7 @@ export class UsersController {
   @UseInterceptors(FileInterceptor('file'))
   async updateAvatar(
     @CurrentUser() user: RequestUser,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: UploadedImageFile,
   ) {
     if (!file) {
       throw new BadRequestException('Không tìm thấy file ảnh');

@@ -14,6 +14,7 @@
     "ngrok:start": "powershell -ExecutionPolicy Bypass -File scripts/start-ngrok.ps1",
     "seed:admin": "ts-node -r tsconfig-paths/register scripts/seed-admin.ts",
     "seed:ai-plans": "ts-node -r tsconfig-paths/register scripts/seed-ai-plans.ts",
+    "seed:careers": "ts-node -r tsconfig-paths/register scripts/seed-careers-skill-tags.ts",
     "lint": "npx eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

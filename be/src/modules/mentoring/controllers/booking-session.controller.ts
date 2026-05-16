@@ -136,10 +136,14 @@ export class BookingSessionController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking confirmed successfully' })
   confirmBooking(
     @Param('id') id: string,
-    @Body() body: { confirmedDateTime: string },
+    @Body() body: { confirmedDateTime?: string },
     @CurrentUser() user: AuthUserLike,
   ) {
-    return this.bookingSessionService.confirmBooking(id, { userId: getAuthUserId(user), role: user.role }, new Date(body.confirmedDateTime));
+    return this.bookingSessionService.confirmBooking(
+      id,
+      { userId: getAuthUserId(user), role: user.role },
+      body.confirmedDateTime ? new Date(body.confirmedDateTime) : undefined,
+    );
   }
 
   @Post(':id/cancel')

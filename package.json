@@ -19,6 +19,7 @@
     "lint:fe": "cd fe && npm run lint",
     "test": "npm run test:be",
     "test:be": "cd be && npm run test",
+    "seed:careers": "cd be && npm run seed:careers",
     "docker:dev": "docker-compose up -d mongodb mongo-express redis",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",

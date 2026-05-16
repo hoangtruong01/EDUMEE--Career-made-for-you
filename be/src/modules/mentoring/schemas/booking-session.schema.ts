@@ -50,6 +50,9 @@ export class BookingSession {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   mentorId!: Types.ObjectId; // Cached from TutorProfile for performance
 
+  @Prop({ required: true, type: Types.ObjectId, ref: 'MentorAvailabilitySlot' })
+  availabilitySlotId!: Types.ObjectId;
+
   @Prop({ type: String, enum: SessionType, required: true })
   sessionType!: SessionType;
 
@@ -68,6 +71,7 @@ export class BookingSession {
     meetingPlatform: 'zoom' | 'google_meet' | 'teams' | 'phone' | 'in_person' | 'platform_built_in';
     meetingLink?: string;
     meetingId?: string;
+    meetingCode?: string;
     meetingPassword?: string;
     
     // Location (for in-person meetings)
@@ -158,7 +162,7 @@ export class BookingSession {
     currency: string;
     
     paymentMethod: 'credit_card' | 'paypal' | 'bank_transfer' | 'free_session' | 'package_credit';
-    paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | 'free';
+    paymentStatus: 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded' | 'free';
     
     transactionId?: string;
     paymentDate?: Date;
@@ -245,6 +249,7 @@ export const BookingSessionSchema = SchemaFactory.createForClass(BookingSession)
 // Indexes
 BookingSessionSchema.index({ menteeId: 1, status: 1 });
 BookingSessionSchema.index({ mentorId: 1, status: 1 });
+BookingSessionSchema.index({ availabilitySlotId: 1 }, { unique: true });
 BookingSessionSchema.index({ 'schedulingDetails.confirmedDateTime': 1 });
 BookingSessionSchema.index({ status: 1, sessionType: 1 });
 BookingSessionSchema.index({ createdAt: -1 });

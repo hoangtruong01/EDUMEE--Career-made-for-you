@@ -12,13 +12,18 @@ export class CreateBookingSessionDto {
   @IsString()
   tutorProfileId!: string;
 
+  @ApiProperty({ description: 'Mentor availability slot ID' })
+  @IsString()
+  availabilitySlotId!: string;
+
   @ApiProperty({ enum: SessionType, description: 'Type of session' })
   @IsEnum(SessionType)
   sessionType!: SessionType;
 
-  @ApiProperty({ description: 'Session scheduling details' })
+  @ApiPropertyOptional({ description: 'Session scheduling details derived from selected availability slot' })
+  @IsOptional()
   @IsObject()
-  schedulingDetails!: {
+  schedulingDetails?: {
     requestedDateTime: Date;
     duration: number;
     timeZone: string;

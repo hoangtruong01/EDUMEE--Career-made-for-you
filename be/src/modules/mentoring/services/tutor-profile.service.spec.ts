@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { UserRole } from '../../../common/enums/user-role.enum';
+import { ExperienceLevel } from '../../careers/schemas/career.schema';
 import { User } from '../../users/schemas/user.schema';
 import { TutorProfile, TutorStatus } from '../schemas/tutor-profile.schema';
 import { TutorProfileService } from './tutor-profile.service';
@@ -49,7 +50,7 @@ describe('TutorProfileService', () => {
         company: 'EDUMEE',
         yearsOfExperience: 5,
         industries: ['Software'],
-        seniority: 'mid' as never,
+        seniority: ExperienceLevel.MID_LEVEL,
       },
       mentoringExpertise: {
         careerExpertise: [],
@@ -59,16 +60,48 @@ describe('TutorProfileService', () => {
       },
       availability: {
         timeZone: 'Asia/Ho_Chi_Minh',
+        weeklyAvailability: [
+          {
+            day: 'saturday',
+            timeSlots: [{ startTime: '09:00', endTime: '17:00', available: true }],
+          },
+        ],
         sessionPreferences: {
           preferredDuration: [60],
-          sessionTypes: ['career_guidance'],
+          sessionTypes: ['career_guidance', 'interview_preparation'],
           communicationMethods: ['video'],
         },
+      },
+      pricing: {
+        currency: 'VND',
+        freeSessionOffered: false,
+        sessionRates: [
+          {
+            sessionType: 'career_guidance',
+            duration: 60,
+            pricePerSession: 50000,
+          },
+          {
+            sessionType: 'interview_preparation',
+            duration: 90,
+            pricePerSession: 75000,
+          },
+        ],
       },
     });
 
     expect(tutorProfileModel).toHaveBeenCalledWith(
       expect.objectContaining({
+        pricing: expect.objectContaining({
+          currency: 'VND',
+          sessionRates: expect.arrayContaining([
+            expect.objectContaining({
+              sessionType: 'interview_preparation',
+              duration: 90,
+              pricePerSession: 75000,
+            }),
+          ]),
+        }),
         status: TutorStatus.PENDING_APPROVAL,
       }),
     );

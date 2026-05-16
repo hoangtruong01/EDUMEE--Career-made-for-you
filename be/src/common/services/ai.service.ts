@@ -160,6 +160,10 @@ Requirements:
   }
 
   public async callGeminiAPI(prompt: string, retries = 3): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('GEMINI_API_KEY is not configured');
+    }
+
     const fetch = (await import('node-fetch')).default;
     const url = `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`;
 
@@ -196,10 +200,10 @@ Requirements:
         const errorText = await response.text();
         this.logger.error(`Gemini API error (Attempt ${attempt}/${retries}):`, errorText);
         
-        if (response.status === 429 && attempt < retries) {
+        if (this.isRetryableGeminiStatus(response.status) && attempt < retries) {
           // Exponential backoff: wait 1s, 2s, 4s...
           const waitTime = Math.pow(2, attempt - 1) * 1000;
-          this.logger.warn(`Rate limit exceeded (429). Retrying in ${waitTime}ms...`);
+          this.logger.warn(`Retryable Gemini error (${response.status}). Retrying in ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
@@ -218,6 +222,10 @@ Requirements:
     }
     
     throw new Error('Gemini API error: Max retries reached');
+  }
+
+  private isRetryableGeminiStatus(status: number): boolean {
+    return status === 429 || status >= 500;
   }
 
   private parseAnalysisResponse(responseText: string): AIAnalysisResult {
@@ -594,12 +602,135 @@ Quy tắc:
 
     try {
       const text = await this.callGeminiAPI(prompt);
-      const cleanJson = text.replace(/```json|```/gi, '').trim();
+      const cleanJson = this.stripJsonCodeFence(text);
       return JSON.parse(cleanJson) as CareerSimulationData;
     } catch (error) {
       this.logger.error('Error generating career simulation:', error);
-      throw error;
+      this.logger.warn(`Using fallback career simulation for ${careerTitle}`);
+      return this.createFallbackCareerSimulation(careerTitle);
     }
+  }
+
+  private stripJsonCodeFence(text: string): string {
+    return text.replace(/```json|```/gi, '').trim();
+  }
+
+  private createFallbackCareerSimulation(careerTitle: string): CareerSimulationData {
+    const normalizedTitle = careerTitle.trim() || 'nghề nghiệp đã chọn';
+
+    return {
+      careerTitle: normalizedTitle,
+      levels: [
+        {
+          label: `Thực tập sinh ${normalizedTitle}`,
+          salaryRange: '3-6 triệu VND',
+          yearRange: '0-1 năm',
+          dailyTasks: [
+            `Tìm hiểu quy trình làm việc của nghề ${normalizedTitle}`,
+            'Hỗ trợ thu thập thông tin và chuẩn bị tài liệu',
+            'Tham gia các buổi hướng dẫn với mentor',
+            'Thực hiện các nhiệm vụ có phạm vi nhỏ và được giám sát',
+          ],
+          typicalSchedule: [
+            { time: '08:00', activity: 'Cập nhật kế hoạch trong ngày với mentor' },
+            { time: '10:00', activity: 'Nghiên cứu tài liệu và hỗ trợ các đầu việc cơ bản' },
+            { time: '14:00', activity: 'Thực hành nhiệm vụ được giao và xin phản hồi' },
+            { time: '17:00', activity: 'Tổng hợp kết quả và ghi chú bài học trong ngày' },
+          ],
+          challenges: [
+            'Cần thích nghi nhanh với công cụ và thuật ngữ chuyên môn',
+            'Kinh nghiệm thực tế còn hạn chế',
+            'Cần chủ động hỏi và tiếp nhận phản hồi',
+          ],
+          tips: [
+            'Ghi lại những câu hỏi phát sinh trong quá trình làm việc',
+            'Tập trung xây dựng nền tảng và thái độ chuyên nghiệp',
+            'Xin phản hồi thường xuyên để tiến bộ nhanh hơn',
+          ],
+        },
+        {
+          label: `Nhân viên Junior ${normalizedTitle}`,
+          salaryRange: '8-15 triệu VND',
+          yearRange: '1-3 năm',
+          dailyTasks: [
+            `Xử lý các nhiệm vụ chuyên môn cơ bản của vị trí ${normalizedTitle}`,
+            'Phối hợp với đồng đội để hoàn thành hạng mục dự án',
+            'Báo cáo tiến độ và rủi ro cho người phụ trách',
+            'Cải thiện kỹ năng thông qua các nhiệm vụ lặp lại',
+          ],
+          typicalSchedule: [
+            { time: '08:00', activity: 'Kiểm tra ưu tiên công việc và họp ngắn với nhóm' },
+            { time: '10:00', activity: 'Thực hiện nhiệm vụ chuyên môn chính' },
+            { time: '14:00', activity: 'Trao đổi với các bên liên quan và xử lý phản hồi' },
+            { time: '17:00', activity: 'Cập nhật tiến độ, tài liệu và kế hoạch ngày tiếp theo' },
+          ],
+          challenges: [
+            'Cần cân bằng tốc độ và độ chính xác',
+            'Gặp các tình huống mới chưa có nhiều kinh nghiệm',
+            'Cần học cách ưu tiên công việc',
+          ],
+          tips: [
+            'Xây dựng checklist cá nhân cho các nhiệm vụ lặp lại',
+            'Học cách trình bày vấn đề rõ ràng trước khi xin hỗ trợ',
+            'Chủ động nhận việc có độ khó tăng dần',
+          ],
+        },
+        {
+          label: `Chuyên viên Senior ${normalizedTitle}`,
+          salaryRange: '20-40 triệu VND',
+          yearRange: '3-6 năm',
+          dailyTasks: [
+            `Đảm nhận các bài toán phức tạp trong lĩnh vực ${normalizedTitle}`,
+            'Đánh giá chất lượng đầu ra và đưa ra khuyến nghị cải tiến',
+            'Hướng dẫn thành viên mới hoặc junior trong nhóm',
+            'Làm việc với quản lý để lập kế hoạch và giảm rủi ro',
+          ],
+          typicalSchedule: [
+            { time: '08:00', activity: 'Rà soát mục tiêu và các vấn đề ưu tiên cao' },
+            { time: '10:00', activity: 'Phân tích, ra quyết định và xử lý công việc chuyên sâu' },
+            { time: '14:00', activity: 'Review kết quả, hướng dẫn đồng đội và đồng bộ với các nhóm' },
+            { time: '17:00', activity: 'Tổng kết rủi ro, quyết định và bước tiếp theo' },
+          ],
+          challenges: [
+            'Phải đưa ra quyết định khi thông tin chưa đầy đủ',
+            'Cần đảm bảo chất lượng cho phạm vi công việc lớn hơn',
+            'Áp lực về tiến độ và tác động kinh doanh cao hơn',
+          ],
+          tips: [
+            'Rèn luyện tư duy hệ thống và khả năng phân tích rủi ro',
+            'Chia sẻ kiến thức để nâng mặt bằng năng lực của nhóm',
+            'Đo lường tác động công việc bằng kết quả cụ thể',
+          ],
+        },
+        {
+          label: `Lead/Manager ${normalizedTitle}`,
+          salaryRange: '45-80 triệu VND',
+          yearRange: '6+ năm',
+          dailyTasks: [
+            `Định hướng chiến lược và tiêu chuẩn cho nhóm ${normalizedTitle}`,
+            'Phân bổ nguồn lực và theo dõi mục tiêu quan trọng',
+            'Làm việc với lãnh đạo hoặc khách hàng về ưu tiên dài hạn',
+            'Phát triển năng lực đội ngũ và xử lý các điểm nghẽn',
+          ],
+          typicalSchedule: [
+            { time: '08:00', activity: 'Rà soát mục tiêu, chỉ số và ưu tiên của nhóm' },
+            { time: '10:00', activity: 'Họp chiến lược, ra quyết định và tháo gỡ khó khăn' },
+            { time: '14:00', activity: 'Làm việc với các bên liên quan và coaching thành viên' },
+            { time: '17:00', activity: 'Đánh giá tiến độ, rủi ro và điều chỉnh kế hoạch' },
+          ],
+          challenges: [
+            'Cần cân bằng mục tiêu kinh doanh và năng lực đội ngũ',
+            'Xử lý xung đột ưu tiên giữa nhiều bên liên quan',
+            'Chịu trách nhiệm về kết quả thay vì chỉ đầu ra cá nhân',
+          ],
+          tips: [
+            'Xây dựng hệ thống giao việc và phản hồi minh bạch',
+            'Tập trung vào kết quả có thể đo lường được',
+            'Phát triển kỹ năng lãnh đạo, giao tiếp và quản trị thay đổi',
+          ],
+        },
+      ],
+    };
   }
 
   async generateFullCareerData(title: string): Promise<Record<string, any>> {

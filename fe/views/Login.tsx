@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
 import { authService } from '@/lib/auth.service';
+import { getHomePathByRole } from '@/lib/role-redirect';
 import { motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import Image from 'next/image';
@@ -61,7 +62,7 @@ const Login = () => {
 
     try {
       const result = await login({ email, password });
-      const nextPath = result.redirectTo?.startsWith('/') ? result.redirectTo : '/dashboard';
+      const nextPath = getHomePathByRole(result.role);
       router.push(nextPath);
     } catch (error) {
       if (error instanceof ApiError) {

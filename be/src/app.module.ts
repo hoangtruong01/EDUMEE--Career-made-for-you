@@ -28,6 +28,7 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { AiModule } from './modules/ai/ai.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -75,6 +76,7 @@ import { AppService } from './app.service';
     AiModule,
     PaymentModule,
     AdminModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

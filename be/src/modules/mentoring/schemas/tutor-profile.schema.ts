@@ -124,7 +124,7 @@ export class TutorProfile {
     
     sessionPreferences: {
       preferredDuration: number[]; // [60, 90] minutes
-      sessionTypes: ('career_guidance' | 'skill_coaching' | 'interview_prep' | 'project_review' | 'general_mentoring')[];
+      sessionTypes: ('career_guidance' | 'skill_coaching' | 'interview_preparation' | 'project_review' | 'general_mentoring')[];
       communicationMethods: ('video' | 'voice' | 'chat' | 'screen_sharing')[];
     };
     
@@ -154,9 +154,9 @@ export class TutorProfile {
     freeSessionOffered: boolean;
     freeSessionDuration?: number;
     
-    paymentMethods: string[];
-    cancellationPolicy: string;
-    reschedulePolicy: string;
+    paymentMethods?: string[];
+    cancellationPolicy?: string;
+    reschedulePolicy?: string;
   };
 
   // Verification and credentials

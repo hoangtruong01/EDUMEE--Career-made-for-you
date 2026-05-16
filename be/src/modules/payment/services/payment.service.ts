@@ -30,6 +30,11 @@ import {
   BookingStatus,
 } from '../../mentoring/schemas/booking-session.schema';
 import {
+  MentorAvailabilitySlot,
+  MentorAvailabilitySlotDocument,
+  MentorAvailabilitySlotStatus,
+} from '../../mentoring/schemas/mentor-availability-slot.schema';
+import {
   DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS,
   SepayPaymentMethod,
 } from '../payment.constants';
@@ -45,6 +50,8 @@ import {
   PaymentTransactionDocument,
   PaymentTransactionStatus,
 } from '../schema/payment-transaction.schema';
+import { NotificationService } from '../../notifications/services';
+import { NotificationType } from '../../notifications/schemas';
 
 type CheckoutFieldValue = string | number | undefined;
 
@@ -80,9 +87,12 @@ export class PaymentService {
     private readonly paymentTransactionModel: Model<PaymentTransactionDocument>,
     @InjectModel(BookingSession.name)
     private readonly bookingSessionModel: Model<BookingSessionDocument>,
+    @InjectModel(MentorAvailabilitySlot.name)
+    private readonly mentorAvailabilitySlotModel: Model<MentorAvailabilitySlotDocument>,
     private readonly aiPlanService: AiPlanService,
     private readonly aiSubscriptionService: AiSubscriptionService,
     private readonly configService: ConfigService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async purchaseAiPlan(
@@ -970,12 +980,16 @@ export class PaymentService {
       return;
     }
 
-    await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, {
+    const updated = await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, {
       status: BookingStatus.PENDING,
       'paymentInfo.paymentStatus': 'paid',
       'paymentInfo.paymentDate': payment.paidAt,
       'paymentInfo.transactionId': payment._id.toString(),
-    }).exec();
+    }, { new: true }).exec();
+
+    if (updated) {
+      await this.notifyMentorBookingPending(updated);
+    }
   }
 
   private async updateMentorBookingPaymentState(
@@ -984,10 +998,14 @@ export class PaymentService {
   ): Promise<void> {
     if (!payment.bookingSessionId) return;
 
+    const booking = await this.bookingSessionModel.findById(payment.bookingSessionId).exec();
     const update: Record<string, unknown> = {
       'paymentInfo.paymentStatus': paymentStatus,
       'paymentInfo.transactionId': payment._id.toString(),
     };
+    if (booking?.status === BookingStatus.AWAITING_PAYMENT) {
+      update.status = BookingStatus.CANCELLED_BY_MENTEE;
+    }
     if (paymentStatus === 'refunded') {
       update['paymentInfo.refundInfo'] = {
         refundAmount: payment.amount,
@@ -998,6 +1016,20 @@ export class PaymentService {
     }
 
     await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, update).exec();
+    if (booking?.status === BookingStatus.AWAITING_PAYMENT) {
+      await this.mentorAvailabilitySlotModel
+        .findOneAndUpdate(
+          {
+            bookingSessionId: payment.bookingSessionId,
+            status: MentorAvailabilitySlotStatus.HELD,
+          },
+          {
+            $set: { status: MentorAvailabilitySlotStatus.AVAILABLE },
+            $unset: { bookingSessionId: 1, heldBy: 1, heldUntil: 1 },
+          },
+        )
+        .exec();
+    }
   }
 
   private async refreshCheckoutTokenForPayment(
@@ -1386,5 +1418,32 @@ export class PaymentService {
 
   private generateCheckoutReference(): string {
     return `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+
+  private async notifyMentorBookingPending(booking: BookingSessionDocument): Promise<void> {
+    const start = new Date(booking.schedulingDetails.requestedDateTime).toLocaleString('vi-VN');
+    const payload = {
+      bookingId: booking._id.toString(),
+      status: booking.status,
+      sessionType: booking.sessionType,
+      requestedDateTime: booking.schedulingDetails.requestedDateTime,
+    };
+
+    await this.notificationService.createMany([
+      {
+        recipientId: booking.mentorId,
+        type: NotificationType.MENTOR_BOOKING_PENDING,
+        title: 'Có booking mới cần xác nhận',
+        body: `Học viên đã thanh toán và đặt phiên mentor lúc ${start}.`,
+        payload,
+      },
+      {
+        recipientId: booking.menteeId,
+        type: NotificationType.MENTOR_BOOKING_PENDING,
+        title: 'Booking đang chờ mentor xác nhận',
+        body: `Booking lúc ${start} đã được gửi tới mentor.`,
+        payload,
+      },
+    ]);
   }
 }

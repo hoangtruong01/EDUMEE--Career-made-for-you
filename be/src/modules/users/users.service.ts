@@ -14,8 +14,7 @@ import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserDocument } from './schemas/user.schema';
 import { CommunityPost, CommunityPostDocument } from '../community/schemas/community-post.schema';
-import { MediaService } from '../media/services/media.service';
-import type { UploadApiResponse } from 'cloudinary';
+import { MediaService, type UploadedImageFile } from '../media/services/media.service';
 
 @Injectable()
 export class UsersService {
@@ -369,9 +368,9 @@ export class UsersService {
     return { access_token };
   }
 
-  async updateAvatar(userId: string, file: Express.Multer.File) {
+  async updateAvatar(userId: string, file: UploadedImageFile) {
     const uploadResult = await this.mediaService.uploadImage(file);
-    const avatarUrl = (uploadResult as UploadApiResponse).secure_url;
+    const avatarUrl = uploadResult.secure_url;
 
     const userObjectId = new Types.ObjectId(userId);
 

@@ -3,6 +3,7 @@
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
 import { profileService } from '@/lib/profile.service';
+import { MENTOR_HOME_PATH } from '@/lib/role-redirect';
 import { userService } from '@/lib/user.service';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -148,6 +149,16 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
 
       if (!profileGate.needsProfile && !profileGate.onboardingCompleted && !isSurveyPage) {
         router.replace('/onboarding');
+        return;
+      }
+
+      if (
+        role === 'mentor' &&
+        pathname === '/dashboard' &&
+        !profileGate.needsProfile &&
+        profileGate.onboardingCompleted
+      ) {
+        router.replace(MENTOR_HOME_PATH);
       }
     }
   }, [

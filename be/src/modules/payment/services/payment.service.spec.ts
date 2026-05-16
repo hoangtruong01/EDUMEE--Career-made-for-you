@@ -7,12 +7,17 @@ import { PaymentTransaction } from '../schema/payment-transaction.schema';
 import { AiPlanService } from '../../ai/services/ai-plan.service';
 import { AiSubscriptionService } from '../../ai/services/ai-subscription.service';
 import { BillingCycle } from '../../users/schemas/user-subscriptions';
+import { BookingSession } from '../../mentoring/schemas/booking-session.schema';
+import { MentorAvailabilitySlot } from '../../mentoring/schemas/mentor-availability-slot.schema';
+import { NotificationService } from '../../notifications/services';
 
 describe('PaymentService', () => {
   let service: PaymentService;
 
   const paymentModel = {};
   const paymentTransactionModel = {};
+  const bookingSessionModel = {};
+  const mentorAvailabilitySlotModel = {};
 
   const aiPlanService = {
     findOne: jest.fn(),
@@ -27,6 +32,9 @@ describe('PaymentService', () => {
   const configService = {
     get: jest.fn(),
   };
+  const notificationService = {
+    createMany: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -36,9 +44,12 @@ describe('PaymentService', () => {
         PaymentService,
         { provide: getModelToken(Payment.name), useValue: paymentModel },
         { provide: getModelToken(PaymentTransaction.name), useValue: paymentTransactionModel },
+        { provide: getModelToken(BookingSession.name), useValue: bookingSessionModel },
+        { provide: getModelToken(MentorAvailabilitySlot.name), useValue: mentorAvailabilitySlotModel },
         { provide: AiPlanService, useValue: aiPlanService },
         { provide: AiSubscriptionService, useValue: aiSubscriptionService },
         { provide: ConfigService, useValue: configService },
+        { provide: NotificationService, useValue: notificationService },
       ],
     }).compile();
 

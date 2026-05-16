@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/context/auth-context';
+import { getHomePathByRole } from '@/lib/role-redirect';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -57,7 +58,7 @@ export default function OAuthSuccessView() {
     if (isNewUser) {
       router.replace('/complete-profile');
     } else {
-      router.replace(role === 'admin' ? '/admin/dashboard' : '/dashboard');
+      router.replace(getHomePathByRole(role));
     }
   }, [accessToken, completeOAuthLogin, error, refreshToken, roleFromQuery, router, searchParams]);
 

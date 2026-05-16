@@ -72,6 +72,12 @@ export class TutorProfileController {
     return this.tutorProfileService.searchTutors(criteria);
   }
 
+  @Get('me')
+  @ApiOperation({ summary: 'Get tutor profile for current user' })
+  findMe(@CurrentUser() user: AuthUserLike) {
+    return this.tutorProfileService.findByUser(getAuthUserId(user));
+  }
+
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get tutor profile by user ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Profile retrieved successfully' })

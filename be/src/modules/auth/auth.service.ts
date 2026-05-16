@@ -539,6 +539,8 @@ export class AuthService {
     switch (role) {
       case UserRole.ADMIN:
         return '/admin/dashboard';
+      case UserRole.MENTOR:
+        return '/mentor-matching';
       default:
         return '/dashboard';
     }
