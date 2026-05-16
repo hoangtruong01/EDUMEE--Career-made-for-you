@@ -45,10 +45,16 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const response = await api.post('/auth/login', { email, password });
-      console.log('Login success');
-      const { accessToken } = response.data;
-      await setAuthToken(accessToken);
-      router.replace('/(tabs)');
+      console.log('Login response:', JSON.stringify(response.data));
+      
+      const token = response.data?.data?.result?.access_token || response.data?.data?.access_token;
+      
+      if (token) {
+        await setAuthToken(token);
+        router.replace('/(tabs)');
+      } else {
+        throw new Error('Token không tìm thấy trong phản hồi từ server');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       const message = error.response?.data?.message || 'Đăng nhập thất bại. Kiểm tra lại kết nối mạng hoặc Backend.';
@@ -124,7 +130,7 @@ export default function LoginScreen() {
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>Chưa có tài khoản?</Text>
-              <Pressable onPress={() => console.log('Sign up')}>
+              <Pressable onPress={() => router.push('/register')}>
                 <Text style={styles.signUpLink}> Đăng ký ngay</Text>
               </Pressable>
             </View>

@@ -26,8 +26,9 @@ export class RegisterDto {
   @IsString()
   name!: string;
 
-  @ApiProperty({example:'string'})
-  @IsNotEmpty()
+  @ApiProperty({example:'Nam'})
+  @IsNotEmpty({ message: 'Giới tính không được để trống' })
+  @IsString()
   gender!: string;
 
   @ApiProperty({ example: 'string' })
@@ -47,7 +48,8 @@ export class RegisterDto {
 
 
   @ApiProperty({ example: 'string' })
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Xác nhận mật khẩu không được để trống' })
+  @IsString()
   confirmPassword!: string; // Service sẽ check confirm_password trùng với password
 
 

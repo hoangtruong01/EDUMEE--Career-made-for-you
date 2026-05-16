@@ -34,10 +34,16 @@ export default function AdminLoginScreen() {
     setIsLoading(true);
     try {
       const response = await api.post('/auth/admin-login', { email, password });
-      console.log('Admin login success');
-      const { accessToken } = response.data;
-      await setAuthToken(accessToken);
-      router.replace('/(tabs)');
+      console.log('Admin login response:', JSON.stringify(response.data));
+      
+      const token = response.data?.data?.result?.access_token || response.data?.data?.access_token;
+      
+      if (token) {
+        await setAuthToken(token);
+        router.replace('/(tabs)');
+      } else {
+        throw new Error('Token không tìm thấy trong phản hồi từ server');
+      }
     } catch (error: any) {
       console.error('Admin login error:', error);
       const message = error.response?.data?.message || 'Đăng nhập Admin thất bại. Kiểm tra Backend.';

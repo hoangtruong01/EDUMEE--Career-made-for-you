@@ -8,23 +8,59 @@ import {
   ChevronRight, 
   Sparkles,
   TrendingUp,
-  BookOpen
+  BookOpen,
+  LogOut
 } from 'lucide-react-native';
 
+import { useRouter } from 'expo-router';
+
+import React, { useState, useEffect } from 'react';
+import { api, setAuthToken } from '../../src/services/api';
+
 export default function TabOneScreen() {
+  const router = useRouter();
+  const [userProfile, setUserProfile] = useState<any>(null);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await api.get('/users/me');
+      setUserProfile(response.data.data);
+    } catch (error) {
+      console.error('Fetch profile error:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await setAuthToken(null);
+      router.replace('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeText}>Chào buổi sáng,</Text>
-          <Text style={styles.userName}>Hoàng Nguyễn 👋</Text>
+          <Text style={styles.userName}>{userProfile?.name || 'Bạn'} 👋</Text>
         </View>
-        <TouchableOpacity style={styles.profileButton}>
-          <Image 
-            source={{ uri: 'https://i.pravatar.cc/100' }} 
-            style={styles.avatar}
-          />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <LogOut size={20} color={COLORS.muted} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileButton}>
+            <Image 
+              source={{ uri: userProfile?.avatar || 'https://i.pravatar.cc/100' }} 
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Hero Card */}
@@ -32,7 +68,7 @@ export default function TabOneScreen() {
         <View style={styles.heroContent}>
           <Text style={styles.heroTitle}>Tiềm năng của bạn là vô hạn</Text>
           <Text style={styles.heroSubtitle}>Hoàn thành bài trắc nghiệm để khám phá ngay!</Text>
-          <TouchableOpacity style={styles.heroButton}>
+          <TouchableOpacity style={styles.heroButton} onPress={() => router.push('/holland-test')}>
             <Text style={styles.heroButtonText}>Bắt đầu ngay</Text>
             <Sparkles size={16} color={COLORS.foreground} style={{ marginLeft: 4 }} />
           </TouchableOpacity>
@@ -45,7 +81,10 @@ export default function TabOneScreen() {
       {/* Bento Grid */}
       <View style={styles.bentoGrid}>
         <View style={styles.bentoRow}>
-          <TouchableOpacity style={[styles.bentoCard, { flex: 2, backgroundColor: '#4F46E5' }]}>
+          <TouchableOpacity 
+            onPress={() => router.push('/holland-test')}
+            style={[styles.bentoCard, { flex: 2, backgroundColor: '#4F46E5' }]}
+          >
             <Target size={32} color="#fff" />
             <Text style={styles.bentoCardTitle}>Định hướng nghề nghiệp</Text>
             <Text style={styles.bentoCardSubtitle}>Tìm kiếm con đường phù hợp</Text>
@@ -63,7 +102,10 @@ export default function TabOneScreen() {
             <Text style={styles.bentoCardTitle}>Lộ trình</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.bentoCard, { flex: 2, backgroundColor: '#10B981' }]}>
+          <TouchableOpacity 
+            onPress={() => router.push('/(tabs)/two')}
+            style={[styles.bentoCard, { flex: 2, backgroundColor: '#10B981' }]}
+          >
             <Users size={32} color="#fff" />
             <Text style={styles.bentoCardTitle}>Cộng đồng Mentors</Text>
             <Text style={styles.bentoCardSubtitle}>Kết nối với chuyên gia</Text>
@@ -99,6 +141,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: COLORS.foreground,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   profileButton: {
     width: 48,
