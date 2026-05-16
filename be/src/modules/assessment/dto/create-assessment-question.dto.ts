@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { QuestionType, AssessmentDimension } from '../schemas/assessment-question.schema';
-import { ApiProperty } from '@nestjs/swagger/dist/decorators/api-property.decorator';
+import { ApiProperty } from '@nestjs/swagger';
 
 class QuestionOptionDto {
 
