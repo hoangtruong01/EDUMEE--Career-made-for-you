@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -67,7 +68,9 @@ const Login = () => {
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(error.message);
+        toast.error(error.message);
       } else {
+        toast.error('Không thể đăng nhập lúc này. Vui lòng thử lại.');
         setErrorMessage('Không thể đăng nhập lúc này. Vui lòng thử lại.');
       }
     } finally {

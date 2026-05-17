@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/context/auth-context';
+import { userService, type UserMe } from '@/lib/user.service';
 import { cn } from '@/lib/utils';
 import {
   BarChart3,
@@ -15,10 +16,12 @@ import {
   LogOut,
   MessageSquare,
   Settings,
+  User,
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import ThemeToggle from './ThemeToggle';
 
@@ -41,7 +44,13 @@ const footerItems = [{ href: '/', label: 'Về trang chủ', icon: Home }];
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { accessToken, logout } = useAuth();
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    userService.getMe(accessToken).then(setUserMe).catch(() => setUserMe(null));
+  }, [accessToken]);
 
   const handleLogout = async () => {
     await logout();
@@ -114,15 +123,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="flex items-center gap-6">
               <ThemeToggle />
               
-              <div className="flex items-center gap-3">
+              <Link href="/profile" className="flex items-center gap-3 rounded-xl transition hover:opacity-80">
                 <div className="text-right">
-                  <p className="text-sm leading-tight font-semibold">Admin User</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">admin@careerai.com</p>
+                  <p className="text-sm leading-tight font-semibold">{userMe?.name || 'Admin Edumee'}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{userMe?.email || 'admin@edumee.vn'}</p>
                 </div>
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 text-sm font-bold text-white shadow-lg shadow-violet-500/20">
-                  A
+                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-violet-500 text-sm font-bold text-white shadow-lg shadow-violet-500/20">
+                  {userMe?.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={userMe.avatar} alt="Ảnh đại diện admin" className="h-full w-full object-cover" />
+                  ) : userMe?.name ? (
+                    userMe.name.charAt(0).toUpperCase()
+                  ) : (
+                    <User className="h-4 w-4" />
+                  )}
                 </div>
-              </div>
+              </Link>
             </div>
           </header>
 

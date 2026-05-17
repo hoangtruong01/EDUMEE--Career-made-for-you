@@ -47,11 +47,11 @@ function statusLabel(status: string) {
 function primaryExpertise(profile: TutorProfile) {
   const careers = profile.mentoringExpertise?.careerExpertise?.map((item) => item.careerTitle) || [];
   const skills = profile.mentoringExpertise?.skillExpertise?.map((item) => item.skillName) || [];
-  return [...careers, ...skills].slice(0, 4).join(', ') || 'Chua cap nhat';
+  return [...careers, ...skills].slice(0, 4).join(', ') || 'Chưa cập nhật';
 }
 
 function profileTitle(profile: TutorProfile) {
-  return profile.professionalBackground?.currentPosition || 'Mentor profile';
+  return profile.professionalBackground?.currentPosition || 'Profile mentor';
 }
 
 function ProfileStatusBadge({ status }: { status: string }) {
@@ -83,7 +83,7 @@ export default function AdminMentorsPage() {
       setProfiles([...pending.data, ...active.data]);
       setBookings(bookingData.data);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Khong the tai du lieu mentor.');
+      setMessage(error instanceof Error ? error.message : 'Không thể tải dữ liệu mentor.');
     } finally {
       setIsLoading(false);
     }
@@ -115,28 +115,28 @@ export default function AdminMentorsPage() {
   const updateStatus = async (profile: TutorProfile, status: TutorStatus) => {
     const token = authStorage.getAccessToken();
     const reason =
-      status === 'rejected' ? window.prompt('Ly do tu choi ho so mentor?') || 'Rejected by admin' : undefined;
+      status === 'rejected' ? window.prompt('Lý do từ chối hồ sơ mentor?') || 'Admin từ chối' : undefined;
     try {
       await adminMentorService.updateProfileStatus(token, profile.id, status, reason);
-      setMessage(status === 'active' ? 'Da duyet mentor va cap role mentor.' : 'Da cap nhat trang thai mentor.');
+      setMessage(status === 'active' ? 'Đã duyệt mentor và cấp role mentor.' : 'Đã cập nhật trạng thái mentor.');
       await loadData();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Khong the cap nhat trang thai.');
+      setMessage(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái.');
     }
   };
 
   return (
     <div className="w-full">
       <AdminSectionHeader
-        title="Quan ly Mentor & Booking"
-        subtitle="Duyet ho so mentor, theo doi thanh toan va chat luong cac buoi tu van 1-1."
+        title="Quản lý Mentor & Booking"
+        subtitle="Duyệt hồ sơ mentor, theo dõi thanh toán và chất lượng các buổi tư vấn 1-1."
       />
 
       <div className="mb-6 flex gap-4 border-b border-slate-200 dark:border-slate-800">
         <TabItem
           active={activeTab === 'pending'}
           onClick={() => setActiveTab('pending')}
-          label="Cho duyet"
+          label="Chờ duyệt"
           badge={pendingProfiles.length.toString()}
         />
         <TabItem active={activeTab === 'approved'} onClick={() => setActiveTab('approved')} label="Mentor active" />
@@ -160,7 +160,7 @@ export default function AdminMentorsPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-violet-400 dark:border-slate-800 dark:bg-slate-900"
-                placeholder="Tim mentor, cong ty, ky nang..."
+                placeholder="Tìm mentor, công ty, kỹ năng..."
               />
             </div>
           </div>
@@ -213,7 +213,7 @@ function PendingMentors({
   onUpdateStatus: (profile: TutorProfile, status: TutorStatus) => void;
 }) {
   if (mentors.length === 0) {
-    return <EmptyState text="Khong co ho so mentor nao dang cho duyet." />;
+    return <EmptyState text="Không có hồ sơ mentor nào đang chờ duyệt." />;
   }
 
   return (
@@ -237,18 +237,18 @@ function PendingMentors({
             </div>
 
             <div className="mb-5 grid gap-3 sm:grid-cols-2">
-              <InfoField label="Chuyen mon" value={primaryExpertise(profile)} />
+              <InfoField label="Chuyên môn" value={primaryExpertise(profile)} />
               <InfoField
-                label="Kinh nghiem"
-                value={`${profile.professionalBackground?.yearsOfExperience || 0} nam`}
+                label="Kinh nghiệm"
+                value={`${profile.professionalBackground?.yearsOfExperience || 0} năm`}
               />
               <InfoField
-                label="Gia tu van"
+                label="Giá tư vấn"
                 value={`${profile.pricing?.sessionRates?.[0]?.pricePerSession?.toLocaleString('vi-VN') || 0} ${
                   profile.pricing?.currency || 'VND'
                 }`}
               />
-              <InfoField label="Ngay nop" value={profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('vi-VN') : 'N/A'} />
+              <InfoField label="Ngày nộp" value={profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('vi-VN') : 'N/A'} />
             </div>
           </div>
 
@@ -257,13 +257,13 @@ function PendingMentors({
               className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-slate-800"
               type="button"
             >
-              Xem ho so
+              Xem hồ sơ
             </button>
             <button
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white transition hover:bg-emerald-600"
               onClick={() => onUpdateStatus(profile, 'active')}
               type="button"
-              title="Duyet"
+              title="Duyệt"
             >
               <Check className="h-5 w-5" />
             </button>
@@ -271,7 +271,7 @@ function PendingMentors({
               className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500 text-white transition hover:bg-rose-600"
               onClick={() => onUpdateStatus(profile, 'rejected')}
               type="button"
-              title="Tu choi"
+              title="Từ chối"
             >
               <X className="h-5 w-5" />
             </button>
@@ -290,7 +290,7 @@ function MentorList({
   onUpdateStatus: (profile: TutorProfile, status: TutorStatus) => void;
 }) {
   if (mentors.length === 0) {
-    return <EmptyState text="Chua co mentor active." />;
+    return <EmptyState text="Chưa có mentor active." />;
   }
 
   return (
@@ -299,10 +299,10 @@ function MentorList({
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
           <tr>
             <th className="px-6 py-4 text-left">Mentor</th>
-            <th className="px-6 py-4 text-left">Chuyen mon</th>
-            <th className="px-6 py-4 text-center">Danh gia</th>
-            <th className="px-6 py-4 text-center">Buoi tu van</th>
-            <th className="px-6 py-4 text-right">Trang thai</th>
+            <th className="px-6 py-4 text-left">Chuyên môn</th>
+            <th className="px-6 py-4 text-center">Đánh giá</th>
+            <th className="px-6 py-4 text-center">Buổi tư vấn</th>
+            <th className="px-6 py-4 text-right">Trạng thái</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -325,7 +325,7 @@ function MentorList({
               <td className="px-6 py-4">
                 <div className="flex items-center justify-center gap-1 font-bold text-amber-500">
                   <Star className="h-4 w-4 fill-current" />
-                  {profile.performanceMetrics?.ratings?.averageRating?.toFixed(1) || 'Moi'}
+                  {profile.performanceMetrics?.ratings?.averageRating?.toFixed(1) || 'Mới'}
                 </div>
               </td>
               <td className="px-6 py-4 text-center font-bold text-slate-700 dark:text-slate-300">
@@ -339,7 +339,7 @@ function MentorList({
                     type="button"
                     onClick={() => onUpdateStatus(profile, 'suspended')}
                   >
-                    Tam khoa
+                    Tạm khóa
                   </button>
                 </div>
               </td>
@@ -360,31 +360,31 @@ function BookingList({ bookings }: { bookings: BookingSession[] }) {
       <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
         <div className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
           <ShieldCheck className="h-4 w-4 text-violet-600" />
-          Payment va booking status
+          Payment và booking status
         </div>
         <select
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as 'all' | BookingStatus)}
           className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none dark:border-slate-800 dark:bg-slate-900"
         >
-          <option value="all">Tat ca</option>
-          <option value="awaiting_payment">Cho thanh toan</option>
-          <option value="pending">Cho xac nhan</option>
-          <option value="confirmed">Da xac nhan</option>
-          <option value="completed">Da hoan thanh</option>
-          <option value="cancelled_by_mentee">Da huy</option>
+          <option value="all">Tất cả</option>
+          <option value="awaiting_payment">Chờ thanh toán</option>
+          <option value="pending">Chờ xác nhận</option>
+          <option value="confirmed">Đã xác nhận</option>
+          <option value="completed">Đã hoàn thành</option>
+          <option value="cancelled_by_mentee">Đã hủy</option>
         </select>
       </div>
       {filtered.length === 0 ? (
-        <EmptyState text="Khong co booking phu hop." />
+        <EmptyState text="Không có booking phù hợp." />
       ) : (
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
             <tr>
               <th className="px-6 py-4 text-left">Booking</th>
-              <th className="px-6 py-4 text-left">Thoi gian</th>
-              <th className="px-6 py-4 text-left">Thanh toan</th>
-              <th className="px-6 py-4 text-left">Trang thai</th>
+              <th className="px-6 py-4 text-left">Thời gian</th>
+              <th className="px-6 py-4 text-left">Thanh toán</th>
+              <th className="px-6 py-4 text-left">Trạng thái</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">

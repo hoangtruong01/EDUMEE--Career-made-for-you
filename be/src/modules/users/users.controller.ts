@@ -70,12 +70,6 @@ export class UsersController {
     if (!file) {
       throw new BadRequestException('Không tìm thấy file ảnh');
     }
-    console.log('Received file:', {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size,
-      hasBuffer: !!file.buffer,
-    });
     try {
       return await this.usersService.updateAvatar(user.userId, file);
     } catch (error) {

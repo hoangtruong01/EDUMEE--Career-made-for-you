@@ -69,6 +69,23 @@ export class AuthService {
     private mailService: MailService,
   ) {}
 
+  private shouldSyncGoogleAvatar(currentAvatar: string | undefined, googlePicture: string): boolean {
+    if (!googlePicture) return false;
+    if (!currentAvatar) return true;
+    if (currentAvatar === googlePicture) return false;
+
+    return this.isGoogleAvatarUrl(currentAvatar);
+  }
+
+  private isGoogleAvatarUrl(avatar: string): boolean {
+    try {
+      const hostname = new URL(avatar).hostname.toLowerCase();
+      return hostname === 'googleusercontent.com' || hostname.endsWith('.googleusercontent.com');
+    } catch {
+      return false;
+    }
+  }
+
   // =========================================================================
   // 1. REGISTER LOGIC (Giữ bản của bạn)
   // =========================================================================
@@ -404,9 +421,19 @@ export class AuthService {
     let user = await this.userModel.findOne({ email: normalizedEmail });
     let isNewUser = 0;
 
-    if (user && user.verify !== UserVerifyStatus.Verified) {
-      user.verify = UserVerifyStatus.Verified;
-      await user.save();
+    if (user) {
+      let shouldSaveUser = false;
+      if (user.verify !== UserVerifyStatus.Verified) {
+        user.verify = UserVerifyStatus.Verified;
+        shouldSaveUser = true;
+      }
+      if (this.shouldSyncGoogleAvatar(user.avatar, userInfo.picture)) {
+        user.avatar = userInfo.picture;
+        shouldSaveUser = true;
+      }
+      if (shouldSaveUser) {
+        await user.save();
+      }
     }
 
     if (!user) {
@@ -422,6 +449,7 @@ export class AuthService {
         date_of_birth: new Date(),
         verify: UserVerifyStatus.Verified,
         username: `user${userId.toString()}`,
+        avatar: userInfo.picture || '',
         role: UserRole.USER,
         login_type: LoginType.GOOGLE,
       });
@@ -439,7 +467,7 @@ export class AuthService {
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('jwt.accessTokenSecret') || 'default_secret',
         expiresIn: (this.configService.get<string>('jwt.accessTokenExpireIn') ||
-          '15m') as SignOptions['expiresIn'],
+          '1h') as SignOptions['expiresIn'],
       }),
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('jwt.secret') || 'default_secret',

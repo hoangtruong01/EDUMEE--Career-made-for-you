@@ -59,6 +59,9 @@ const Analyzing = ({ progress = 0 }: { progress?: number }) => {
   );
 };
 
+const getSessionId = (session: { id?: string; _id?: string } | undefined): string =>
+  session?.id || session?._id || '';
+
 const PersonalityTest = () => {
   const { accessToken, isHydrated, isAuthenticated, setOnboardingCompleted } = useAuth();
 
@@ -88,12 +91,19 @@ const PersonalityTest = () => {
         }
         setQuestions(fetchedQuestions);
 
-        const session = await assessmentService.startSession(accessToken).catch(async () => {
+        let session = await assessmentService.startSession(accessToken);
+        if (session?.status && session.status !== 'in_progress') {
           const sessions = await assessmentService.listSessions(accessToken);
-          return sessions.find((s) => s.status === 'in_progress') || sessions[0];
-        });
+          const activeSession = sessions.find((s) => s.status === 'in_progress');
 
-        const resolvedSessionId = session?.id || session?._id;
+          if (!activeSession) {
+            throw new Error('Không có phiên làm bài đang hoạt động. Vui lòng bắt đầu lại.');
+          }
+
+          session = activeSession;
+        }
+
+        const resolvedSessionId = getSessionId(session);
         if (!resolvedSessionId) {
           throw new Error('Không tạo được phiên làm bài.');
         }
@@ -143,17 +153,17 @@ const PersonalityTest = () => {
       setAnalyzingProgress(35);
       await assessmentService.submitBulkAnswers(accessToken, payload);
 
-      setAnalyzingProgress(55);
-      await assessmentService.finishSession(accessToken, sessionId);
-
-      setAnalyzingProgress(75);
+      setAnalyzingProgress(60);
       await assessmentService.generateMyAnalysis(accessToken);
+
+      setAnalyzingProgress(80);
+      await assessmentService.finishSession(accessToken, sessionId);
 
       setAnalyzingProgress(95);
 
       const results = await assessmentService.getMyResults(accessToken);
       if (!results.length) {
-        throw new Error('AI chua tra ket qua. Vui long thu lai.');
+        throw new Error('AI chưa trả kết quả. Vui lòng thử lại.');
       }
 
       // Persist onboarding completion and unlock the platform immediately
@@ -195,7 +205,7 @@ const PersonalityTest = () => {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground text-sm">Dang tai bo cau hoi...</p>
+        <p className="text-muted-foreground text-sm">Đang tải bộ câu hỏi...</p>
       </div>
     );
   }
@@ -204,7 +214,7 @@ const PersonalityTest = () => {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-destructive text-sm">
-          {errorMessage || 'Khong co cau hoi de hien thi.'}
+          {errorMessage || 'Không có câu hỏi để hiển thị.'}
         </p>
       </div>
     );

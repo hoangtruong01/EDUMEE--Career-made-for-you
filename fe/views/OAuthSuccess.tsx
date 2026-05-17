@@ -4,6 +4,7 @@ import { useAuth } from '@/context/auth-context';
 import { getHomePathByRole } from '@/lib/role-redirect';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 function decodeRoleFromToken(token: string): string {
   try {
@@ -32,6 +33,10 @@ export default function OAuthSuccessView() {
   const refreshToken = useMemo(() => searchParams.get('refresh_token') || '', [searchParams]);
   const roleFromQuery = useMemo(() => searchParams.get('role') || '', [searchParams]);
   const error = useMemo(() => searchParams.get('error') || '', [searchParams]);
+
+  useEffect(() => {
+    if (errorMessage) toast.error(errorMessage);
+  }, [errorMessage]);
 
   useEffect(() => {
     if (error) {

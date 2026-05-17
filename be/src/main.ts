@@ -6,6 +6,26 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
+const LOOPBACK_ORIGIN_PATTERN =
+  /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/;
+
+function parseCorsOrigins(value: string): string[] {
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function isAllowedCorsOrigin(
+  origin: string | undefined,
+  configuredOrigins: string[],
+): boolean {
+  if (!origin) return true;
+  if (configuredOrigins.includes('*')) return true;
+  if (configuredOrigins.includes(origin)) return true;
+  return LOOPBACK_ORIGIN_PATTERN.test(origin);
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
@@ -16,6 +36,7 @@ async function bootstrap() {
     'app.corsOrigin',
     'http://localhost:3000',
   );
+  const configuredCorsOrigins = parseCorsOrigins(corsOrigin);
   const enableSwagger = configService.get<boolean>('app.enableSwagger', true);
   const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
 
@@ -47,7 +68,12 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: [/localhost:\d+$/, corsOrigin],
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      callback(null, isAllowedCorsOrigin(origin, configuredCorsOrigins));
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   });

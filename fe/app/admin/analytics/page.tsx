@@ -1,113 +1,106 @@
 'use client';
 
 import { AdminPanel, AdminSectionHeader, AdminStatCard } from '@/components/admin/AdminPrimitives';
+import { adminService, type AdminAnalyticsResponse } from '@/lib/admin.service';
+import { authStorage } from '@/lib/auth-storage';
 import { cn } from '@/lib/utils';
 import { CalendarClock, Download, Gauge, Target, Users } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-const stats = [
-  {
-    title: 'Tổng lượt truy cập',
-    value: '148,253',
-    delta: '+18.2%',
-    icon: Gauge,
-    iconClassName: 'bg-violet-500',
-  },
-  {
-    title: 'Người dùng hoạt động',
-    value: '9,842',
-    delta: '+12.5%',
-    icon: Users,
-    iconClassName: 'bg-emerald-500',
-  },
-  {
-    title: 'Tỷ lệ hoàn thành test',
-    value: '78.3%',
-    delta: '+5.4%',
-    icon: Target,
-    iconClassName: 'bg-sky-500',
-  },
-  {
-    title: 'Đặt lịch mentor',
-    value: '1,632',
-    delta: '-3.1%',
-    deltaType: 'down' as const,
-    icon: CalendarClock,
-    iconClassName: 'bg-orange-500',
-  },
-];
+type AnalyticsRange = '6m' | '12m';
 
-const monthlyPointsByRange = {
-  '6m': [26, 34, 42, 50, 58, 66],
-  '12m': [20, 26, 34, 42, 50, 58, 66, 74, 73, 71, 73, 76],
-};
-const weeklyBars = [420, 560, 490, 620, 710, 680];
-const sectors = [
-  { name: 'Công nghệ', value: 35, color: 'bg-violet-500' },
-  { name: 'Thiết kế', value: 22, color: 'bg-indigo-400' },
-  { name: 'Marketing', value: 18, color: 'bg-sky-500' },
-  { name: 'Tài chính', value: 15, color: 'bg-emerald-500' },
-  { name: 'Khác', value: 10, color: 'bg-amber-500' },
-];
+const sectorColors = ['bg-violet-500', 'bg-indigo-400', 'bg-sky-500', 'bg-emerald-500', 'bg-amber-500'];
 
 export default function AdminAnalyticsPage() {
-  const [range, setRange] = useState<'6m' | '12m'>('12m');
+  const [range, setRange] = useState<AnalyticsRange>('12m');
   const [chartMode, setChartMode] = useState<'line' | 'column'>('line');
+  const [data, setData] = useState<AdminAnalyticsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const monthlyPoints = monthlyPointsByRange[range];
-  const maxWeekly = Math.max(...weeklyBars);
+  const fetchAnalytics = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const token = authStorage.getAccessToken();
+      setData(await adminService.getAnalytics(token, range));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu phân tích');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [range]);
 
-  const donutStyle = useMemo(() => {
-    const colorMap: Record<string, string> = {
-      'bg-violet-500': '#8b5cf6',
-      'bg-indigo-400': '#818cf8',
-      'bg-sky-500': '#0ea5e9',
-      'bg-emerald-500': '#10b981',
-      'bg-amber-500': '#f59e0b',
-    };
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
-    const gradients = sectors.reduce<{ stops: string[]; offset: number }>(
-      (acc, sector) => {
-        const from = acc.offset;
-        const to = from + sector.value;
-        acc.stops.push(`${colorMap[sector.color]} ${from}% ${to}%`);
-        return { stops: acc.stops, offset: to };
+  const stats = useMemo(() => {
+    if (!data) return [];
+    return [
+      {
+        title: 'Tổng lượt truy cập',
+        value: data.stats.totalVisits.value.toLocaleString('vi-VN'),
+        delta: formatDelta(data.stats.totalVisits.delta),
+        deltaType: data.stats.totalVisits.delta < 0 ? 'down' as const : undefined,
+        icon: Gauge,
+        iconClassName: 'bg-violet-500',
       },
-      { stops: [], offset: 0 },
-    ).stops;
+      {
+        title: 'Người dùng hoạt động',
+        value: data.stats.activeUsers.value.toLocaleString('vi-VN'),
+        delta: formatDelta(data.stats.activeUsers.delta),
+        deltaType: data.stats.activeUsers.delta < 0 ? 'down' as const : undefined,
+        icon: Users,
+        iconClassName: 'bg-emerald-500',
+      },
+      {
+        title: 'Tỷ lệ hoàn thành test',
+        value: `${data.stats.assessmentCompletionRate.value}%`,
+        delta: formatDelta(data.stats.assessmentCompletionRate.delta),
+        deltaType: data.stats.assessmentCompletionRate.delta < 0 ? 'down' as const : undefined,
+        icon: Target,
+        iconClassName: 'bg-sky-500',
+      },
+      {
+        title: 'Đặt lịch mentor',
+        value: data.stats.mentorBookings.value.toLocaleString('vi-VN'),
+        delta: formatDelta(data.stats.mentorBookings.delta),
+        deltaType: data.stats.mentorBookings.delta < 0 ? 'down' as const : undefined,
+        icon: CalendarClock,
+        iconClassName: 'bg-orange-500',
+      },
+    ];
+  }, [data]);
 
-    return { background: `conic-gradient(${gradients.join(',')})` };
-  }, []);
+  const userGrowth = data?.userGrowth || [];
+  const assessmentCompletions = data?.assessmentCompletions || [];
+  const careerDistribution = data?.careerDistribution || [];
+  const maxGrowth = Math.max(...userGrowth.map((point) => point.value), 1);
+  const maxWeekly = Math.max(...assessmentCompletions.map((point) => point.value), 1);
+  const donutStyle = useMemo(() => buildDonutStyle(careerDistribution), [careerDistribution]);
 
   return (
     <div className="w-full">
-
       <AdminSectionHeader
         title="Phân tích và Thống kê"
-        subtitle="Theo dõi hiệu suất và xu hướng người dùng"
+        subtitle="Theo dõi truy cập, tăng trưởng người dùng, bài test và booking mentor từ dữ liệu thật."
         right={
           <div className="flex items-center gap-2">
             <div className="flex rounded-xl border border-slate-200 bg-white p-1">
-              <button
-                type="button"
-                onClick={() => setRange('6m')}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
-                  range === '6m' ? 'bg-violet-500 text-white' : 'text-slate-600',
-                )}
-              >
-                6 tháng
-              </button>
-              <button
-                type="button"
-                onClick={() => setRange('12m')}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
-                  range === '12m' ? 'bg-violet-500 text-white' : 'text-slate-600',
-                )}
-              >
-                12 tháng
-              </button>
+              {(['6m', '12m'] as AnalyticsRange[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setRange(item)}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                    range === item ? 'bg-violet-500 text-white' : 'text-slate-600',
+                  )}
+                >
+                  {item === '6m' ? '6 tháng' : '12 tháng'}
+                </button>
+              ))}
             </div>
 
             <button
@@ -121,98 +114,100 @@ export default function AdminAnalyticsPage() {
         }
       />
 
+      {error && (
+        <p className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+          {error}
+        </p>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <AdminStatCard key={item.title} {...item} />
-        ))}
+        {isLoading && !data
+          ? Array.from({ length: 4 }).map((_, index) => (
+              <AdminPanel key={index} className="h-32 animate-pulse bg-slate-100">
+                <span className="sr-only">Đang tải</span>
+              </AdminPanel>
+            ))
+          : stats.map((item) => <AdminStatCard key={item.title} {...item} />)}
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
         <AdminPanel title="Tăng trưởng người dùng" className="px-5 py-4">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-slate-500">Theo tháng trong năm 2026</p>
+            <p className="text-sm text-slate-500">Người dùng mới theo tháng</p>
             <div className="flex rounded-lg border border-slate-200 bg-white p-1">
-              <button
-                type="button"
-                onClick={() => setChartMode('line')}
-                className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-semibold',
-                  chartMode === 'line' ? 'bg-slate-900 text-white' : 'text-slate-500',
-                )}
-              >
-                Line
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartMode('column')}
-                className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-semibold',
-                  chartMode === 'column' ? 'bg-slate-900 text-white' : 'text-slate-500',
-                )}
-              >
-                Column
-              </button>
+              {(['line', 'column'] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setChartMode(item)}
+                  className={cn(
+                    'rounded-md px-2.5 py-1 text-xs font-semibold',
+                    chartMode === item ? 'bg-slate-900 text-white' : 'text-slate-500',
+                  )}
+                >
+                  {item === 'line' ? 'Line' : 'Column'}
+                </button>
+              ))}
             </div>
           </div>
           <div className="h-64 rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <div className="relative h-full w-full">
-              {chartMode === 'line' ? (
-                <svg viewBox="0 0 600 220" className="h-full w-full">
-                  <polyline
-                    fill="none"
-                    stroke="#6366f1"
-                    strokeWidth="3"
-                    points={monthlyPoints
-                      .map(
-                        (point, index) =>
-                          `${index * (560 / (monthlyPoints.length - 1)) + 20},${200 - point * 2.2}`,
-                      )
-                      .join(' ')}
-                  />
-                  {monthlyPoints.map((point, index) => (
-                    <circle
-                      key={`line-point-${index}-${point}`}
-                      cx={index * (560 / (monthlyPoints.length - 1)) + 20}
-                      cy={200 - point * 2.2}
-                      r="4"
-                      fill="#6366f1"
-                    />
-                  ))}
-                </svg>
-              ) : (
-                <div className="flex h-full items-end justify-between gap-2 px-3 pb-4">
-                  {monthlyPoints.map((point, index) => (
+            {userGrowth.length === 0 ? (
+              <EmptyChart />
+            ) : chartMode === 'line' ? (
+              <svg viewBox="0 0 600 220" className="h-full w-full">
+                <polyline
+                  fill="none"
+                  stroke="#6366f1"
+                  strokeWidth="3"
+                  points={userGrowth
+                    .map((point, index) => {
+                      const x = userGrowth.length === 1 ? 300 : index * (560 / (userGrowth.length - 1)) + 20;
+                      const y = 200 - (point.value / maxGrowth) * 170;
+                      return `${x},${y}`;
+                    })
+                    .join(' ')}
+                />
+                {userGrowth.map((point, index) => {
+                  const x = userGrowth.length === 1 ? 300 : index * (560 / (userGrowth.length - 1)) + 20;
+                  const y = 200 - (point.value / maxGrowth) * 170;
+                  return <circle key={`${point.label}-${index}`} cx={x} cy={y} r="4" fill="#6366f1" />;
+                })}
+              </svg>
+            ) : (
+              <div className="flex h-full items-end justify-between gap-2 px-3 pb-4">
+                {userGrowth.map((point) => (
+                  <div key={point.label} className="flex h-full w-full flex-col items-center justify-end gap-2">
                     <div
-                      key={`column-point-${index}-${point}`}
-                      className="flex h-full w-full items-end justify-center"
-                    >
-                      <div
-                        className="w-full max-w-9 rounded-t-md bg-linear-to-b from-indigo-500 to-violet-500"
-                        style={{ height: `${Math.max(18, point)}%` }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                      className="w-full max-w-9 rounded-t-md bg-linear-to-b from-indigo-500 to-violet-500"
+                      style={{ height: `${Math.max(8, (point.value / maxGrowth) * 100)}%` }}
+                    />
+                    <span className="text-xs text-slate-500">{point.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </AdminPanel>
 
         <AdminPanel title="Phân bố nghề nghiệp" className="px-5 py-4">
-          <p className="mb-4 text-sm text-slate-500">Top 5 lĩnh vực phổ biến</p>
-          <div className="relative mx-auto mb-6 h-40 w-40 rounded-full" style={donutStyle}>
+          <p className="mb-4 text-sm text-slate-500">Top ngành từ kết quả assessment</p>
+          <div className="relative mx-auto mb-6 h-40 w-40 rounded-full bg-slate-100" style={donutStyle}>
             <div className="absolute inset-5 rounded-full bg-white" />
           </div>
           <div className="space-y-2">
-            {sectors.map((sector) => (
-              <div key={sector.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${sector.color}`} />
-                  <span className="text-slate-600">{sector.name}</span>
+            {careerDistribution.length === 0 ? (
+              <p className="text-sm font-semibold text-slate-500">Chưa có dữ liệu phân bố.</p>
+            ) : (
+              careerDistribution.map((sector, index) => (
+                <div key={sector.name} className="flex items-center justify-between text-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${sectorColors[index % sectorColors.length]}`} />
+                    <span className="truncate text-slate-600">{sector.name}</span>
+                  </div>
+                  <span className="font-semibold text-slate-800">{sector.value}%</span>
                 </div>
-                <span className="font-semibold text-slate-800">{sector.value}%</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </AdminPanel>
       </div>
@@ -220,41 +215,52 @@ export default function AdminAnalyticsPage() {
       <AdminPanel title="Hoàn thành bài test" className="mt-4 px-5 py-4">
         <p className="mb-4 text-sm text-slate-500">6 tuần gần nhất</p>
         <div className="flex h-64 items-end justify-between gap-4 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-6">
-          {weeklyBars.map((item, index) => (
-            <div
-              key={`weekly-bar-${index}-${item}`}
-              className="flex w-full flex-col items-center gap-2"
-            >
-              <div
-                className="w-14 rounded-t-xl bg-linear-to-b from-indigo-500 to-violet-500"
-                style={{ height: `${Math.max(56, Math.round((item / maxWeekly) * 190))}px` }}
-              />
-              <span className="text-xs text-slate-500">Tuần {index + 1}</span>
-            </div>
-          ))}
+          {assessmentCompletions.length === 0 ? (
+            <EmptyChart />
+          ) : (
+            assessmentCompletions.map((item) => (
+              <div key={item.label} className="flex w-full flex-col items-center gap-2">
+                <div
+                  className="w-14 rounded-t-xl bg-linear-to-b from-indigo-500 to-violet-500"
+                  style={{ height: `${Math.max(12, Math.round((item.value / maxWeekly) * 190))}px` }}
+                />
+                <span className="text-xs text-slate-500">{item.label}</span>
+              </div>
+            ))
+          )}
         </div>
       </AdminPanel>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl bg-linear-to-r from-indigo-500 to-violet-500 px-5 py-5 text-white shadow-sm">
-          <p className="mb-1 text-sm/none font-semibold tracking-wide uppercase">
-            Tăng trưởng cao nhất
-          </p>
-          <p className="mb-3 text-5xl/none font-bold">+18.2%</p>
-          <p className="text-sm text-white/90">
-            Lượt truy cập tăng mạnh trong tháng 3, chủ yếu từ sinh viên IT và công nghệ.
-          </p>
-        </section>
-        <section className="rounded-2xl bg-linear-to-r from-emerald-500 to-cyan-500 px-5 py-5 text-white shadow-sm">
-          <p className="mb-1 text-sm/none font-semibold tracking-wide uppercase">
-            Tỷ lệ hoàn thành
-          </p>
-          <p className="mb-3 text-5xl/none font-bold">78.3%</p>
-          <p className="text-sm text-white/90">
-            Tỷ lệ người dùng hoàn thành bài test cao, cho thấy nội dung phù hợp và dễ tiếp cận.
-          </p>
-        </section>
-      </div>
     </div>
   );
+}
+
+function EmptyChart() {
+  return <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">Chưa có dữ liệu.</div>;
+}
+
+function formatDelta(value: number) {
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${Number(value.toFixed(1))}%`;
+}
+
+function buildDonutStyle(items: { value: number }[]) {
+  if (items.length === 0) return undefined;
+  const colorMap: Record<string, string> = {
+    'bg-violet-500': '#8b5cf6',
+    'bg-indigo-400': '#818cf8',
+    'bg-sky-500': '#0ea5e9',
+    'bg-emerald-500': '#10b981',
+    'bg-amber-500': '#f59e0b',
+  };
+
+  let offset = 0;
+  const stops = items.map((item, index) => {
+    const color = colorMap[sectorColors[index % sectorColors.length]];
+    const from = offset;
+    const to = offset + item.value;
+    offset = to;
+    return `${color} ${from}% ${to}%`;
+  });
+  return { background: `conic-gradient(${stops.join(',')})` };
 }

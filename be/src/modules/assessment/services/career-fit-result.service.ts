@@ -316,7 +316,7 @@ export class CareerFitResultService {
         typeof limits.maxCareerRecommendationsPerRun === 'number'
           ? limits.maxCareerRecommendationsPerRun
           : undefined;
-      const recommendations = maxPerRun
+      const recommendations = maxPerRun !== undefined
         ? analysis.careerRecommendations.slice(0, maxPerRun)
         : analysis.careerRecommendations;
 

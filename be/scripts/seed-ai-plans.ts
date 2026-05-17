@@ -32,11 +32,14 @@ type PlanSeed = {
     chatMessagesPerMonth?: number;
     careerComparisonsPerMonth?: number;
     maxCareersPerComparison?: number;
+    careerRecommendationRunsPerMonth?: number;
+    maxCareerRecommendationsPerRun?: number;
     personalizedRoadmapsPerMonth?: number;
     simulationsPerMonth?: number;
     mentorBookingsPerMonth?: number;
   };
   features: {
+    careerRecommendation?: boolean;
     careerComparison?: boolean;
     personalizedRoadmap?: boolean;
     jobSimulation?: boolean;
@@ -62,6 +65,8 @@ const PLAN_SEEDS: PlanSeed[] = [
       assessmentsPerMonth: 1,
       assessmentsLifetimeLimit: 1,
       chatMessagesPerMonth: 10,
+      careerRecommendationRunsPerMonth: 1,
+      maxCareerRecommendationsPerRun: 1,
       careerComparisonsPerMonth: 0,
       maxCareersPerComparison: 0,
       personalizedRoadmapsPerMonth: 1,
@@ -69,6 +74,7 @@ const PLAN_SEEDS: PlanSeed[] = [
       mentorBookingsPerMonth: 0,
     },
     features: {
+      careerRecommendation: true,
       careerComparison: false,
       personalizedRoadmap: true,
       jobSimulation: false,
@@ -95,6 +101,7 @@ const PLAN_SEEDS: PlanSeed[] = [
     },
     limits: {
       assessmentsPerMonth: 3,
+      maxCareerRecommendationsPerRun: 5,
       chatMessagesPerMonth: 200,
       careerComparisonsPerMonth: 5,
       maxCareersPerComparison: 3,
@@ -103,6 +110,7 @@ const PLAN_SEEDS: PlanSeed[] = [
       mentorBookingsPerMonth: 5,
     },
     features: {
+      careerRecommendation: true,
       careerComparison: true,
       personalizedRoadmap: true,
       jobSimulation: true,
@@ -122,6 +130,7 @@ const PLAN_SEEDS: PlanSeed[] = [
     seatLimit: 200,
     limits: {
       assessmentsPerMonth: 5,
+      maxCareerRecommendationsPerRun: 10,
       chatMessagesPerMonth: 200,
       careerComparisonsPerMonth: 10,
       maxCareersPerComparison: 5,
@@ -130,6 +139,7 @@ const PLAN_SEEDS: PlanSeed[] = [
       mentorBookingsPerMonth: 5,
     },
     features: {
+      careerRecommendation: true,
       careerComparison: true,
       personalizedRoadmap: true,
       jobSimulation: true,

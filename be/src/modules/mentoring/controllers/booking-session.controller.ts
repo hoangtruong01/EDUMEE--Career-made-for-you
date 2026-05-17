@@ -41,10 +41,11 @@ export class BookingSessionController {
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Booking created successfully' })
   async create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
+    const { paymentReturnUrls, useEdumeeCredit, ...bookingDto } = createDto;
     await this.aiQuotaService.checkQuota(userId, AiFeature.MENTOR_BOOKING);
     const booking = await this.bookingSessionService.createForMentee(
       userId,
-      createDto as unknown as { tutorProfileId: string; [key: string]: unknown },
+      bookingDto as unknown as { tutorProfileId: string; [key: string]: unknown },
     );
     await this.aiQuotaService.consumeQuota(userId, AiFeature.MENTOR_BOOKING, { requestCount: 1, tokensUsed: 0 });
 
@@ -56,6 +57,8 @@ export class BookingSessionController {
 
     const payment = await this.paymentService.purchaseMentorBooking(userId, {
       bookingSessionId: booking._id.toString(),
+      returnUrls: paymentReturnUrls,
+      useEdumeeCredit,
     });
     return { booking, payment };
   }
@@ -157,6 +160,13 @@ export class BookingSessionController {
     return this.bookingSessionService.cancelBooking(id, { userId: getAuthUserId(user), role: user.role }, body.reason);
   }
 
+  @Post(':id/complete')
+  @ApiOperation({ summary: 'Complete a booking session' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Booking completed successfully' })
+  completeBooking(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
+    return this.bookingSessionService.completeBooking(id, { userId: getAuthUserId(user), role: user.role });
+  }
+
   @Post(':id/reschedule')
   @ApiOperation({ summary: 'Reschedule a booking session' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Booking rescheduled successfully' })
@@ -165,6 +175,71 @@ export class BookingSessionController {
       id,
       body.newSchedule as Parameters<BookingSessionService['rescheduleBooking']>[1],
       { userId: getAuthUserId(user), role: user.role },
+    );
+  }
+
+  @Post(':id/messages')
+  @ApiOperation({ summary: 'Send a booking chat message' })
+  addMessage(
+    @Param('id') id: string,
+    @Body() body: { message: string; messageType?: string },
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.bookingSessionService.addMessage(
+      id,
+      { userId: getAuthUserId(user), role: user.role },
+      body as Parameters<BookingSessionService['addMessage']>[2],
+    );
+  }
+
+  @Post(':id/reschedule-proposals')
+  @ApiOperation({ summary: 'Create a booking reschedule proposal' })
+  createRescheduleProposal(
+    @Param('id') id: string,
+    @Body() body: {
+      newDateTime: string;
+      duration: number;
+      timeZone?: string;
+      availabilitySlotId?: string;
+      reason?: string;
+      message?: string;
+    },
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.bookingSessionService.createRescheduleProposal(
+      id,
+      { userId: getAuthUserId(user), role: user.role },
+      body,
+    );
+  }
+
+  @Post(':id/reschedule-proposals/:proposalId/accept')
+  @ApiOperation({ summary: 'Accept a booking reschedule proposal' })
+  acceptRescheduleProposal(
+    @Param('id') id: string,
+    @Param('proposalId') proposalId: string,
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.bookingSessionService.acceptRescheduleProposal(
+      id,
+      proposalId,
+      { userId: getAuthUserId(user), role: user.role },
+    );
+  }
+
+  @Post(':id/reschedule-proposals/:proposalId/decline')
+  @ApiOperation({ summary: 'Decline a booking reschedule proposal' })
+  declineRescheduleProposal(
+    @Param('id') id: string,
+    @Param('proposalId') proposalId: string,
+    @Body() body: { reason?: string },
+    @CurrentUser() user: AuthUserLike,
+  ) {
+    return this.bookingSessionService.declineRescheduleProposal(
+      id,
+      proposalId,
+      { userId: getAuthUserId(user), role: user.role },
+      body.reason,
     );
   }
 
@@ -185,6 +260,7 @@ export class BookingSessionController {
     delete updateDto.menteeId;
     delete updateDto.mentorId;
     delete updateDto.paymentInfo;
+    delete updateDto.paymentReturnUrls;
     return this.bookingSessionService.update(
       id,
       updateDto,

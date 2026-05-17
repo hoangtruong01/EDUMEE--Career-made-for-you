@@ -23,16 +23,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/auth-context';
 import { AdminCareer, adminService } from '@/lib/admin.service';
+import {
+  careerTagsService,
+  type CareerSkillTagInput,
+  type SkillTag,
+  type SkillTagCategory,
+} from '@/lib/career-tags.service';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
+  Building2,
   Briefcase,
   Edit3,
+  Eye,
   Loader2,
   Plus,
   Save,
   Search,
   Sparkles,
+  Tags,
   Trash2,
   TrendingUp,
   X,
@@ -74,6 +83,101 @@ const normalizeCategoryValue = (value?: string) => {
   return value.trim().toLowerCase().replace(/\s+/g, '_');
 };
 
+const skillTagCategoryLabel: Record<SkillTag['category'], string> = {
+  technical: 'Technical',
+  soft: 'Soft skills',
+  leadership: 'Leadership',
+  industry_specific: 'Industry specific',
+};
+
+const skillTagCategoryOptions: { label: string; value: SkillTagCategory }[] = [
+  { label: 'Technical', value: 'technical' },
+  { label: 'Soft skills', value: 'soft' },
+  { label: 'Leadership', value: 'leadership' },
+  { label: 'Industry specific', value: 'industry_specific' },
+];
+
+const groupSkillTags = (tags: SkillTag[]) =>
+  tags.reduce<Partial<Record<SkillTag['category'], SkillTag[]>>>((acc, tag) => {
+    const category = tag.category || 'technical';
+    acc[category] = [...(acc[category] || []), tag];
+    return acc;
+  }, {});
+
+const emptySkillTagInputs = (): Record<SkillTagCategory, string> => ({
+  technical: '',
+  soft: '',
+  leadership: '',
+  industry_specific: '',
+});
+
+const normalizeSkillTagName = (value?: string) => (value || '').trim().replace(/\s+/g, ' ');
+
+const normalizeSkillTagInputs = (tags: CareerSkillTagInput[] = []) => {
+  const unique = new Map<string, CareerSkillTagInput>();
+  tags.forEach((tag) => {
+    const name = normalizeSkillTagName(tag.name);
+    if (!name) return;
+    const category = tag.category || 'technical';
+    const key = `${category}:${name.toLowerCase()}`;
+    unique.set(key, {
+      name,
+      category,
+      importance: tag.importance || (category === 'soft' ? 4 : 4),
+      minimumLevel: tag.minimumLevel || (category === 'soft' ? 2 : 3),
+    });
+  });
+  return Array.from(unique.values());
+};
+
+const buildSkillTagsFromCareer = (career: Partial<AdminCareer>): CareerSkillTagInput[] =>
+  normalizeSkillTagInputs([
+    ...(career.skillTags || []),
+    ...(career.skillRequirements?.technical || []).map((skill) => ({
+      name: skill.skillName,
+      category: 'technical' as SkillTagCategory,
+      importance: skill.importance,
+      minimumLevel: skill.minimumLevel,
+    })),
+    ...(career.skillRequirements?.soft || []).map((skill) => ({
+      name: skill.skillName,
+      category: 'soft' as SkillTagCategory,
+      importance: skill.importance,
+      minimumLevel: skill.minimumLevel,
+    })),
+  ]);
+
+const applySkillTagsToCareerForm = (
+  career: Partial<AdminCareer>,
+  tags: CareerSkillTagInput[],
+): Partial<AdminCareer> => {
+  const normalizedTags = normalizeSkillTagInputs(tags);
+  const toRequirement = (tag: CareerSkillTagInput) => ({
+    skillName: tag.name,
+    importance: tag.importance || 4,
+    minimumLevel: tag.minimumLevel || (tag.category === 'soft' ? 2 : 3),
+  });
+
+  return {
+    ...career,
+    skillTags: normalizedTags,
+    skillRequirements: {
+      technical: normalizedTags.filter((tag) => tag.category === 'technical').map(toRequirement),
+      soft: normalizedTags.filter((tag) => tag.category === 'soft').map(toRequirement),
+    },
+  };
+};
+
+const formatDemandLevel = (level?: string) => {
+  const demandMap: Record<string, string> = {
+    low: 'Thấp',
+    medium: 'Trung bình',
+    high: 'Cao',
+    very_high: 'Rất cao',
+  };
+  return level ? demandMap[level] || level : 'Ổn định';
+};
+
 export default function AdminCareersPage() {
   const { accessToken } = useAuth();
   const [activeCategory, setActiveCategory] = useState('all');
@@ -87,11 +191,19 @@ export default function AdminCareersPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingCareer, setEditingCareer] = useState<AdminCareer | null>(null);
+  const [selectedCareer, setSelectedCareer] = useState<AdminCareer | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [skillTags, setSkillTags] = useState<SkillTag[]>([]);
+  const [isLoadingSkillTags, setIsLoadingSkillTags] = useState(false);
+  const [newSkillTagNames, setNewSkillTagNames] = useState<Record<SkillTagCategory, string>>(
+    emptySkillTagInputs(),
+  );
   const [formData, setFormData] = useState<Partial<AdminCareer>>({
     title: '',
     category: 'technology',
     description: '',
     skillRequirements: { technical: [], soft: [] },
+    skillTags: [],
     marketInfo: { demandLevel: 'medium', growthProjection: '' },
     discoveryData: {
       pros: [],
@@ -193,11 +305,13 @@ export default function AdminCareersPage() {
 
   const openAddModal = () => {
     setEditingCareer(null);
+    setNewSkillTagNames(emptySkillTagInputs());
     setFormData({
       title: '',
       category: 'technology',
       description: '',
       skillRequirements: { technical: [], soft: [] },
+      skillTags: [],
       marketInfo: { demandLevel: 'medium', growthProjection: '' },
       discoveryData: {
         pros: [],
@@ -212,7 +326,8 @@ export default function AdminCareersPage() {
 
   const openEditModal = (career: AdminCareer) => {
     setEditingCareer(career);
-    setFormData({
+    setNewSkillTagNames(emptySkillTagInputs());
+    const nextFormData = {
       ...career,
       category: normalizeCategoryValue(career.category),
       discoveryData: career.discoveryData || {
@@ -222,8 +337,59 @@ export default function AdminCareersPage() {
         trends: [],
         salarySummary: '',
       },
-    });
+      skillTags: buildSkillTagsFromCareer(career),
+    };
+    setFormData(nextFormData);
     setIsModalOpen(true);
+
+    const careerId = career.id || career._id;
+    if (accessToken && careerId && !career.isDraft) {
+      careerTagsService
+        .getSkillTags(accessToken, { careerId })
+        .then((tags) => {
+          const apiTags = tags.map((tag) => ({
+            name: tag.name,
+            category: tag.category,
+          }));
+          if (apiTags.length > 0) {
+            setFormData((current) =>
+              applySkillTagsToCareerForm(current, [...apiTags, ...buildSkillTagsFromCareer(current)]),
+            );
+          }
+        })
+        .catch(() => {
+          toast.error('Không thể tải skill tags để chỉnh sửa');
+        });
+    }
+  };
+
+  const openDetailModal = async (career: AdminCareer) => {
+    setSelectedCareer(career);
+    setSkillTags([]);
+    setIsDetailOpen(true);
+
+    const careerId = career.id || career._id;
+    if (!accessToken || !careerId || career.isDraft) {
+      setIsLoadingSkillTags(false);
+      return;
+    }
+
+    try {
+      setIsLoadingSkillTags(true);
+      const tags = await careerTagsService.getSkillTags(accessToken, { careerId });
+      setSkillTags(tags);
+    } catch {
+      setSkillTags([]);
+      toast.error('Không thể tải skill tags cho nghề nghiệp này');
+    } finally {
+      setIsLoadingSkillTags(false);
+    }
+  };
+
+  const editSelectedCareer = () => {
+    if (!selectedCareer) return;
+    setIsDetailOpen(false);
+    openEditModal(selectedCareer);
   };
 
   const handleDelete = async (id: string) => {
@@ -259,9 +425,13 @@ export default function AdminCareersPage() {
         toast.error((res as { error?: string }).error || 'AI không thể tạo dữ liệu lúc này');
         return;
       }
-      setFormData({
+      const generatedCareer = {
         ...res,
         category: normalizeCategoryValue(res.category),
+      };
+      setFormData({
+        ...generatedCareer,
+        skillTags: buildSkillTagsFromCareer(generatedCareer),
       });
       toast.success('AI đã tạo dữ liệu thành công');
     } catch {
@@ -355,7 +525,10 @@ export default function AdminCareersPage() {
             : prev.discoveryData?.salarySummary
         };
 
-        return merged;
+        return {
+          ...merged,
+          skillTags: buildSkillTagsFromCareer(merged),
+        };
       });
       toast.success('Đã bổ sung thông tin thiếu bằng AI');
     } catch (error) {
@@ -363,6 +536,55 @@ export default function AdminCareersPage() {
       toast.error('Không thể bổ sung thông tin bằng AI');
     }
     setIsGenerating(false);
+  };
+
+  const setCareerSkillTags = (tags: CareerSkillTagInput[]) => {
+    setFormData((current) => applySkillTagsToCareerForm(current, tags));
+  };
+
+  const handleAddSkillTag = (category: SkillTagCategory) => {
+    const name = normalizeSkillTagName(newSkillTagNames[category]);
+    if (!name) return;
+
+    const currentTags = formData.skillTags || [];
+    const exists = currentTags.some(
+      (tag) => tag.category === category && tag.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      toast.warning('Skill tag này đã có trong nhóm hiện tại');
+      return;
+    }
+
+    setCareerSkillTags([
+      ...currentTags,
+      {
+        name,
+        category,
+        importance: 4,
+        minimumLevel: category === 'soft' ? 2 : 3,
+      },
+    ]);
+    setNewSkillTagNames((current) => ({ ...current, [category]: '' }));
+  };
+
+  const handleRemoveSkillTag = (index: number) => {
+    const nextTags = [...(formData.skillTags || [])];
+    nextTags.splice(index, 1);
+    setCareerSkillTags(nextTags);
+  };
+
+  const handleUpdateSkillTag = (
+    index: number,
+    patch: Partial<Pick<CareerSkillTagInput, 'importance' | 'minimumLevel'>>,
+  ) => {
+    const nextTags = [...(formData.skillTags || [])];
+    const current = nextTags[index];
+    if (!current) return;
+    nextTags[index] = {
+      ...current,
+      ...patch,
+    };
+    setCareerSkillTags(nextTags);
   };
 
   const handleSave = async () => {
@@ -488,6 +710,7 @@ export default function AdminCareersPage() {
             <CareerCard
               key={career.id || career._id}
               career={career}
+              onView={() => openDetailModal(career)}
               onEdit={() => openEditModal(career)}
               onDelete={() => {
                 const id = career.id || career._id;
@@ -516,10 +739,11 @@ export default function AdminCareersPage() {
 
           <div className="py-4">
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="mb-6 grid w-full grid-cols-4">
+              <TabsList className="mb-6 grid w-full grid-cols-5">
                 <TabsTrigger value="general">Cơ bản</TabsTrigger>
                 <TabsTrigger value="market">Thị trường</TabsTrigger>
                 <TabsTrigger value="analysis">Phân tích</TabsTrigger>
+                <TabsTrigger value="skillTags">Skill Tags</TabsTrigger>
                 <TabsTrigger value="roadmap">Lộ trình</TabsTrigger>
               </TabsList>
 
@@ -763,6 +987,19 @@ export default function AdminCareersPage() {
                 </div>
               </TabsContent>
 
+              <TabsContent value="skillTags" className="space-y-6">
+                <SkillTagsFormSection
+                  tags={formData.skillTags || []}
+                  newSkillTagNames={newSkillTagNames}
+                  onNewSkillTagNameChange={(category, value) =>
+                    setNewSkillTagNames((current) => ({ ...current, [category]: value }))
+                  }
+                  onAddSkillTag={handleAddSkillTag}
+                  onRemoveSkillTag={handleRemoveSkillTag}
+                  onUpdateSkillTag={handleUpdateSkillTag}
+                />
+              </TabsContent>
+
               <TabsContent value="roadmap" className="space-y-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -830,16 +1067,420 @@ export default function AdminCareersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CareerDetailDialog
+        career={selectedCareer}
+        isOpen={isDetailOpen}
+        isLoadingSkillTags={isLoadingSkillTags}
+        skillTags={skillTags}
+        onOpenChange={setIsDetailOpen}
+        onEdit={editSelectedCareer}
+      />
+    </div>
+  );
+}
+
+function SkillTagsFormSection({
+  tags,
+  newSkillTagNames,
+  onNewSkillTagNameChange,
+  onAddSkillTag,
+  onRemoveSkillTag,
+  onUpdateSkillTag,
+}: {
+  tags: CareerSkillTagInput[];
+  newSkillTagNames: Record<SkillTagCategory, string>;
+  onNewSkillTagNameChange: (category: SkillTagCategory, value: string) => void;
+  onAddSkillTag: (category: SkillTagCategory) => void;
+  onRemoveSkillTag: (index: number) => void;
+  onUpdateSkillTag: (
+    index: number,
+    patch: Partial<Pick<CareerSkillTagInput, 'importance' | 'minimumLevel'>>,
+  ) => void;
+}) {
+  const clampLevel = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.min(5, Math.max(1, parsed));
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 dark:border-violet-500/20 dark:bg-violet-500/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-violet-600 shadow-sm dark:bg-slate-900 dark:text-violet-400">
+            <Tags className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Skill tags cho career</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Tags technical và soft sẽ đồng bộ ngược vào skill requirements để AI và career detail dùng cùng một nguồn dữ liệu.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {skillTagCategoryOptions.map((option) => {
+        const categoryTags = tags
+          .map((tag, index) => ({ tag, index }))
+          .filter(({ tag }) => tag.category === option.value);
+
+        return (
+          <section
+            key={option.value}
+            className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800"
+          >
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {option.label}
+                </Label>
+                <p className="mt-1 text-xs font-medium text-slate-400">
+                  {categoryTags.length} skill tag
+                </p>
+              </div>
+              <Badge variant="outline" className="bg-white dark:bg-slate-900">
+                {option.value}
+              </Badge>
+            </div>
+
+            <div className="mb-4 flex gap-2">
+              <Input
+                value={newSkillTagNames[option.value]}
+                onChange={(event) => onNewSkillTagNameChange(option.value, event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    onAddSkillTag(option.value);
+                  }
+                }}
+                placeholder="Nhập tên skill tag"
+              />
+              <Button type="button" variant="outline" onClick={() => onAddSkillTag(option.value)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm
+              </Button>
+            </div>
+
+            {categoryTags.length ? (
+              <div className="space-y-2">
+                {categoryTags.map(({ tag, index }) => (
+                  <div
+                    key={`${tag.category}-${tag.name}-${index}`}
+                    className="grid gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/50 sm:grid-cols-[1fr_96px_96px_40px]"
+                  >
+                    <div className="flex min-h-10 items-center rounded-lg bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm dark:bg-slate-950 dark:text-slate-200">
+                      {tag.name}
+                    </div>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={tag.importance || 4}
+                      onChange={(event) =>
+                        onUpdateSkillTag(index, { importance: clampLevel(event.target.value) })
+                      }
+                      title="Importance"
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={tag.minimumLevel || (tag.category === 'soft' ? 2 : 3)}
+                      onChange={(event) =>
+                        onUpdateSkillTag(index, { minimumLevel: clampLevel(event.target.value) })
+                      }
+                      title="Minimum level"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onRemoveSkillTag(index)}
+                      title="Xóa skill tag"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm font-semibold text-slate-400 dark:border-slate-800">
+                Chưa có skill tag trong nhóm này.
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function CareerDetailDialog({
+  career,
+  isOpen,
+  isLoadingSkillTags,
+  skillTags,
+  onOpenChange,
+  onEdit,
+}: {
+  career: AdminCareer | null;
+  isOpen: boolean;
+  isLoadingSkillTags: boolean;
+  skillTags: SkillTag[];
+  onOpenChange: (open: boolean) => void;
+  onEdit: () => void;
+}) {
+  if (!career) return null;
+
+  const categoryLabel =
+    categoryLabelMap[normalizeCategoryValue(career.category)] || career.category || 'Other';
+  const groupedSkillTags = groupSkillTags(skillTags);
+  const hasSkillTags = skillTags.length > 0;
+  const technicalSkills = career.skillRequirements?.technical || [];
+  const softSkills = career.skillRequirements?.soft || [];
+  const hasFallbackSkills = technicalSkills.length > 0 || softSkills.length > 0;
+  const demandLabel = formatDemandLevel(career.marketInfo?.demandLevel);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <span>{career.title}</span>
+            {career.isDraft && (
+              <Badge
+                variant="outline"
+                className="border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/30 dark:bg-amber-500/10 dark:text-amber-400"
+              >
+                AI đề xuất
+              </Badge>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 py-2">
+          <section className="rounded-2xl border border-slate-100 bg-slate-50/60 p-5 dark:border-slate-800 dark:bg-slate-900/50">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                  Tổng quan nghề nghiệp
+                </p>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {career.description || 'Chưa có mô tả chi tiết.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <DetailMetric label="Danh mục" value={categoryLabel} />
+              <DetailMetric label="Nhu cầu" value={demandLabel} />
+              <DetailMetric label="Tăng trưởng" value={career.marketInfo?.growthProjection || 'N/A'} />
+              <DetailMetric label="Lương" value={career.discoveryData?.salarySummary || 'N/A'} />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                <Tags className="h-4 w-4 text-violet-500" />
+                Skill Tags
+              </h3>
+              {isLoadingSkillTags && <Loader2 className="h-4 w-4 animate-spin text-violet-500" />}
+            </div>
+
+            {hasSkillTags ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {Object.entries(groupedSkillTags).map(([category, tags]) => (
+                  <SkillTagGroup
+                    key={category}
+                    title={skillTagCategoryLabel[category as SkillTag['category']] || category}
+                    tags={tags}
+                  />
+                ))}
+              </div>
+            ) : hasFallbackSkills ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <FallbackSkillGroup title="Technical skills" skills={technicalSkills} />
+                <FallbackSkillGroup title="Soft skills" skills={softSkills} />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-sm font-semibold text-slate-400 dark:border-slate-800">
+                Chưa có skill tag liên kết.
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-3">
+            <DetailList
+              title="Ưu điểm"
+              tone="emerald"
+              items={career.discoveryData?.pros || []}
+              empty="Chưa có ưu điểm."
+            />
+            <DetailList
+              title="Nhược điểm"
+              tone="rose"
+              items={career.discoveryData?.cons || []}
+              empty="Chưa có nhược điểm."
+            />
+            <DetailList
+              title="Công ty nổi bật"
+              tone="sky"
+              items={career.discoveryData?.topCompanies || []}
+              empty="Chưa có công ty nổi bật."
+              icon="company"
+            />
+          </section>
+
+          <section className="rounded-2xl border border-slate-100 p-5 dark:border-slate-800">
+            <h3 className="mb-3 text-base font-bold text-slate-900 dark:text-slate-100">
+              Roadmap summary
+            </h3>
+            {career.careerLevels?.length ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {career.careerLevels.slice(0, 4).map((level, index) => (
+                  <div
+                    key={`${String(level.title || level.level || index)}-${index}`}
+                    className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/40"
+                  >
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      {String(level.title || level.level || `Level ${index + 1}`)}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {String(level.description || 'Chưa có mô tả.')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-slate-400">
+                Chưa có roadmap chi tiết cho nghề nghiệp này.
+              </p>
+            )}
+          </section>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Đóng
+          </Button>
+          <Button className="bg-violet-600 hover:bg-violet-700" onClick={onEdit}>
+            <Edit3 className="mr-2 h-4 w-4" />
+            Chỉnh sửa
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 line-clamp-2 text-sm font-bold text-slate-800 dark:text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+function SkillTagGroup({ title, tags }: { title: string; tags: SkillTag[] }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
+      <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <Badge key={tag.id || tag._id || tag.slug} variant="outline" className="bg-white dark:bg-slate-900">
+            {tag.name}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FallbackSkillGroup({
+  title,
+  skills,
+}: {
+  title: string;
+  skills: { skillName: string; importance?: number; minimumLevel?: number }[];
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
+      <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">{title}</p>
+      {skills.length ? (
+        <div className="flex flex-wrap gap-2">
+          {skills.map((skill) => (
+            <Badge
+              key={`${skill.skillName}-${skill.minimumLevel || 'level'}-${skill.importance || 'importance'}`}
+              variant="outline"
+              className="bg-white dark:bg-slate-900"
+            >
+              {skill.skillName}
+              {skill.minimumLevel ? ` | Lvl ${skill.minimumLevel}` : ''}
+              {skill.importance ? ` | Imp ${skill.importance}` : ''}
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm font-semibold text-slate-400">Chưa có dữ liệu.</p>
+      )}
+    </div>
+  );
+}
+
+function DetailList({
+  title,
+  items,
+  empty,
+  tone,
+  icon,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+  tone: 'emerald' | 'rose' | 'sky';
+  icon?: 'company';
+}) {
+  const toneClass = {
+    emerald: 'text-emerald-600 bg-emerald-50 border-emerald-100',
+    rose: 'text-rose-600 bg-rose-50 border-rose-100',
+    sky: 'text-sky-600 bg-sky-50 border-sky-100',
+  }[tone];
+
+  return (
+    <div className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
+      <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div key={`${title}-${index}-${item}`} className={cn('rounded-xl border px-3 py-2 text-xs font-semibold', toneClass)}>
+              <span className="inline-flex items-center gap-2">
+                {icon === 'company' && <Building2 className="h-3.5 w-3.5" />}
+                {item}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm font-semibold text-slate-400">{empty}</p>
+      )}
     </div>
   );
 }
 
 function CareerCard({
   career,
+  onView,
   onEdit,
   onDelete,
 }: {
   career: AdminCareer;
+  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -893,13 +1534,25 @@ function CareerCard({
         </div>
         <div className="flex gap-2">
           <button
+            type="button"
+            onClick={onView}
+            title="Xem chi tiết"
+            className="rounded-xl border border-transparent p-2.5 text-slate-400 transition-all hover:border-sky-100 hover:bg-sky-50 hover:text-sky-600 dark:text-slate-500 dark:hover:border-sky-500/20 dark:hover:bg-sky-500/10 dark:hover:text-sky-400"
+          >
+            <Eye className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
             onClick={onEdit}
+            title="Chỉnh sửa"
             className="rounded-xl border border-transparent p-2.5 text-slate-400 transition-all hover:border-violet-100 hover:bg-violet-50 hover:text-violet-600 dark:text-slate-500 dark:hover:border-violet-500/20 dark:hover:bg-violet-500/10 dark:hover:text-violet-400"
           >
             <Edit3 className="h-5 w-5" />
           </button>
           <button
+            type="button"
             onClick={onDelete}
+            title="Xóa"
             className="rounded-xl border border-transparent p-2.5 text-slate-400 transition-all hover:border-rose-100 hover:bg-rose-50 hover:text-rose-500 dark:text-slate-500 dark:hover:border-rose-500/20 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
           >
             <Trash2 className="h-5 w-5" />

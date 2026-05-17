@@ -8,7 +8,19 @@ export enum NotificationType {
   MENTOR_BOOKING_CONFIRMED = 'mentor_booking_confirmed',
   MENTOR_BOOKING_CANCELLED = 'mentor_booking_cancelled',
   MENTOR_BOOKING_RESCHEDULED = 'mentor_booking_rescheduled',
+  MENTOR_BOOKING_RESCHEDULE_REQUESTED = 'mentor_booking_reschedule_requested',
+  MENTOR_BOOKING_RESCHEDULE_ACCEPTED = 'mentor_booking_reschedule_accepted',
+  MENTOR_BOOKING_RESCHEDULE_DECLINED = 'mentor_booking_reschedule_declined',
+  MENTOR_BOOKING_MESSAGE = 'mentor_booking_message',
+  MENTOR_BOOKING_REFUNDED = 'mentor_booking_refunded',
+  MENTOR_BOOKING_REFUND_PENDING = 'mentor_booking_refund_pending',
+  MENTOR_SESSION_COMPLETED = 'mentor_session_completed',
+  MENTOR_REVIEW_REQUESTED = 'mentor_review_requested',
+  MENTOR_REVIEW_SUBMITTED = 'mentor_review_submitted',
   MENTOR_AVAILABILITY_BULK_CREATED = 'mentor_availability_bulk_created',
+  PAYMENT_PAID = 'payment_paid',
+  WALLET_CREDIT_ADDED = 'wallet_credit_added',
+  WALLET_CREDIT_USED = 'wallet_credit_used',
 }
 
 @Schema({

@@ -22,6 +22,7 @@ describe('TutorProfileService', () => {
 
   tutorProfileModel.findByIdAndUpdate = jest.fn();
   tutorProfileModel.findById = jest.fn();
+  tutorProfileModel.find = jest.fn();
 
   const userModel = {
     findByIdAndUpdate: jest.fn(),
@@ -130,4 +131,98 @@ describe('TutorProfileService', () => {
       BadRequestException,
     );
   });
+
+  it('adds public mentor user data to active profiles and keeps userId as string', async () => {
+    const userId = new Types.ObjectId();
+    const profileId = new Types.ObjectId();
+    tutorProfileModel.find.mockReturnValue(
+      createPopulateMock([
+        createProfileDocument(profileId, {
+          _id: userId,
+          name: 'Mentor User',
+          email: 'mentor@example.com',
+          avatar: 'https://cdn.example.com/avatar.png',
+        }),
+      ]),
+    );
+
+    const result = await service.findActive();
+
+    expect(tutorProfileModel.find).toHaveBeenCalledWith({ status: 'active' });
+    expect(result[0].id).toBe(profileId.toString());
+    expect(result[0].userId).toBe(userId.toString());
+    expect(result[0].mentorUser).toEqual({
+      id: userId.toString(),
+      name: 'Mentor User',
+      email: 'mentor@example.com',
+      avatar: 'https://cdn.example.com/avatar.png',
+    });
+  });
+
+  it('adds public mentor user data to profile detail', async () => {
+    const userId = new Types.ObjectId();
+    const profileId = new Types.ObjectId();
+    tutorProfileModel.findById.mockReturnValue(
+      createPopulateMock(
+        createProfileDocument(profileId, {
+          _id: userId,
+          name: 'Detail Mentor',
+          email: 'detail@example.com',
+          avatar: '',
+        }),
+      ),
+    );
+
+    const result = await service.findOne(profileId.toString());
+
+    expect(tutorProfileModel.findById).toHaveBeenCalledWith(profileId.toString());
+    expect(result.userId).toBe(userId.toString());
+    expect(result.mentorUser?.name).toBe('Detail Mentor');
+  });
+
+  it('adds public mentor user data to search results', async () => {
+    const userId = new Types.ObjectId();
+    const profileId = new Types.ObjectId();
+    tutorProfileModel.find.mockReturnValue(
+      createPopulateMock([
+        createProfileDocument(profileId, {
+          _id: userId,
+          name: 'Search Mentor',
+          email: 'search@example.com',
+          avatar: 'avatar.webp',
+        }),
+      ]),
+    );
+
+    const result = await service.searchTutors({ expertise: 'AI' });
+
+    expect(tutorProfileModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'active',
+        $or: expect.any(Array),
+      }),
+    );
+    expect(result[0].mentorUser?.avatar).toBe('avatar.webp');
+    expect(result[0].userId).toBe(userId.toString());
+  });
 });
+
+function createPopulateMock<T>(value: T) {
+  return {
+    populate: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue(value),
+  };
+}
+
+function createProfileDocument(profileId: Types.ObjectId, user: Record<string, unknown>) {
+  return {
+    toJSON: () => ({
+      _id: profileId,
+      userId: user,
+      status: TutorStatus.ACTIVE,
+      professionalBackground: {
+        currentPosition: 'Prompt Engineer',
+      },
+    }),
+  };
+}

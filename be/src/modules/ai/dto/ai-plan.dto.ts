@@ -116,11 +116,12 @@ export class CreateAiPlanDto {
 
   @ApiPropertyOptional({
     description: 'Optional seat cap for business/team plans.',
+    nullable: true,
   })
   @IsOptional()
   @IsNumber()
   @Min(1)
-  seatLimit?: number;
+  seatLimit?: number | null;
 
   @ApiPropertyOptional({ type: AiPlanLimitsDto })
   @IsOptional()

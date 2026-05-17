@@ -79,6 +79,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      ACCESS_TOKEN_EXPIRE_IN: ${ACCESS_TOKEN_EXPIRE_IN:-1h}
     depends_on:
       mongodb:
         condition: service_healthy

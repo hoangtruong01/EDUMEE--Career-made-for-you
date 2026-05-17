@@ -29,6 +29,28 @@ export interface SkillTag {
   usageCount?: number;
 }
 
+export type SkillTagCategory = SkillTag['category'];
+
+export interface CareerSkillTagInput {
+  name: string;
+  category: SkillTagCategory;
+  importance?: number;
+  minimumLevel?: number;
+}
+
+export interface CreateSkillTagPayload {
+  name: string;
+  category?: SkillTagCategory;
+  careerIds?: string[];
+  careerTitles?: string[];
+}
+
+export interface UpdateSkillTagPayload {
+  name?: string;
+  category?: SkillTagCategory;
+  isActive?: boolean;
+}
+
 export const careerTagsService = {
   getCareers(token: string) {
     return apiClient.get<{ data: CareerTag[]; total: number; page: number; limit: number }>(
@@ -44,5 +66,17 @@ export const careerTagsService = {
     if (params.q) search.set('q', params.q);
     const query = search.toString();
     return apiClient.get<SkillTag[]>(`/skill-tags${query ? `?${query}` : ''}`, token);
+  },
+
+  createSkillTag(token: string, data: CreateSkillTagPayload) {
+    return apiClient.post<SkillTag>('/skill-tags', data, token);
+  },
+
+  updateSkillTag(token: string, id: string, data: UpdateSkillTagPayload) {
+    return apiClient.patch<SkillTag>(`/skill-tags/${id}`, data, token);
+  },
+
+  deleteSkillTag(token: string, id: string) {
+    return apiClient.delete<SkillTag>(`/skill-tags/${id}`, token);
   },
 };

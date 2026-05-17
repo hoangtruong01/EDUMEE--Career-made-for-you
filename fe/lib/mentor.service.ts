@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiClient } from '@/lib/api-client';
+import { isJwtExpired } from '@/lib/jwt';
 
 export type TutorStatus = 'pending_approval' | 'active' | 'inactive' | 'suspended' | 'rejected';
 export type TutorLevel = 'junior_mentor' | 'senior_mentor' | 'expert_mentor' | 'master_mentor';
@@ -43,6 +44,12 @@ export type MentorAvailabilitySlotStatus = 'available' | 'held' | 'booked' | 'bl
 export interface TutorProfile {
   id: string;
   userId: string;
+  mentorUser?: {
+    id: string;
+    name: string;
+    email: string;
+    avatar: string;
+  };
   status: TutorStatus;
   tutorLevel: TutorLevel;
   professionalBackground: {
@@ -103,8 +110,21 @@ export interface TutorProfile {
 
 export interface BookingSession {
   id: string;
+  tutoringSessionId?: string;
   menteeId: string;
   mentorId: string;
+  mentorUser?: {
+    id: string;
+    name: string;
+    email?: string;
+    avatar?: string;
+  };
+  menteeUser?: {
+    id: string;
+    name: string;
+    email?: string;
+    avatar?: string;
+  };
   tutorProfileId: string;
   availabilitySlotId: string;
   sessionType: string;
@@ -139,7 +159,35 @@ export interface BookingSession {
     currency?: string;
     paymentStatus?: string;
     transactionId?: string;
+    creditsUsed?: number;
+    refundInfo?: {
+      refundAmount?: number;
+      refundReason?: string;
+      refundStatus?: string;
+    };
   };
+  communicationThread?: {
+    messageId: string;
+    senderId: string;
+    senderType: 'mentee' | 'mentor' | 'system';
+    message: string;
+    timestamp: string;
+    messageType: string;
+  }[];
+  rescheduleProposals?: {
+    id: string;
+    proposedBy: string;
+    proposedByRole: 'mentee' | 'mentor';
+    status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+    availabilitySlotId?: string;
+    newDateTime: string;
+    duration: number;
+    timeZone?: string;
+    reason?: string;
+    message?: string;
+    createdAt?: string;
+    respondedAt?: string;
+  }[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -263,6 +311,8 @@ export interface ApplyTutorProfilePayload {
   tutorLevel?: TutorLevel;
 }
 
+export type UpdateTutorProfilePayload = ApplyTutorProfilePayload;
+
 export interface CreateBookingPayload {
   tutorProfileId: string;
   availabilitySlotId: string;
@@ -274,6 +324,87 @@ export interface CreateBookingPayload {
     meetingPlatform: string;
   };
   bookingRequest: BookingSession['bookingRequest'];
+  paymentReturnUrls?: {
+    success?: string;
+    error?: string;
+    cancel?: string;
+  };
+  useEdumeeCredit?: boolean;
+}
+
+export interface SessionReview {
+  id?: string;
+  _id?: string;
+  tutoringSessionId?: string;
+  reviewerId?: string | {
+    id?: string;
+    _id?: string;
+    name?: string;
+    avatar?: string;
+  };
+  reviewerType?: 'mentee' | 'mentor' | string;
+  reviewedUserId?: string;
+  status?: string;
+  isAnonymous?: boolean;
+  overallRatings?: {
+    overallSatisfaction?: number;
+    wouldRecommend?: boolean;
+    likelyToBookAgain?: boolean;
+    communication?: number;
+    expertise?: number;
+    helpfulness?: number;
+    professionalism?: number;
+    punctuality?: number;
+  };
+  writtenFeedback?: {
+    comment?: string;
+    [key: string]: unknown;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PublicMentorReview {
+  id: string;
+  rating: number;
+  comment: string;
+  createdAt?: string;
+  updatedAt?: string;
+  reviewer: {
+    name: string;
+    avatar?: string;
+    isAnonymous: boolean;
+  };
+  overallRatings?: SessionReview['overallRatings'];
+}
+
+export interface BookingReviewStatus {
+  eligible: boolean;
+  reviewed: boolean;
+  reason?: string;
+  tutoringSessionId?: string;
+  review?: {
+    id: string;
+    overallRatings?: {
+      overallSatisfaction?: number;
+    };
+    writtenFeedback?: {
+      comment?: string;
+    };
+  } | null;
+}
+
+export interface CreateSessionReviewPayload {
+  tutoringSessionId: string;
+  rating: number;
+  comment?: string;
+  isAnonymous?: boolean;
+  wouldRecommend?: boolean;
+  communication?: number;
+  expertise?: number;
+  helpfulness?: number;
+  professionalism?: number;
+  punctuality?: number;
 }
 
 const buildQuery = (params: Record<string, string | number | undefined>) => {
@@ -296,6 +427,10 @@ export const mentorService = {
 
   applyTutorProfile(token: string, payload: ApplyTutorProfilePayload) {
     return apiClient.post<TutorProfile>('/tutor-profiles', payload, token);
+  },
+
+  updateTutorProfile(token: string, profileId: string, payload: UpdateTutorProfilePayload) {
+    return apiClient.put<TutorProfile>(`/tutor-profiles/${profileId}`, payload, token);
   },
 
   getMyTutorProfile(token: string) {
@@ -343,12 +478,67 @@ export const mentorService = {
     );
   },
 
+  getBooking(token: string, id: string) {
+    return apiClient.get<BookingSession>(`/booking-sessions/${id}`, token);
+  },
+
   confirmBooking(token: string, id: string, confirmedDateTime?: string) {
     return apiClient.post<BookingSession>(`/booking-sessions/${id}/confirm`, { confirmedDateTime }, token);
   },
 
   cancelBooking(token: string, id: string, reason?: string) {
     return apiClient.post<BookingSession>(`/booking-sessions/${id}/cancel`, { reason }, token);
+  },
+
+  completeBooking(token: string, id: string) {
+    return apiClient.post<BookingSession>(`/booking-sessions/${id}/complete`, {}, token);
+  },
+
+  sendBookingMessage(token: string, id: string, message: string) {
+    return apiClient.post<BookingSession>(`/booking-sessions/${id}/messages`, { message, messageType: 'chat' }, token);
+  },
+
+  createRescheduleProposal(
+    token: string,
+    id: string,
+    payload: {
+      newDateTime: string;
+      duration: number;
+      timeZone?: string;
+      availabilitySlotId?: string;
+      reason?: string;
+      message?: string;
+    },
+  ) {
+    return apiClient.post<BookingSession>(`/booking-sessions/${id}/reschedule-proposals`, payload, token);
+  },
+
+  acceptRescheduleProposal(token: string, id: string, proposalId: string) {
+    return apiClient.post<BookingSession>(`/booking-sessions/${id}/reschedule-proposals/${proposalId}/accept`, {}, token);
+  },
+
+  declineRescheduleProposal(token: string, id: string, proposalId: string, reason?: string) {
+    return apiClient.post<BookingSession>(
+      `/booking-sessions/${id}/reschedule-proposals/${proposalId}/decline`,
+      { reason },
+      token,
+    );
+  },
+
+  getBookingReviewStatus(token: string, bookingId: string) {
+    return apiClient.get<BookingReviewStatus>(`/session-reviews/booking/${bookingId}/status`, token);
+  },
+
+  getMyReceivedReviews(token: string) {
+    return apiClient.get<SessionReview[]>('/session-reviews/me/received', token);
+  },
+
+  getPublicMentorReviews(token: string, mentorUserId: string) {
+    return apiClient.get<PublicMentorReview[]>(`/session-reviews/mentor/${mentorUserId}/public`, token);
+  },
+
+  createSessionReview(token: string, payload: CreateSessionReviewPayload) {
+    return apiClient.post('/session-reviews', payload, token);
   },
 };
 
@@ -369,11 +559,27 @@ export const notificationService = {
     token: string,
     onNotification: (notification: MentorNotification) => void,
     onStatusChange?: (status: 'connecting' | 'live' | 'closed') => void,
+    onSessionExpired?: () => void,
   ) {
+    if (isJwtExpired(token)) {
+      onStatusChange?.('closed');
+      onSessionExpired?.();
+      return () => undefined;
+    }
+
     const source = new EventSource(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`);
+    let closed = false;
     onStatusChange?.('connecting');
 
+    const closeSource = () => {
+      if (closed) return;
+      closed = true;
+      source.close();
+      onStatusChange?.('closed');
+    };
+
     source.addEventListener('connected', () => {
+      if (closed) return;
       onStatusChange?.('live');
     });
 
@@ -386,10 +592,16 @@ export const notificationService = {
     });
 
     source.onerror = () => {
+      if (isJwtExpired(token)) {
+        onSessionExpired?.();
+        closeSource();
+        return;
+      }
+
       onStatusChange?.('closed');
     };
 
-    return () => source.close();
+    return closeSource;
   },
 };
 

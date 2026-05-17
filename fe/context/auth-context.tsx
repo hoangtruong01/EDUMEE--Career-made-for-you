@@ -2,7 +2,14 @@
 
 import { authStorage, type UserRole } from '@/lib/auth-storage';
 import { authService, type LoginPayload, type RegisterPayload } from '@/lib/auth.service';
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  TOKEN_EXPIRY_SKEW_MS,
+  decodeJwtPayload,
+  getJwtExpiryDelayMs,
+  isJwtExpired,
+} from '@/lib/jwt';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
 interface AuthState {
   accessToken: string;
@@ -33,35 +40,28 @@ interface AuthContextValue extends AuthState {
   verifyForgotPasswordToken: (token: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  expireSession: () => void;
   setOnboardingCompleted: (completed: boolean) => void;
 }
 
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return null;
-    }
+const loggedOutState: AuthState = {
+  accessToken: '',
+  refreshToken: '',
+  role: '',
+  isAuthenticated: false,
+  isHydrated: true,
+  onboardingCompleted: false,
+};
 
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const decoded = atob(payload);
-    return JSON.parse(decoded) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function isTokenExpired(token: string): boolean {
-  const payload = decodeJwtPayload(token);
-  if (!payload?.exp || typeof payload.exp !== 'number') {
-    return true;
+function redirectToExpiredLogin() {
+  if (typeof window === 'undefined' || window.location.pathname.includes('/login')) {
+    return;
   }
 
-  const expiresAtMs = payload.exp * 1000;
-  return Date.now() >= expiresAtMs;
+  window.location.href = '/login?expired=true';
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -82,16 +82,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshToken = authStorage.getRefreshToken();
     const role = authStorage.getRole();
 
-    if (!accessToken || isTokenExpired(accessToken)) {
+    if (!accessToken || isJwtExpired(accessToken)) {
       authStorage.clearSession();
-      return {
-        accessToken: '',
-        refreshToken: '',
-        role: '',
-        isAuthenticated: false,
-        isHydrated: true,
-        onboardingCompleted: false,
-      };
+      return loggedOutState;
     }
 
 
@@ -126,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
 
+    toast.success('Đăng nhập thành công');
 
     return { role: response.result.role, redirectTo: response.redirectTo };
   }, []);
@@ -149,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
 
+    toast.success('Đăng nhập admin thành công');
 
     return { role: response.result.role, redirectTo: response.redirectTo };
   }, []);
@@ -166,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: (payloadDecoded?.onboarding_completed as boolean) || false,
     });
 
+    toast.success('Đăng nhập Google thành công');
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
@@ -184,6 +180,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authService.resetPassword(token, password);
   }, []);
 
+  const expireSession = useCallback(() => {
+    authStorage.clearSession();
+    setState(loggedOutState);
+    toast.warning('Phiên đăng nhập đã hết hạn');
+    redirectToExpiredLogin();
+  }, []);
+
   const logout = useCallback(async () => {
     if (state.refreshToken && state.accessToken) {
       try {
@@ -194,16 +197,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     authStorage.clearSession();
-    setState({
-      accessToken: '',
-      refreshToken: '',
-      role: '',
-      isAuthenticated: false,
-      isHydrated: true,
-      onboardingCompleted: false,
-    });
+    setState(loggedOutState);
+    toast.success('Đã đăng xuất');
 
   }, [state.accessToken, state.refreshToken]);
+
+  useEffect(() => {
+    if (!state.isHydrated || !state.isAuthenticated || !state.accessToken) {
+      return;
+    }
+
+    const expiryDelayMs = getJwtExpiryDelayMs(state.accessToken, TOKEN_EXPIRY_SKEW_MS);
+    if (expiryDelayMs === null || expiryDelayMs <= 0) {
+      expireSession();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(expireSession, expiryDelayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [expireSession, state.accessToken, state.isAuthenticated, state.isHydrated]);
   
   const setOnboardingCompleted = useCallback((completed: boolean) => {
     setState((prev) => ({ ...prev, onboardingCompleted: completed }));
@@ -220,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyForgotPasswordToken,
       resetPassword,
       logout,
+      expireSession,
       setOnboardingCompleted,
     }),
     [
@@ -232,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyForgotPasswordToken,
       resetPassword,
       logout,
+      expireSession,
       setOnboardingCompleted,
     ],
   );

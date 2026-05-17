@@ -9,6 +9,7 @@ export interface UserMe {
   date_of_birth?: string;
   phone_number?: string;
   avatar?: string;
+  login_type?: string;
   onboarding_completed?: boolean;
 }
 

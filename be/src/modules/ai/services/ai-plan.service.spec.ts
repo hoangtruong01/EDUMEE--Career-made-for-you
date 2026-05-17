@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Types } from 'mongoose';
 import { AiPlanService } from './ai-plan.service';
 import { AiPlan } from '../schema/ai-plan.schema';
 import {
@@ -8,6 +9,7 @@ import {
   SubscriptionStatus,
   UserSubscription,
 } from '../../users/schemas/user-subscriptions';
+import { User } from '../../users/schemas/user.schema';
 
 const createExecMock = <T>(value: T) => ({
   exec: jest.fn().mockResolvedValue(value),
@@ -33,6 +35,12 @@ describe('AiPlanService', () => {
 
   const userSubscriptionModel = {
     countDocuments: jest.fn(),
+    aggregate: jest.fn(),
+    distinct: jest.fn(),
+  };
+
+  const userModel = {
+    countDocuments: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -44,6 +52,7 @@ describe('AiPlanService', () => {
         AiPlanService,
         { provide: getModelToken(AiPlan.name), useValue: aiPlanModel },
         { provide: getModelToken(UserSubscription.name), useValue: userSubscriptionModel },
+        { provide: getModelToken(User.name), useValue: userModel },
       ],
     }).compile();
 
@@ -79,6 +88,110 @@ describe('AiPlanService', () => {
     expect(sort).toHaveBeenCalledWith({ displayOrder: 1, price: 1, createdAt: 1 });
     expect(result).toHaveLength(1);
     expect(result[0].pricingByBillingCycle?.monthly?.total).toBe(129000);
+  });
+
+  it('returns subscriber stats for admin plans', async () => {
+    const plusPlanId = '507f1f77bcf86cd799439012';
+    const freePlanId = '507f1f77bcf86cd799439013';
+    const plusObjectId = new Types.ObjectId(plusPlanId);
+    const freeObjectId = new Types.ObjectId(freePlanId);
+    const plans = [
+      {
+        _id: plusObjectId,
+        name: 'Plus',
+        price: 10000,
+        isDefaultPlan: false,
+        toJSON: () => ({ id: plusPlanId, name: 'Plus', price: 10000, isDefaultPlan: false }),
+      },
+      {
+        _id: freeObjectId,
+        name: 'Free',
+        price: 0,
+        isDefaultPlan: true,
+        toJSON: () => ({ id: freePlanId, name: 'Free', price: 0, isDefaultPlan: true }),
+      },
+    ];
+    const exec = jest.fn().mockResolvedValue(plans);
+    const sort = jest.fn().mockReturnValue({ exec });
+    aiPlanModel.find.mockReturnValue({ sort });
+    userSubscriptionModel.aggregate
+      .mockReturnValueOnce(createExecMock([{ _id: plusObjectId, count: 2 }]))
+      .mockReturnValueOnce(createExecMock([{ _id: plusObjectId, count: 1 }]))
+      .mockReturnValueOnce(createExecMock([{ _id: plusObjectId, count: 1 }]))
+      .mockReturnValueOnce(createExecMock([{ _id: plusObjectId, count: 1 }]));
+    userModel.countDocuments.mockReturnValue(createExecMock(5));
+    userSubscriptionModel.distinct.mockReturnValue(
+      createExecMock([new Types.ObjectId(), new Types.ObjectId()]),
+    );
+
+    const result = await service.findAll();
+
+    expect(result).toHaveLength(2);
+    expect(result[0].subscriberStats).toEqual({
+      activeSubscribers: 1,
+      totalSubscribers: 2,
+      cancelledSubscribers: 1,
+      expiredSubscribers: 1,
+    });
+    expect(result[1].subscriberStats.activeSubscribers).toBe(3);
+    expect(result[1].subscriberStats.totalSubscribers).toBe(3);
+  });
+
+  it('counts active subscribers only when subscription has not expired', async () => {
+    const planId = new Types.ObjectId('507f1f77bcf86cd799439012');
+    const plans = [
+      {
+        _id: planId,
+        name: 'Plus',
+        price: 10000,
+        isDefaultPlan: false,
+        toJSON: () => ({ id: planId.toString(), name: 'Plus' }),
+      },
+    ];
+    aiPlanModel.find.mockReturnValue({ sort: jest.fn().mockReturnValue(createExecMock(plans)) });
+    userSubscriptionModel.aggregate.mockReturnValue(createExecMock([]));
+    userModel.countDocuments.mockReturnValue(createExecMock(0));
+    userSubscriptionModel.distinct.mockReturnValue(createExecMock([]));
+
+    await service.findAll();
+
+    const activeAggregateMatch = userSubscriptionModel.aggregate.mock.calls[1][0][0].$match;
+    expect(activeAggregateMatch.status).toBe(SubscriptionStatus.ACTIVE);
+    expect(activeAggregateMatch.$or).toEqual(
+      expect.arrayContaining([
+        { endDate: { $exists: false } },
+        { endDate: null },
+        { endDate: { $gt: expect.any(Date) } },
+      ]),
+    );
+  });
+
+  it('uses distinct users for total subscriber counts so renewals are not duplicated', async () => {
+    const planId = new Types.ObjectId('507f1f77bcf86cd799439012');
+    aiPlanModel.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue(
+        createExecMock([
+          {
+            _id: planId,
+            name: 'Plus',
+            price: 10000,
+            isDefaultPlan: false,
+            toJSON: () => ({ id: planId.toString(), name: 'Plus' }),
+          },
+        ]),
+      ),
+    });
+    userSubscriptionModel.aggregate.mockReturnValue(createExecMock([]));
+    userModel.countDocuments.mockReturnValue(createExecMock(0));
+    userSubscriptionModel.distinct.mockReturnValue(createExecMock([]));
+
+    await service.findAll();
+
+    const totalAggregatePipeline = userSubscriptionModel.aggregate.mock.calls[0][0];
+    expect(totalAggregatePipeline[1]).toEqual({
+      $group: { _id: '$planId', userIds: { $addToSet: '$userId' } },
+    });
+    expect(totalAggregatePipeline[2]).toEqual({ $project: { count: { $size: '$userIds' } } });
   });
 
   it('forces default plans to stay active on create', async () => {

@@ -16,6 +16,11 @@ export class PaymentPublicController {
     return this.paymentService.handleSepayIpn(secretKey, payload);
   }
 
+  @Get('sepay/checkout/:token/session')
+  getSepayCheckoutSession(@Param('token') token: string) {
+    return this.paymentService.getSepayCheckoutSession(token);
+  }
+
   @Get('sepay/checkout/:token')
   async renderSepayCheckout(@Param('token') token: string, @Res() response: Response) {
     const html = await this.paymentService.renderSepayCheckoutPage(token);

@@ -50,7 +50,8 @@ export default function HollandTestScreen() {
   const startSession = async () => {
     try {
       const response = await api.post('/assessment-sessions');
-      setSessionId(response.data.data._id);
+      const session = response.data.data;
+      setSessionId(session.id || session._id);
     } catch (error) {
       console.error('Start session error:', error);
     }
@@ -85,7 +86,6 @@ export default function HollandTestScreen() {
 
     const newAnswers = [...answers];
     newAnswers[currentIndex] = {
-      sessionId: sessionId,
       questionId: questions[currentIndex]._id,
       answer: selectedOption,
     };
@@ -124,9 +124,14 @@ export default function HollandTestScreen() {
 
     setIsSubmitting(true);
     try {
-      await api.post('/assessment-answers/bulk', finalAnswers);
-      await api.post(`/assessment-sessions/${sessionId}/finish`);
+      const answersForSession = finalAnswers.map((answer) => ({
+        ...answer,
+        sessionId,
+      }));
+
+      await api.post('/assessment-answers/bulk', answersForSession);
       await api.post('/career-fit-results/generate-my-analysis');
+      await api.post(`/assessment-sessions/${sessionId}/finish`);
       router.replace('/test-result');
     } catch (error: any) {
       console.error('Submit test error:', error);

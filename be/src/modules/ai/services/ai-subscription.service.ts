@@ -7,6 +7,7 @@ import {
   UserSubscription,
   UserSubscriptionDocument,
 } from '../../users/schemas/user-subscriptions';
+import { User, UserDocument } from '../../users/schemas/user.schema';
 import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 
 @Injectable()
@@ -16,6 +17,8 @@ export class AiSubscriptionService {
     private readonly userSubscriptionModel: Model<UserSubscriptionDocument>,
     @InjectModel(AiPlan.name)
     private readonly aiPlanModel: Model<AiPlanDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
   ) {}
 
   async upsertActiveSubscription(params: {
@@ -50,13 +53,37 @@ export class AiSubscriptionService {
     const sub = new this.userSubscriptionModel({
       userId: new Types.ObjectId(userId),
       planId: new Types.ObjectId(planId),
-      ...(paymentId ? { paymentId: new Types.ObjectId(paymentId) } : {}),
+      ...(paymentId
+        ? {
+            paymentId: new Types.ObjectId(paymentId),
+            paymentIds: [new Types.ObjectId(paymentId)],
+          }
+        : {}),
       billingCycle,
       startDate,
       endDate,
       status: SubscriptionStatus.ACTIVE,
     });
     return sub.save();
+  }
+
+  async assignUserToPlan(params: {
+    userId?: string;
+    identifier?: string;
+    planId: string;
+    billingCycle?: BillingCycle;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<UserSubscriptionDocument> {
+    const user = await this.resolveUserForAssignment(params.userId, params.identifier);
+
+    return this.upsertActiveSubscription({
+      userId: String(user._id),
+      planId: params.planId,
+      billingCycle: params.billingCycle,
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
   }
 
   async activateSubscriptionFromPayment(params: {
@@ -67,22 +94,45 @@ export class AiSubscriptionService {
     startDate?: Date;
   }): Promise<UserSubscriptionDocument> {
     const { paymentId } = params;
+    if (!Types.ObjectId.isValid(params.userId)) throw new BadRequestException('Invalid userId');
+    if (!Types.ObjectId.isValid(params.planId)) throw new BadRequestException('Invalid planId');
     if (!Types.ObjectId.isValid(paymentId)) throw new BadRequestException('Invalid paymentId');
 
-    const existing = await this.userSubscriptionModel
-      .findOne({ paymentId: new Types.ObjectId(paymentId) })
-      .exec();
+    const paymentObjectId = new Types.ObjectId(paymentId);
+    const existing = await this.findSubscriptionByPaymentId(paymentObjectId);
     if (existing) {
       if (existing.status === SubscriptionStatus.ACTIVE) return existing;
       throw new ConflictException('Payment has already been linked to a subscription');
     }
 
-    return this.upsertActiveSubscription({
+    const plan = await this.aiPlanModel.findById(params.planId).exec();
+    if (!plan) throw new NotFoundException('AI plan not found');
+
+    const startDate = params.startDate ?? new Date();
+    const currentActive = await this.getActiveSubscriptionForUser(params.userId);
+    if (currentActive && currentActive.planId.toString() === params.planId) {
+      const renewalBase =
+        currentActive.endDate && currentActive.endDate.getTime() > startDate.getTime()
+          ? currentActive.endDate
+          : startDate;
+      currentActive.billingCycle = params.billingCycle;
+      currentActive.endDate = this.computeEndDate(renewalBase, params.billingCycle);
+      this.linkPaymentToSubscription(currentActive, paymentObjectId);
+      return currentActive.save();
+    }
+
+    if (currentActive) {
+      currentActive.status = SubscriptionStatus.CANCELLED;
+      currentActive.endDate = startDate;
+      await currentActive.save();
+    }
+
+    return this.createActiveSubscription({
       userId: params.userId,
       planId: params.planId,
       paymentId,
       billingCycle: params.billingCycle,
-      startDate: params.startDate,
+      startDate,
     });
   }
 
@@ -112,11 +162,132 @@ export class AiSubscriptionService {
     if (!Types.ObjectId.isValid(paymentId)) throw new BadRequestException('Invalid paymentId');
     return this.userSubscriptionModel
       .findOneAndUpdate(
-        { paymentId: new Types.ObjectId(paymentId), status: SubscriptionStatus.ACTIVE },
+        {
+          $or: [
+            { paymentId: new Types.ObjectId(paymentId) },
+            { paymentIds: new Types.ObjectId(paymentId) },
+          ],
+          status: SubscriptionStatus.ACTIVE,
+        },
         { $set: { status: SubscriptionStatus.CANCELLED, endDate: new Date() } },
         { new: true, runValidators: true },
       )
       .exec();
+  }
+
+  private async findSubscriptionByPaymentId(
+    paymentId: Types.ObjectId,
+  ): Promise<UserSubscriptionDocument | null> {
+    return this.userSubscriptionModel
+      .findOne({
+        $or: [{ paymentId }, { paymentIds: paymentId }],
+      })
+      .exec();
+  }
+
+  private async resolveUserForAssignment(userId?: string, identifier?: string): Promise<UserDocument> {
+    const normalizedUserId = userId?.trim();
+    const normalizedIdentifier = identifier?.trim();
+
+    if (!normalizedUserId && !normalizedIdentifier) {
+      throw new BadRequestException('Select a user before assigning a plan');
+    }
+
+    if (normalizedUserId) {
+      return this.resolveUserById(normalizedUserId);
+    }
+
+    return this.resolveUserByIdentifier(normalizedIdentifier || '');
+  }
+
+  private async resolveUserById(userId: string): Promise<UserDocument> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid userId');
+    }
+
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  private async resolveUserByIdentifier(identifier: string): Promise<UserDocument> {
+    const normalizedIdentifier = identifier.trim();
+    if (!normalizedIdentifier) {
+      throw new BadRequestException('Email or phone is required');
+    }
+
+    if (normalizedIdentifier.includes('@')) {
+      const user = await this.userModel
+        .findOne({ email: new RegExp(`^${this.escapeRegex(normalizedIdentifier)}$`, 'i') })
+        .exec();
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+      return user;
+    }
+
+    const compactPhone = normalizedIdentifier.replace(/\s+/g, '');
+    const phoneCandidates = Array.from(new Set([normalizedIdentifier, compactPhone])).filter(Boolean);
+    const users = await this.userModel
+      .find({ phone_number: { $in: phoneCandidates } })
+      .limit(2)
+      .exec();
+
+    if (users.length === 0) {
+      throw new NotFoundException('User not found');
+    }
+    if (users.length > 1) {
+      throw new BadRequestException('Multiple users match this phone number. Use email instead');
+    }
+
+    return users[0];
+  }
+
+  private createActiveSubscription(params: {
+    userId: string;
+    planId: string;
+    paymentId: string;
+    billingCycle: BillingCycle;
+    startDate: Date;
+  }): Promise<UserSubscriptionDocument> {
+    const paymentObjectId = new Types.ObjectId(params.paymentId);
+    const sub = new this.userSubscriptionModel({
+      userId: new Types.ObjectId(params.userId),
+      planId: new Types.ObjectId(params.planId),
+      paymentId: paymentObjectId,
+      paymentIds: [paymentObjectId],
+      billingCycle: params.billingCycle,
+      startDate: params.startDate,
+      endDate: this.computeEndDate(params.startDate, params.billingCycle),
+      status: SubscriptionStatus.ACTIVE,
+    });
+    return sub.save();
+  }
+
+  private linkPaymentToSubscription(
+    subscription: UserSubscriptionDocument,
+    paymentId: Types.ObjectId,
+  ): void {
+    if (!subscription.paymentId) {
+      subscription.paymentId = paymentId;
+    }
+
+    const ids = [
+      subscription.paymentId,
+      ...(subscription.paymentIds || []),
+      paymentId,
+    ].filter((id): id is Types.ObjectId => Boolean(id));
+    const uniqueIds = Array.from(new Set(ids.map((id) => id.toString()))).map(
+      (id) => new Types.ObjectId(id),
+    );
+    subscription.paymentIds = uniqueIds;
+  }
+
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private async expireStaleSubscriptions(userId: string): Promise<void> {

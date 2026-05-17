@@ -1,20 +1,31 @@
 'use client';
 
 import { useAuth } from '@/context/auth-context';
-import { ApiError } from '@/lib/api-client';
-import { profileService } from '@/lib/profile.service';
+import { useMeQuery, useMyProfileQuery } from '@/hooks/useProfileData';
+import type { UserProfile } from '@/lib/profile.service';
 import { MENTOR_HOME_PATH } from '@/lib/role-redirect';
-import { userService } from '@/lib/user.service';
+import type { UserMe } from '@/lib/user.service';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 interface RouteGuardProps {
   children: React.ReactNode;
   requiredRole?: string;
 }
 
+function isMissingRequiredProfile(user: UserMe | null, profile: UserProfile | null) {
+  const name = user?.name?.trim();
+  const phone = user?.phone_number?.trim();
+  const dobValue = user?.date_of_birth;
+  const dob = dobValue ? new Date(dobValue) : null;
+  const educationLevel = profile?.educationLevel?.trim();
+
+  const hasDob = !!dob && !Number.isNaN(dob.getTime());
+
+  return !name || !phone || !hasDob || !educationLevel;
+}
+
 export default function RouteGuard({ children, requiredRole }: RouteGuardProps) {
-  const [mounted, setMounted] = useState(false);
   const { isAuthenticated, isHydrated, role, onboardingCompleted, accessToken } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -25,17 +36,6 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
   const profilePages = ['/complete-profile'];
   const isProfilePage = profilePages.some((page) => pathname?.startsWith(page));
 
-  const [profileGate, setProfileGate] = useState({
-    loading: true,
-    needsProfile: false,
-    onboardingCompleted: onboardingCompleted,
-  });
-
-  useEffect(() => {
-     
-    setMounted(true);
-  }, []);
-
   const isDemoUserUnlocked =
     typeof window !== 'undefined' && window.localStorage.getItem('demo_user_unlocked') === '1';
 
@@ -43,83 +43,64 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
 
   const hasRoleAccess = !requiredRole || role === requiredRole;
   const isAuthorized = (isAuthenticated && hasRoleAccess) || canAccessUserDemo;
+  const isRoleRedirectPath =
+    (role === 'mentor' && (pathname === '/profile' || pathname === '/mentor-matching')) ||
+    (role === 'admin' && (pathname === '/profile' || pathname === '/mentor-matching'));
+  const shouldCheckProfile =
+    isHydrated &&
+    isAuthenticated &&
+    Boolean(accessToken) &&
+    role !== 'admin' &&
+    !canAccessUserDemo &&
+    !isRoleRedirectPath;
+  const meQuery = useMeQuery(shouldCheckProfile);
+  const myProfileQuery = useMyProfileQuery(shouldCheckProfile);
 
-  const isMissingRequiredProfile = (
-    user: Awaited<ReturnType<typeof userService.getMe>> | null,
-    profile: Awaited<ReturnType<typeof profileService.getMyProfile>> | null,
-  ) => {
-    const name = user?.name?.trim();
-    const phone = user?.phone_number?.trim();
-    const dobValue = user?.date_of_birth;
-    const dob = dobValue ? new Date(dobValue) : null;
-    const educationLevel = profile?.educationLevel?.trim();
-
-    const hasDob = !!dob && !Number.isNaN(dob.getTime());
-
-    return !name || !phone || !hasDob || !educationLevel;
-  };
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    if (!isAuthenticated || !accessToken || role === 'admin' || canAccessUserDemo) {
-      setProfileGate({
+  const profileGate = useMemo(() => {
+    if (!shouldCheckProfile) {
+      return {
         loading: false,
         needsProfile: false,
         onboardingCompleted,
-      });
-      return;
+      };
     }
 
-    let isActive = true;
+    if (meQuery.isLoading || myProfileQuery.isLoading) {
+      return {
+        loading: true,
+        needsProfile: false,
+        onboardingCompleted,
+      };
+    }
 
-    const checkProfile = async () => {
-      try {
-        const user = await userService.getMe(accessToken);
-        let profile = null;
+    if (meQuery.isError || myProfileQuery.isError) {
+      return {
+        loading: false,
+        needsProfile: false,
+        onboardingCompleted,
+      };
+    }
 
-        try {
-          profile = await profileService.getMyProfile(accessToken);
-        } catch (error) {
-          if (error instanceof ApiError && error.statusCode === 404) {
-            profile = null;
-          } else {
-            throw error;
-          }
-        }
-
-        const needsProfile = isMissingRequiredProfile(user, profile);
-        const serverOnboardingCompleted =
-          typeof user?.onboarding_completed === 'boolean'
-            ? user.onboarding_completed
-            : onboardingCompleted;
-
-        if (isActive) {
-          setProfileGate({
-            loading: false,
-            needsProfile,
-            onboardingCompleted: serverOnboardingCompleted,
-          });
-        }
-      } catch {
-        if (isActive) {
-          setProfileGate({
-            loading: false,
-            needsProfile: false,
-            onboardingCompleted,
-          });
-        }
-      }
+    const user = meQuery.data ?? null;
+    const profile = myProfileQuery.data ?? null;
+    return {
+      loading: false,
+      needsProfile: isMissingRequiredProfile(user, profile),
+      onboardingCompleted:
+        typeof user?.onboarding_completed === 'boolean'
+          ? user.onboarding_completed
+          : onboardingCompleted,
     };
-
-    void checkProfile();
-
-    return () => {
-      isActive = false;
-    };
-  }, [accessToken, canAccessUserDemo, isAuthenticated, isHydrated, onboardingCompleted, role]);
+  }, [
+    meQuery.data,
+    meQuery.isError,
+    meQuery.isLoading,
+    myProfileQuery.data,
+    myProfileQuery.isError,
+    myProfileQuery.isLoading,
+    onboardingCompleted,
+    shouldCheckProfile,
+  ]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -135,6 +116,25 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
     if (!hasRoleAccess && !canAccessUserDemo) {
       router.replace('/unauthorized');
       return;
+    }
+
+    if (isAuthenticated && role === 'admin') {
+      if (pathname === '/profile' || pathname === '/mentor-matching') {
+        router.replace('/admin/dashboard');
+      }
+      return;
+    }
+
+    if (isAuthenticated && role === 'mentor') {
+      if (pathname === '/profile') {
+        router.replace('/mentor-dashboard/profile');
+        return;
+      }
+
+      if (pathname === '/mentor-matching') {
+        router.replace(MENTOR_HOME_PATH);
+        return;
+      }
     }
 
     if (isAuthenticated && role !== 'admin') {
@@ -167,6 +167,7 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
     isAuthenticated,
     isHydrated,
     isProfilePage,
+    isRoleRedirectPath,
     isSurveyPage,
     pathname,
     profileGate.loading,
@@ -176,7 +177,7 @@ export default function RouteGuard({ children, requiredRole }: RouteGuardProps) 
     role,
   ]);
 
-  if (!mounted || !isHydrated || !isAuthorized || profileGate.loading) {
+  if (!isHydrated || !isAuthorized || profileGate.loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground text-sm">Đang kiểm tra quyền truy cập...</p>

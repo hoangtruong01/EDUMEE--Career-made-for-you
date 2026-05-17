@@ -5,6 +5,7 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import { ROLES_KEY } from '../../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { AuditLogService } from '../../audit/audit-log.service';
 import { AiPlanController } from './ai-plan.controller';
 import { AiPlanService } from '../services/ai-plan.service';
 
@@ -18,6 +19,9 @@ describe('AiPlanController', () => {
     update: jest.fn(),
     remove: jest.fn(),
   };
+  const auditLogService = {
+    record: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -28,6 +32,10 @@ describe('AiPlanController', () => {
         {
           provide: AiPlanService,
           useValue: aiPlanService,
+        },
+        {
+          provide: AuditLogService,
+          useValue: auditLogService,
         },
       ],
     }).compile();

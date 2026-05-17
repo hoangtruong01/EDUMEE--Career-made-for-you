@@ -15,6 +15,7 @@ import {
   BookingSessionService,
   SessionReviewService,
   MentorAvailabilityService,
+  MentorCallService,
 } from './services';
 import {
   TutorProfileController,
@@ -22,6 +23,7 @@ import {
   BookingSessionController,
   SessionReviewController,
   MentorAvailabilityController,
+  MentorCallController,
 } from './controllers';
 
 @Module({
@@ -44,6 +46,7 @@ import {
     BookingSessionController,
     SessionReviewController,
     MentorAvailabilityController,
+    MentorCallController,
   ],
   providers: [
     TutorProfileService,
@@ -51,6 +54,7 @@ import {
     BookingSessionService,
     SessionReviewService,
     MentorAvailabilityService,
+    MentorCallService,
   ],
   exports: [
     TutorProfileService,
@@ -58,6 +62,7 @@ import {
     BookingSessionService,
     SessionReviewService,
     MentorAvailabilityService,
+    MentorCallService,
   ],
 })
 export class MentoringModule {}

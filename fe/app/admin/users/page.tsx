@@ -22,12 +22,12 @@ import { authStorage } from '@/lib/auth-storage';
 
 /* ── data ─────────────────────────────────────── */
 
-type Plan = 'Free' | 'Plus' | 'Pro';
+type Plan = 'Free' | 'Plus' | 'Business';
 
 const planBadge: Record<Plan, string> = {
   Free: 'bg-slate-100 text-slate-600',
   Plus: 'bg-amber-100 text-amber-700',
-  Pro: 'bg-violet-100 text-violet-700',
+  Business: 'bg-violet-100 text-violet-700',
 };
 
 /* ── component ────────────────────────────────── */
@@ -57,8 +57,13 @@ export default function AdminUsersPage() {
     setIsLoading(true);
     try {
       const token = authStorage.getAccessToken();
-      const res = await adminService.getAllUsers(token, currentPage, pageSize, loginTypeFilter);
-      // Map role from API to Vietnamese label if needed, but assuming API handles it or FE labels match
+      const res = await adminService.getAllUsers(token, currentPage, pageSize, {
+        search,
+        role: roleFilter === 'Tất cả' ? undefined : roleFilter === 'Sinh viên' ? 'user' : roleFilter.toLowerCase(),
+        plan: planFilter === 'Tất cả' ? undefined : planFilter,
+        status: statusFilter === 'Tất cả' ? undefined : statusFilter === 'Hoạt động' ? 'active' : 'banned',
+        loginType: loginTypeFilter === 'Tất cả' ? undefined : loginTypeFilter.toLowerCase(),
+      });
 
       const mappedUsers = res.users.map(u => ({
         ...u,
@@ -71,12 +76,12 @@ export default function AdminUsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, loginTypeFilter]);
+  }, [currentPage, loginTypeFilter, planFilter, roleFilter, search, statusFilter]);
 
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers, loginTypeFilter]);
+  }, [fetchUsers]);
 
 
   const userStats = useMemo(() => [
@@ -110,7 +115,7 @@ export default function AdminUsersPage() {
       const user = users.find(u => u.id === id);
       if (!user) return;
       const nextStatus = user.status === 'Hoạt động' ? 'Bị khóa' : 'Hoạt động';
-      await adminService.updateUserStatus(token, id, nextStatus);
+      await adminService.updateUserStatus(token, id, nextStatus === 'Hoạt động' ? 'active' : 'banned');
       flash(`Đã ${nextStatus === 'Bị khóa' ? 'khóa' : 'mở khóa'} tài khoản ${user.name}`);
       fetchUsers();
     } catch {
@@ -127,7 +132,7 @@ export default function AdminUsersPage() {
       const cycle = ['Sinh viên', 'Mentor', 'Admin'];
       const roleMap = { 'Sinh viên': 'user', 'Mentor': 'mentor', 'Admin': 'admin' };
       const idx = cycle.indexOf(user.role);
-      const nextRoleLabel = cycle[(idx + 1) % cycle.length] === 'Mentor' ? 'Admin' : cycle[(idx + 1) % cycle.length];
+      const nextRoleLabel = cycle[(Math.max(idx, 0) + 1) % cycle.length];
       const nextRoleValue = roleMap[nextRoleLabel as keyof typeof roleMap];
 
       await adminService.updateUserRole(token, id, nextRoleValue);
@@ -272,7 +277,7 @@ export default function AdminUsersPage() {
             <option>Tất cả</option>
             <option>Free</option>
             <option>Plus</option>
-            <option>Pro</option>
+            <option>Business</option>
           </select>
 
           <select
@@ -283,6 +288,7 @@ export default function AdminUsersPage() {
             }}
             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
           >
+            <option>Tất cả</option>
             <option>Hoạt động</option>
             <option>Bị khóa</option>
           </select>
@@ -387,7 +393,7 @@ export default function AdminUsersPage() {
                     <span
                       className={cn(
                         'rounded-full px-2 py-1 text-xs font-semibold',
-                        planBadge[u.plan],
+                        planBadge[toPlanBadgeKey(u.plan)],
                       )}
                     >
                       {u.plan}
@@ -472,7 +478,7 @@ export default function AdminUsersPage() {
         <div className="mt-3 flex items-center justify-between px-2 text-xs text-slate-500">
           <span>
             Hiển thị {(currentPage - 1) * pageSize + 1}-
-            {Math.min(currentPage * pageSize, filteredUsers.length)} / {filteredUsers.length}
+            {Math.min(currentPage * pageSize, total)} / {total}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -562,7 +568,7 @@ export default function AdminUsersPage() {
                   <span
                     className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-semibold',
-                      planBadge[detailUser.plan],
+                      planBadge[toPlanBadgeKey(detailUser.plan)],
                     )}
                   >
                     {detailUser.plan}
@@ -639,4 +645,8 @@ function DetailRow({
       {children}
     </div>
   );
+}
+
+function toPlanBadgeKey(plan: string): Plan {
+  return plan === 'Plus' || plan === 'Business' ? plan : 'Free';
 }

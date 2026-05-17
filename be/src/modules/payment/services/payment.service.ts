@@ -52,12 +52,36 @@ import {
 } from '../schema/payment-transaction.schema';
 import { NotificationService } from '../../notifications/services';
 import { NotificationType } from '../../notifications/schemas';
+import { WalletService } from '../../wallet/services';
 
 type CheckoutFieldValue = string | number | undefined;
 
 type PaymentProcessingResult = {
   payment: PaymentDocument;
   idempotent: boolean;
+};
+
+export type SepayCheckoutSession = {
+  paymentId: string;
+  checkoutReference: string;
+  purpose: PaymentPurpose;
+  amount: number;
+  subtotalAmount?: number;
+  creditAppliedAmount?: number;
+  currency: string;
+  expiresAt: string;
+  method: 'POST';
+  actionUrl: string;
+  fields: Record<string, string | number>;
+  booking?: {
+    id: string;
+    mentorId: string;
+    tutorProfileId: string;
+    sessionType: string;
+    requestedDateTime: Date;
+    duration: number;
+    topicsToDiscuss: string[];
+  };
 };
 
 type SepayOrderSnapshot = {
@@ -93,6 +117,7 @@ export class PaymentService {
     private readonly aiSubscriptionService: AiSubscriptionService,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
+    private readonly walletService: WalletService,
   ) {}
 
   async purchaseAiPlan(
@@ -106,11 +131,6 @@ export class PaymentService {
     if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
     if (!Types.ObjectId.isValid(dto.planId)) throw new BadRequestException('Invalid planId');
 
-    const activeSubscription = await this.aiSubscriptionService.getActiveSubscriptionForUser(userId);
-    if (activeSubscription) {
-      throw new ConflictException('User already has an active AI subscription');
-    }
-
     const plan = await this.aiPlanService.findOne(dto.planId);
     if (plan.price <= 0) {
       throw new BadRequestException('Selected plan is not purchasable until a positive price is configured');
@@ -122,31 +142,39 @@ export class PaymentService {
       throw new BadRequestException('Selected billing cycle is not available for this plan');
     }
 
-    const reusablePendingPayment = await this.findReusablePendingAiPlanPayment(
-      userId,
-      dto.planId,
-      dto.billingCycle,
-    );
-    if (reusablePendingPayment) {
-      const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
-      return {
-        paymentId: reusablePendingPayment._id.toString(),
-        checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
-        redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
-      };
+    const pricing: AiPlanPricingSummary = this.aiPlanService.calculatePricing(plan, dto.billingCycle);
+
+    if (dto.useEdumeeCredit) {
+      const creditPurchase = await this.createAiPlanPaymentWithCredit(userId, dto, pricing);
+      if (creditPurchase) return creditPurchase;
+    } else {
+      const reusablePendingPayment = await this.findReusablePendingAiPlanPayment(
+        userId,
+        dto.planId,
+        dto.billingCycle,
+      );
+      if (reusablePendingPayment) {
+        const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
+        return {
+          paymentId: reusablePendingPayment._id.toString(),
+          checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
+          redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
+        };
+      }
     }
 
     const checkoutReference = this.generateCheckoutReference();
     const checkoutToken = this.generateCheckoutToken();
     const checkoutTokenHash = this.hashCheckoutToken(checkoutToken);
     const checkoutTokenExpiresAt = new Date(Date.now() + DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS);
-    const pricing: AiPlanPricingSummary = this.aiPlanService.calculatePricing(plan, dto.billingCycle);
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       planId: new Types.ObjectId(dto.planId),
       purpose: PaymentPurpose.AI_PLAN,
       billingCycle: dto.billingCycle,
       amount: pricing.total,
+      subtotalAmount: pricing.total,
+      creditAppliedAmount: 0,
       currency: plan.currency || 'USD',
       provider: PaymentProvider.SEPAY,
       paymentMethod: dto.paymentMethod || SepayPaymentMethod.BANK_TRANSFER,
@@ -193,17 +221,22 @@ export class PaymentService {
       throw new BadRequestException('Booking does not require a positive payment amount');
     }
 
-    const reusablePendingPayment = await this.findReusablePendingMentorBookingPayment(
-      userId,
-      dto.bookingSessionId,
-    );
-    if (reusablePendingPayment) {
-      const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
-      return {
-        paymentId: reusablePendingPayment._id.toString(),
-        checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
-        redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
-      };
+    if (dto.useEdumeeCredit) {
+      const creditPurchase = await this.createMentorBookingPaymentWithCredit(userId, dto, booking, price, currency);
+      if (creditPurchase) return creditPurchase;
+    } else {
+      const reusablePendingPayment = await this.findReusablePendingMentorBookingPayment(
+        userId,
+        dto.bookingSessionId,
+      );
+      if (reusablePendingPayment) {
+        const refreshedCheckout = await this.refreshCheckoutTokenForPayment(reusablePendingPayment);
+        return {
+          paymentId: reusablePendingPayment._id.toString(),
+          checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
+          redirectUrl: this.buildMentorCheckoutRedirectUrl(refreshedCheckout.token),
+        };
+      }
     }
 
     const checkoutReference = this.generateCheckoutReference();
@@ -217,6 +250,8 @@ export class PaymentService {
       provider: PaymentProvider.SEPAY,
       paymentMethod: dto.paymentMethod || SepayPaymentMethod.BANK_TRANSFER,
       checkoutReference,
+      subtotalAmount: price,
+      creditAppliedAmount: 0,
       checkoutTokenHash: this.hashCheckoutToken(checkoutToken),
       checkoutTokenExpiresAt: new Date(Date.now() + DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS),
       successUrl: dto.returnUrls?.success,
@@ -234,7 +269,166 @@ export class PaymentService {
     return {
       paymentId: savedPayment._id.toString(),
       checkoutReference,
-      redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken),
+      redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken),
+    };
+  }
+
+  private async createAiPlanPaymentWithCredit(
+    userId: string,
+    dto: CreateAiPlanPurchaseDto,
+    pricing: AiPlanPricingSummary,
+  ): Promise<{ paymentId: string; checkoutReference: string; redirectUrl: string } | null> {
+    const subtotal = Number(pricing.total || 0);
+    const availableCredit = await this.walletService.getAvailableBalance(userId);
+    const creditToApply = Math.min(availableCredit, subtotal);
+    if (creditToApply <= 0) return null;
+
+    const remainingAmount = Math.max(subtotal - creditToApply, 0);
+    const checkoutReference = this.generateCheckoutReference();
+    const checkoutToken = remainingAmount > 0 ? this.generateCheckoutToken() : undefined;
+    const payment = new this.paymentModel({
+      userId: new Types.ObjectId(userId),
+      planId: new Types.ObjectId(dto.planId),
+      purpose: PaymentPurpose.AI_PLAN,
+      billingCycle: dto.billingCycle,
+      amount: remainingAmount,
+      subtotalAmount: subtotal,
+      creditAppliedAmount: creditToApply,
+      currency: pricing.currency || 'VND',
+      provider: remainingAmount > 0 ? PaymentProvider.SEPAY : PaymentProvider.EDUMEE_CREDIT,
+      paymentMethod: remainingAmount > 0 ? dto.paymentMethod || SepayPaymentMethod.BANK_TRANSFER : undefined,
+      checkoutReference,
+      checkoutTokenHash: checkoutToken ? this.hashCheckoutToken(checkoutToken) : undefined,
+      checkoutTokenExpiresAt: checkoutToken ? new Date(Date.now() + DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS) : undefined,
+      successUrl: dto.returnUrls?.success,
+      errorUrl: dto.returnUrls?.error,
+      cancelUrl: dto.returnUrls?.cancel,
+      status: remainingAmount > 0 ? PaymentStatus.PENDING : PaymentStatus.PAID,
+      paidAt: remainingAmount > 0 ? undefined : new Date(),
+    });
+
+    if (remainingAmount > 0) {
+      const hold = await this.walletService.hold({
+        userId,
+        amount: creditToApply,
+        sourceType: 'payment',
+        sourceId: payment._id.toString(),
+        idempotencyKey: `payment:${payment._id.toString()}:credit-hold`,
+        description: 'Giữ số dư Edumee cho đơn mua gói AI',
+        metadata: this.buildWalletPaymentMetadata(payment),
+      });
+      payment.creditHoldId = hold._id;
+      const savedPayment = await payment.save();
+      return {
+        paymentId: savedPayment._id.toString(),
+        checkoutReference,
+        redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken as string),
+      };
+    }
+
+    await this.walletService.debit({
+      userId,
+      amount: creditToApply,
+      sourceType: 'payment',
+      sourceId: payment._id.toString(),
+      idempotencyKey: `payment:${payment._id.toString()}:credit-debit`,
+      description: 'Thanh toán gói AI bằng Số dư Edumee',
+      metadata: this.buildWalletPaymentMetadata(payment),
+    });
+    const savedPayment = await payment.save();
+    await this.activateAiSubscriptionForPayment(savedPayment);
+    await this.recordPaymentSucceeded(savedPayment, `wallet-paid-${savedPayment._id.toString()}`, {
+      source: 'edumee_credit',
+      creditAppliedAmount: creditToApply,
+    });
+    await this.notifyPaymentPaid(savedPayment);
+
+    return {
+      paymentId: savedPayment._id.toString(),
+      checkoutReference,
+      redirectUrl: this.buildImmediatePaymentRedirect(savedPayment, 'success', '/dashboard'),
+    };
+  }
+
+  private async createMentorBookingPaymentWithCredit(
+    userId: string,
+    dto: CreateMentorBookingPurchaseDto,
+    booking: BookingSessionDocument,
+    price: number,
+    currency: string,
+  ): Promise<{ paymentId: string; checkoutReference: string; redirectUrl: string } | null> {
+    const availableCredit = await this.walletService.getAvailableBalance(userId);
+    const creditToApply = Math.min(availableCredit, price);
+    if (creditToApply <= 0) return null;
+
+    const remainingAmount = Math.max(price - creditToApply, 0);
+    const checkoutReference = this.generateCheckoutReference();
+    const checkoutToken = remainingAmount > 0 ? this.generateCheckoutToken() : undefined;
+    const payment = new this.paymentModel({
+      userId: new Types.ObjectId(userId),
+      bookingSessionId: booking._id,
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      amount: remainingAmount,
+      subtotalAmount: price,
+      creditAppliedAmount: creditToApply,
+      currency,
+      provider: remainingAmount > 0 ? PaymentProvider.SEPAY : PaymentProvider.EDUMEE_CREDIT,
+      paymentMethod: remainingAmount > 0 ? dto.paymentMethod || SepayPaymentMethod.BANK_TRANSFER : undefined,
+      checkoutReference,
+      checkoutTokenHash: checkoutToken ? this.hashCheckoutToken(checkoutToken) : undefined,
+      checkoutTokenExpiresAt: checkoutToken ? new Date(Date.now() + DEFAULT_SEPAY_CHECKOUT_TOKEN_TTL_MS) : undefined,
+      successUrl: dto.returnUrls?.success,
+      errorUrl: dto.returnUrls?.error,
+      cancelUrl: dto.returnUrls?.cancel,
+      status: remainingAmount > 0 ? PaymentStatus.PENDING : PaymentStatus.PAID,
+      paidAt: remainingAmount > 0 ? undefined : new Date(),
+    });
+
+    if (remainingAmount > 0) {
+      const hold = await this.walletService.hold({
+        userId,
+        amount: creditToApply,
+        sourceType: 'payment',
+        sourceId: payment._id.toString(),
+        idempotencyKey: `payment:${payment._id.toString()}:credit-hold`,
+        description: 'Giữ số dư Edumee cho booking mentor',
+        metadata: this.buildWalletPaymentMetadata(payment),
+      });
+      payment.creditHoldId = hold._id;
+      const savedPayment = await payment.save();
+      await this.bookingSessionModel.findByIdAndUpdate(booking._id, {
+        'paymentInfo.paymentStatus': 'pending',
+        'paymentInfo.transactionId': savedPayment._id.toString(),
+        'paymentInfo.creditsUsed': creditToApply,
+      }).exec();
+      return {
+        paymentId: savedPayment._id.toString(),
+        checkoutReference,
+        redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken as string),
+      };
+    }
+
+    await this.walletService.debit({
+      userId,
+      amount: creditToApply,
+      sourceType: 'payment',
+      sourceId: payment._id.toString(),
+      idempotencyKey: `payment:${payment._id.toString()}:credit-debit`,
+      description: 'Thanh toán booking mentor bằng Số dư Edumee',
+      metadata: this.buildWalletPaymentMetadata(payment),
+    });
+    const savedPayment = await payment.save();
+    await this.activateMentorBookingFromPayment(savedPayment);
+    await this.recordPaymentSucceeded(savedPayment, `wallet-paid-${savedPayment._id.toString()}`, {
+      source: 'edumee_credit',
+      creditAppliedAmount: creditToApply,
+    });
+    await this.notifyPaymentPaid(savedPayment);
+
+    return {
+      paymentId: savedPayment._id.toString(),
+      checkoutReference,
+      redirectUrl: this.buildImmediatePaymentRedirect(savedPayment, 'success', '/mentor-matching'),
     };
   }
 
@@ -362,23 +556,18 @@ export class PaymentService {
       throw new ConflictException('Only paid payments can be refunded');
     }
 
-    const refundAmount = dto.amount ?? payment.amount;
-    if (refundAmount !== payment.amount) {
-      throw new BadRequestException('Partial refunds are not supported in this v1 flow');
+    const refundableAmount = this.getPaymentTotalAmount(payment);
+    const refundAmount = dto.amount ?? refundableAmount;
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0 || refundAmount > refundableAmount) {
+      throw new BadRequestException('Invalid refund amount');
     }
 
-    payment.status = PaymentStatus.REFUNDED;
-    payment.refundedAt = new Date();
-    payment.refundReason = dto.reason || 'Admin refund';
-    await payment.save();
-
-    await this.paymentTransactionModel.create({
-      paymentId: payment._id,
-      eventId: `manual-refund-${payment._id.toString()}`,
-      eventType: 'payment_refunded',
-      status: PaymentTransactionStatus.SUCCESS,
-      payload: { refundAmount, reason: payment.refundReason },
-    });
+    await this.refundPaidPaymentToCredit(
+      payment,
+      refundAmount,
+      dto.reason || 'Admin refund',
+      `manual-refund-${payment._id.toString()}`,
+    );
 
     let revokedSubscription = false;
     if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
@@ -388,6 +577,60 @@ export class PaymentService {
       revokedSubscription = Boolean(revoked);
     }
     return { payment, revokedSubscription: Boolean(revokedSubscription) };
+  }
+
+  async handleMentorBookingCancellation(
+    booking: BookingSessionDocument,
+    cancelledBy: 'mentor' | 'mentee',
+    reason?: string,
+  ): Promise<{ status: 'none' | 'refunded' | 'refund_pending'; refundAmount?: number }> {
+    const payment = await this.paymentModel
+      .findOne({
+        bookingSessionId: booking._id,
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        status: { $in: [PaymentStatus.PAID, PaymentStatus.REFUND_PENDING] },
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!payment || payment.status !== PaymentStatus.PAID) {
+      return { status: payment?.status === PaymentStatus.REFUND_PENDING ? 'refund_pending' : 'none' };
+    }
+
+    const refundDecision = this.getMentorBookingRefundDecision(booking, cancelledBy);
+    if (refundDecision.status === 'refund_pending') {
+      payment.status = PaymentStatus.REFUND_PENDING;
+      payment.refundReason = reason || refundDecision.reason;
+      await payment.save();
+      await this.paymentTransactionModel.create({
+        paymentId: payment._id,
+        eventId: `refund-pending-${payment._id.toString()}`,
+        eventType: 'payment_refund_pending',
+        status: PaymentTransactionStatus.SUCCESS,
+        payload: { reason: payment.refundReason, cancelledBy },
+      });
+      await this.bookingSessionModel.findByIdAndUpdate(booking._id, {
+        'paymentInfo.paymentStatus': 'refund_pending',
+        'paymentInfo.refundInfo': {
+          refundAmount: 0,
+          refundDate: new Date(),
+          refundReason: payment.refundReason,
+          refundStatus: 'pending',
+        },
+      }).exec();
+      await this.notifyMentorBookingRefundPending(booking, payment.refundReason);
+      return { status: 'refund_pending' };
+    }
+
+    await this.refundPaidPaymentToCredit(
+      payment,
+      refundDecision.amount,
+      reason || refundDecision.reason,
+      `booking-cancel-${cancelledBy}-${payment._id.toString()}`,
+    );
+    await this.updateMentorBookingPaymentState(payment, 'refunded');
+    await this.notifyMentorBookingRefunded(booking, refundDecision.amount);
+    return { status: 'refunded', refundAmount: refundDecision.amount };
   }
 
   async findMine(userId: string): Promise<PaymentDocument[]> {
@@ -443,6 +686,43 @@ export class PaymentService {
 
     const checkout = this.buildSepayCheckout(payment);
     return this.buildSepayCheckoutPageHtml(payment, checkout.url, checkout.fields);
+  }
+
+  async getSepayCheckoutSession(token: string): Promise<SepayCheckoutSession> {
+    const payment = await this.findPendingPaymentByCheckoutToken(token);
+
+    if (!payment) {
+      throw new NotFoundException('Checkout link is invalid or expired');
+    }
+
+    if (payment.provider !== PaymentProvider.SEPAY) {
+      throw new BadRequestException('Payment provider is not SePay');
+    }
+
+    if (payment.status !== PaymentStatus.PENDING) {
+      throw new ConflictException(`Payment is already ${payment.status}`);
+    }
+
+    const checkout = this.buildSepayCheckout(payment);
+    const fields = Object.fromEntries(
+      Object.entries(checkout.fields).filter((entry): entry is [string, string | number] => entry[1] !== undefined),
+    );
+    const booking = await this.buildMentorBookingCheckoutSummary(payment);
+
+    return {
+      paymentId: payment._id.toString(),
+      checkoutReference: payment.checkoutReference || 'N/A',
+      purpose: payment.purpose,
+      amount: payment.amount,
+      subtotalAmount: payment.subtotalAmount,
+      creditAppliedAmount: payment.creditAppliedAmount,
+      currency: payment.currency,
+      expiresAt: payment.checkoutTokenExpiresAt?.toISOString() || new Date().toISOString(),
+      method: checkout.method,
+      actionUrl: checkout.url,
+      fields,
+      ...(booking ? { booking } : {}),
+    };
   }
 
   async renderPaymentReturnPage(
@@ -658,6 +938,7 @@ export class PaymentService {
   ): Promise<PaymentProcessingResult> {
     const existingEvent = await this.findExistingEvent(payment, params.eventId);
     if (existingEvent) {
+      await this.ensurePaidPaymentEntitlement(payment);
       return {
         payment,
         idempotent: true,
@@ -665,6 +946,7 @@ export class PaymentService {
     }
 
     if (payment.status === PaymentStatus.PAID) {
+      await this.ensurePaidPaymentEntitlement(payment);
       return {
         payment,
         idempotent: true,
@@ -675,27 +957,14 @@ export class PaymentService {
       throw new ConflictException(`Payment is not in a mutable pending state for ${params.sourceLabel}`);
     }
 
+    await this.captureCreditHoldForPayment(payment);
     payment.status = PaymentStatus.PAID;
     payment.paidAt = new Date();
     payment.failureReason = undefined;
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
 
-    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
-      await this.activateMentorBookingFromPayment(payment);
-    } else {
-      if (!payment.planId || !payment.billingCycle) {
-        throw new ConflictException('Payment is missing a linked AI plan');
-      }
-
-      await this.aiSubscriptionService.activateSubscriptionFromPayment({
-        userId: payment.userId.toString(),
-        planId: payment.planId.toString(),
-        paymentId: payment._id.toString(),
-        billingCycle: payment.billingCycle,
-        startDate: payment.paidAt,
-      });
-    }
+    await this.ensurePaidPaymentEntitlement(payment);
 
     await this.paymentTransactionModel.create({
       paymentId: payment._id,
@@ -705,6 +974,7 @@ export class PaymentService {
       status: PaymentTransactionStatus.SUCCESS,
       payload: params.payload,
     });
+    await this.notifyPaymentPaid(payment);
 
     return { payment, idempotent: false };
   }
@@ -743,6 +1013,7 @@ export class PaymentService {
     payment.failureReason = params.failureReason || 'Payment failed';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
+    await this.releaseCreditHoldForPayment(payment, 'Thanh toán SePay thất bại, hoàn lại số dư đã giữ');
 
     if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
       await this.updateMentorBookingPaymentState(payment, 'failed');
@@ -787,20 +1058,15 @@ export class PaymentService {
     }
 
     if (payment.status === PaymentStatus.PAID) {
-      payment.status = PaymentStatus.REFUNDED;
-      payment.refundedAt = new Date();
-      payment.refundReason = params.failureReason || 'SePay transaction voided';
       payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
-      await payment.save();
-
-      await this.paymentTransactionModel.create({
-        paymentId: payment._id,
-        eventId: params.eventId,
-        providerTransactionId: params.providerTransactionId,
-        eventType: 'payment_refunded',
-        status: PaymentTransactionStatus.SUCCESS,
-        payload: params.payload,
-      });
+      await this.refundPaidPaymentToCredit(
+        payment,
+        this.getPaymentTotalAmount(payment),
+        params.failureReason || 'SePay transaction voided',
+        params.eventId,
+        params.providerTransactionId,
+        params.payload,
+      );
 
       if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
         await this.updateMentorBookingPaymentState(payment, 'refunded');
@@ -821,6 +1087,7 @@ export class PaymentService {
     payment.failureReason = params.failureReason || 'Payment cancelled';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
     await payment.save();
+    await this.releaseCreditHoldForPayment(payment, 'Thanh toán SePay bị hủy, hoàn lại số dư đã giữ');
 
     if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
       await this.updateMentorBookingPaymentState(payment, 'cancelled');
@@ -1008,7 +1275,7 @@ export class PaymentService {
     }
     if (paymentStatus === 'refunded') {
       update['paymentInfo.refundInfo'] = {
-        refundAmount: payment.amount,
+        refundAmount: payment.refundedAmount || this.getPaymentTotalAmount(payment),
         refundDate: payment.refundedAt || new Date(),
         refundReason: payment.refundReason || 'Admin refund',
         refundStatus: 'completed',
@@ -1030,6 +1297,149 @@ export class PaymentService {
         )
         .exec();
     }
+  }
+
+  private async ensurePaidPaymentEntitlement(payment: PaymentDocument): Promise<void> {
+    if (payment.status !== PaymentStatus.PAID) return;
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      await this.activateMentorBookingFromPayment(payment);
+      return;
+    }
+    await this.activateAiSubscriptionForPayment(payment);
+  }
+
+  private async activateAiSubscriptionForPayment(payment: PaymentDocument): Promise<void> {
+    if (!payment.planId || !payment.billingCycle) {
+      throw new ConflictException('Payment is missing a linked AI plan');
+    }
+
+    await this.aiSubscriptionService.activateSubscriptionFromPayment({
+      userId: payment.userId.toString(),
+      planId: payment.planId.toString(),
+      paymentId: payment._id.toString(),
+      billingCycle: payment.billingCycle,
+      startDate: payment.paidAt || new Date(),
+    });
+  }
+
+  private async captureCreditHoldForPayment(payment: PaymentDocument): Promise<void> {
+    if (!payment.creditHoldId || !Number(payment.creditAppliedAmount || 0)) return;
+    await this.walletService.captureHold(
+      payment.creditHoldId.toString(),
+      `payment:${payment._id.toString()}:credit-capture`,
+      'Thanh toán SePay thành công, trừ số dư Edumee đã giữ',
+    );
+  }
+
+  private async releaseCreditHoldForPayment(payment: PaymentDocument, description: string): Promise<void> {
+    if (!payment.creditHoldId || !Number(payment.creditAppliedAmount || 0)) return;
+    await this.walletService.releaseHold(
+      payment.creditHoldId.toString(),
+      `payment:${payment._id.toString()}:credit-release`,
+      description,
+    );
+  }
+
+  private async recordPaymentSucceeded(
+    payment: PaymentDocument,
+    eventId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await this.paymentTransactionModel.create({
+      paymentId: payment._id,
+      eventId,
+      eventType: 'payment_succeeded',
+      status: PaymentTransactionStatus.SUCCESS,
+      payload,
+    });
+  }
+
+  private buildWalletPaymentMetadata(payment: PaymentDocument): Record<string, unknown> {
+    return {
+      checkoutReference: payment.checkoutReference,
+      paymentPurpose: payment.purpose,
+      originalAmount: payment.amount,
+      subtotalAmount: payment.subtotalAmount,
+      creditAppliedAmount: payment.creditAppliedAmount,
+      currency: payment.currency,
+    };
+  }
+
+  private async refundPaidPaymentToCredit(
+    payment: PaymentDocument,
+    amount: number,
+    reason: string,
+    eventId: string,
+    providerTransactionId?: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<void> {
+    const refundAmount = Math.min(amount, this.getPaymentTotalAmount(payment));
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+      throw new BadRequestException('Invalid refund amount');
+    }
+
+    await this.walletService.refund({
+      userId: payment.userId.toString(),
+      amount: refundAmount,
+      sourceType: 'payment_refund',
+      sourceId: payment._id.toString(),
+      idempotencyKey: `payment:${payment._id.toString()}:refund:${eventId}`,
+      description: reason,
+      metadata: {
+        ...this.buildWalletPaymentMetadata(payment),
+        paymentPurpose: payment.purpose,
+        originalAmount: payment.amount,
+        subtotalAmount: payment.subtotalAmount,
+        creditAppliedAmount: payment.creditAppliedAmount,
+      },
+    });
+
+    payment.status = PaymentStatus.REFUNDED;
+    payment.refundedAt = new Date();
+    payment.refundedAmount = refundAmount;
+    payment.refundReason = reason;
+    await payment.save();
+
+    await this.paymentTransactionModel.create({
+      paymentId: payment._id,
+      eventId,
+      providerTransactionId,
+      eventType: 'payment_refunded',
+      status: PaymentTransactionStatus.SUCCESS,
+      payload: { ...payload, refundAmount, reason, refundTarget: 'edumee_credit' },
+    });
+  }
+
+  private getPaymentTotalAmount(payment: PaymentDocument): number {
+    const subtotal = Number(payment.subtotalAmount);
+    if (Number.isFinite(subtotal) && subtotal > 0) return subtotal;
+    return Number(payment.amount || 0) + Number(payment.creditAppliedAmount || 0);
+  }
+
+  private getMentorBookingRefundDecision(
+    booking: BookingSessionDocument,
+    cancelledBy: 'mentor' | 'mentee',
+  ): { status: 'refunded'; amount: number; reason: string } | { status: 'refund_pending'; reason: string } {
+    const price = Number(booking.paymentInfo?.sessionPrice || 0);
+    if (!Number.isFinite(price) || price <= 0) {
+      return { status: 'refund_pending', reason: 'Booking không có số tiền hợp lệ để hoàn' };
+    }
+
+    if (cancelledBy === 'mentor' || booking.status === BookingStatus.PENDING) {
+      return { status: 'refunded', amount: price, reason: 'Hoàn 100% vào Số dư Edumee' };
+    }
+
+    const start = new Date(
+      booking.schedulingDetails.confirmedDateTime || booking.schedulingDetails.requestedDateTime,
+    );
+    const hoursUntilStart = (start.getTime() - Date.now()) / 3_600_000;
+    if (Number.isNaN(hoursUntilStart) || hoursUntilStart < 2) {
+      return { status: 'refund_pending', reason: 'Booking hủy sát giờ hoặc sau giờ học, cần admin xem xét' };
+    }
+    if (hoursUntilStart >= 24) {
+      return { status: 'refunded', amount: price, reason: 'Học viên hủy trước hơn 24 giờ, hoàn 100%' };
+    }
+    return { status: 'refunded', amount: Math.round(price * 0.5), reason: 'Học viên hủy trong 2-24 giờ, hoàn 50%' };
   }
 
   private async refreshCheckoutTokenForPayment(
@@ -1058,6 +1468,55 @@ export class PaymentService {
     const appPort = this.configService.get<number>('app.port', 3001);
     const baseUrl = configuredBaseUrl || `http://localhost:${appPort}`;
     return `${baseUrl.replace(/\/+$/, '')}/api/v1/payments/sepay/checkout/${encodeURIComponent(token)}`;
+  }
+
+  private buildMentorCheckoutRedirectUrl(token: string): string {
+    const baseUrl =
+      this.configService.get<string>('PAYMENT_CHECKOUT_BASE_URL') ||
+      this.configService.get<string>('CLIENT_APP_BASE_URL') ||
+      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000');
+
+    return `${baseUrl.replace(/\/+$/, '')}/payment/checkout/${encodeURIComponent(token)}`;
+  }
+
+  private buildImmediatePaymentRedirect(
+    payment: PaymentDocument,
+    status: 'success' | 'error' | 'cancel',
+    fallbackPath: string,
+  ): string {
+    const stored = this.resolveCheckoutReturnUrl(status, payment);
+    if (stored) return stored;
+
+    const baseUrl =
+      this.configService.get<string>('CLIENT_APP_BASE_URL') ||
+      this.configService.get<string>('CLIENT_APP_URL') ||
+      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000');
+    const url = new URL(fallbackPath, baseUrl);
+    url.searchParams.set('payment', status);
+    url.searchParams.set('paymentId', payment._id.toString());
+    return url.toString();
+  }
+
+  private async buildMentorBookingCheckoutSummary(
+    payment: PaymentDocument,
+  ): Promise<SepayCheckoutSession['booking'] | undefined> {
+    if (payment.purpose !== PaymentPurpose.MENTOR_BOOKING) return undefined;
+    if (!payment.bookingSessionId) {
+      throw new ConflictException('Payment is missing a linked mentor booking');
+    }
+
+    const booking = await this.bookingSessionModel.findById(payment.bookingSessionId).exec();
+    if (!booking) throw new NotFoundException('Booking session not found');
+
+    return {
+      id: booking._id.toString(),
+      mentorId: booking.mentorId.toString(),
+      tutorProfileId: booking.tutorProfileId.toString(),
+      sessionType: booking.sessionType,
+      requestedDateTime: booking.schedulingDetails.requestedDateTime,
+      duration: booking.schedulingDetails.duration,
+      topicsToDiscuss: booking.bookingRequest?.topicsToDiscuss || [],
+    };
   }
 
   private async findPendingPaymentByCheckoutToken(
@@ -1383,6 +1842,14 @@ export class PaymentService {
           bannerLabel: 'Refunded',
           bannerColor: '#7c3aed',
         };
+      case PaymentStatus.REFUND_PENDING:
+        return {
+          title: 'Refund pending',
+          message: 'This payment is waiting for an admin refund review.',
+          hint: 'You will receive a notification when the refund is completed.',
+          bannerLabel: 'Refund pending',
+          bannerColor: '#f59e0b',
+        };
       case PaymentStatus.PENDING:
       default:
         return {
@@ -1445,5 +1912,87 @@ export class PaymentService {
         payload,
       },
     ]);
+  }
+
+  private async notifyPaymentPaid(payment: PaymentDocument): Promise<void> {
+    const total = this.getPaymentTotalAmount(payment);
+    const formatted = this.formatPaymentAmount(total, payment.currency || 'VND');
+    const title = payment.purpose === PaymentPurpose.MENTOR_BOOKING
+      ? 'Thanh toán booking mentor thành công'
+      : 'Thanh toán gói AI thành công';
+    await this.notificationService.create({
+      recipientId: payment.userId,
+      type: NotificationType.PAYMENT_PAID,
+      title,
+      body: `Đã ghi nhận thanh toán ${formatted}.`,
+      payload: {
+        paymentId: payment._id.toString(),
+        purpose: payment.purpose,
+        amount: total,
+        currency: payment.currency || 'VND',
+        status: payment.status,
+        walletUrl: '/wallet',
+      },
+    });
+
+    if (Number(payment.creditAppliedAmount || 0) > 0) {
+      await this.notificationService.create({
+        recipientId: payment.userId,
+        type: NotificationType.WALLET_CREDIT_USED,
+        title: 'Đã dùng Số dư Edumee',
+        body: `Đã dùng ${this.formatPaymentAmount(Number(payment.creditAppliedAmount), payment.currency || 'VND')} cho thanh toán này.`,
+        payload: {
+          paymentId: payment._id.toString(),
+          amount: Number(payment.creditAppliedAmount),
+          currency: payment.currency || 'VND',
+          status: payment.status,
+          walletUrl: '/wallet',
+        },
+      });
+    }
+  }
+
+  private async notifyMentorBookingRefunded(booking: BookingSessionDocument, amount: number): Promise<void> {
+    const currency = booking.paymentInfo?.currency || 'VND';
+    await this.notificationService.create({
+      recipientId: booking.menteeId,
+      type: NotificationType.MENTOR_BOOKING_REFUNDED,
+      title: 'Booking đã được hoàn tiền',
+      body: `Đã hoàn ${this.formatPaymentAmount(amount, currency)} vào Số dư Edumee.`,
+      payload: {
+        bookingId: booking._id.toString(),
+        amount,
+        currency,
+        status: BookingStatus.CANCELLED_BY_MENTOR,
+        walletUrl: '/wallet',
+      },
+    });
+    await this.notificationService.create({
+      recipientId: booking.menteeId,
+      type: NotificationType.WALLET_CREDIT_ADDED,
+      title: 'Số dư Edumee đã tăng',
+      body: `Bạn vừa nhận ${this.formatPaymentAmount(amount, currency)} từ hoàn tiền booking.`,
+      payload: {
+        bookingId: booking._id.toString(),
+        amount,
+        currency,
+        status: 'credited',
+        walletUrl: '/wallet',
+      },
+    });
+  }
+
+  private async notifyMentorBookingRefundPending(booking: BookingSessionDocument, reason?: string): Promise<void> {
+    await this.notificationService.create({
+      recipientId: booking.menteeId,
+      type: NotificationType.MENTOR_BOOKING_REFUND_PENDING,
+      title: 'Yêu cầu hoàn tiền đang chờ xử lý',
+      body: reason || 'Booking này cần admin xem xét trước khi hoàn tiền.',
+      payload: {
+        bookingId: booking._id.toString(),
+        status: 'refund_pending',
+        walletUrl: '/wallet',
+      },
+    });
   }
 }

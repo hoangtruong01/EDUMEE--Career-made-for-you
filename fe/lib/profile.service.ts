@@ -33,6 +33,10 @@ export interface UpdateProfilePayload {
 }
 
 export const profileService = {
+  async createMyProfile(accessToken: string, payload: UpdateProfilePayload): Promise<UserProfile> {
+    return apiClient.post<UserProfile>('/profiles', payload, accessToken);
+  },
+
   async getMyProfile(accessToken: string): Promise<UserProfile> {
     return apiClient.get<UserProfile>('/profiles/my-profile', accessToken);
   },

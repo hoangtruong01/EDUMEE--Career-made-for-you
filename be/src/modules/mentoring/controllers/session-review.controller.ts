@@ -66,6 +66,26 @@ export class SessionReviewController {
     return this.sessionReviewService.findBySession(sessionId);
   }
 
+  @Get('booking/:bookingId/status')
+  @ApiOperation({ summary: 'Get current user review status for a completed booking' })
+  getBookingReviewStatus(@Param('bookingId') bookingId: string, @CurrentUser() user: AuthUserLike) {
+    return this.sessionReviewService.getBookingReviewStatus(bookingId, getAuthUserId(user));
+  }
+
+  @Get('me/received')
+  @ApiOperation({ summary: 'Get reviews received by current mentor' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Received reviews retrieved successfully' })
+  findMyReceivedReviews(@CurrentUser() user: AuthUserLike) {
+    return this.sessionReviewService.findReceivedForReviewee(getAuthUserId(user));
+  }
+
+  @Get('mentor/:mentorUserId/public')
+  @ApiOperation({ summary: 'Get public reviews for a mentor profile' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Public mentor reviews retrieved successfully' })
+  findPublicMentorReviews(@Param('mentorUserId') mentorUserId: string) {
+    return this.sessionReviewService.findPublicByMentor(mentorUserId);
+  }
+
   @Get('reviewer/:reviewerId')
   @ApiOperation({ summary: 'Get reviews by reviewer' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Reviews retrieved successfully' })

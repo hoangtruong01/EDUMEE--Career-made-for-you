@@ -16,6 +16,9 @@ import { User, UserDocument } from './schemas/user.schema';
 import { CommunityPost, CommunityPostDocument } from '../community/schemas/community-post.schema';
 import { MediaService, type UploadedImageFile } from '../media/services/media.service';
 
+const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+const AVATAR_ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -369,6 +372,8 @@ export class UsersService {
   }
 
   async updateAvatar(userId: string, file: UploadedImageFile) {
+    this.validateAvatarFile(file);
+
     const uploadResult = await this.mediaService.uploadImage(file);
     const avatarUrl = uploadResult.secure_url;
 
@@ -392,5 +397,15 @@ export class UsersService {
       .exec();
 
     return { avatar: avatarUrl };
+  }
+
+  private validateAvatarFile(file: UploadedImageFile): void {
+    if (!AVATAR_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException('Avatar chi ho tro dinh dang PNG, JPG hoac WEBP');
+    }
+
+    if (file.size > AVATAR_MAX_SIZE_BYTES) {
+      throw new BadRequestException('Avatar khong duoc vuot qua 5MB');
+    }
   }
 }

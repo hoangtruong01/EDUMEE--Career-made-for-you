@@ -3,6 +3,19 @@ import { Document, Types } from 'mongoose';
 
 export type BookingSessionDocument = BookingSession & Document;
 
+function normalizeUserSummary(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const user = value as Record<string, unknown>;
+  const id = user.id || user._id;
+
+  return {
+    id: id?.toString(),
+    name: user.name,
+    email: user.email,
+    avatar: user.avatar,
+  };
+}
+
 export enum BookingStatus {
   AWAITING_PAYMENT = 'awaiting_payment',
   PENDING = 'pending',
@@ -14,6 +27,13 @@ export enum BookingStatus {
   NO_SHOW_MENTEE = 'no_show_mentee',
   NO_SHOW_MENTOR = 'no_show_mentor',
 }
+
+export const ACTIVE_SLOT_BOOKING_STATUSES = [
+  BookingStatus.AWAITING_PAYMENT,
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+  BookingStatus.RESCHEDULED,
+] as const;
 
 export enum SessionType {
   CAREER_GUIDANCE = 'career_guidance',
@@ -30,8 +50,10 @@ export enum SessionType {
   collection: 'booking_sessions',
   toJSON: {
     virtuals: true,
-     transform: (_doc: Document, ret: Record<string, unknown>): Record<string, unknown> => {
+    transform: (_doc: Document, ret: Record<string, unknown>): Record<string, unknown> => {
       ret.id = ret._id;
+      ret.mentorUser = normalizeUserSummary(ret.mentorUser);
+      ret.menteeUser = normalizeUserSummary(ret.menteeUser);
       delete ret._id;
       delete ret.__v;
       return ret;
@@ -146,13 +168,41 @@ export class BookingSession {
     senderType: 'mentee' | 'mentor' | 'system';
     message: string;
     timestamp: Date;
-    messageType: 'booking_request' | 'response' | 'clarification' | 'confirmation' | 'reminder' | 'follow_up';
+    messageType:
+      | 'booking_request'
+      | 'response'
+      | 'clarification'
+      | 'confirmation'
+      | 'reminder'
+      | 'follow_up'
+      | 'chat'
+      | 'reschedule_proposal'
+      | 'reschedule_accept'
+      | 'reschedule_decline'
+      | 'system';
     
     attachments?: {
       filename: string;
       url: string;
       type: string;
     }[];
+  }[];
+
+  @Prop({ type: [Object] })
+  rescheduleProposals?: {
+    id: string;
+    proposedBy: Types.ObjectId;
+    proposedByRole: 'mentee' | 'mentor';
+    status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+    availabilitySlotId?: Types.ObjectId;
+    newDateTime: Date;
+    duration: number;
+    timeZone?: string;
+    reason?: string;
+    message?: string;
+    createdAt: Date;
+    respondedAt?: Date;
+    respondedBy?: Types.ObjectId;
   }[];
 
   // Payment and pricing
@@ -162,7 +212,7 @@ export class BookingSession {
     currency: string;
     
     paymentMethod: 'credit_card' | 'paypal' | 'bank_transfer' | 'free_session' | 'package_credit';
-    paymentStatus: 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded' | 'free';
+    paymentStatus: 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded' | 'refund_pending' | 'free';
     
     transactionId?: string;
     paymentDate?: Date;
@@ -246,10 +296,35 @@ export class BookingSession {
 
 export const BookingSessionSchema = SchemaFactory.createForClass(BookingSession);
 
+BookingSessionSchema.virtual('mentorUser', {
+  ref: 'User',
+  localField: 'mentorId',
+  foreignField: '_id',
+  justOne: true,
+  options: { select: 'name email avatar' },
+});
+
+BookingSessionSchema.virtual('menteeUser', {
+  ref: 'User',
+  localField: 'menteeId',
+  foreignField: '_id',
+  justOne: true,
+  options: { select: 'name email avatar' },
+});
+
 // Indexes
 BookingSessionSchema.index({ menteeId: 1, status: 1 });
 BookingSessionSchema.index({ mentorId: 1, status: 1 });
-BookingSessionSchema.index({ availabilitySlotId: 1 }, { unique: true });
+BookingSessionSchema.index(
+  { availabilitySlotId: 1 },
+  {
+    unique: true,
+    name: 'booking_session_active_slot_unique',
+    partialFilterExpression: {
+      status: { $in: [...ACTIVE_SLOT_BOOKING_STATUSES] },
+    },
+  },
+);
 BookingSessionSchema.index({ 'schedulingDetails.confirmedDateTime': 1 });
 BookingSessionSchema.index({ status: 1, sessionType: 1 });
 BookingSessionSchema.index({ createdAt: -1 });

@@ -1,5 +1,5 @@
-import MentorDashboard from '@/views/MentorDashboard';
+import Profile from '@/views/Profile';
 
 export default function MentorProfilePage() {
-  return <MentorDashboard view="profile" />;
+  return <Profile />;
 }

@@ -41,6 +41,9 @@ export class UserSubscription {
     @Prop({ type: Types.ObjectId, ref: 'Payment' })
     paymentId?: Types.ObjectId;
 
+    @Prop({ type: [{ type: Types.ObjectId, ref: 'Payment' }], default: [] })
+    paymentIds!: Types.ObjectId[];
+
     @Prop({ type: String, enum: BillingCycle, required: true })
     billingCycle!: BillingCycle;
 
@@ -59,3 +62,4 @@ UserSubscriptionSchema.index({ userId: 1 });
 UserSubscriptionSchema.index({ planId: 1 });
 UserSubscriptionSchema.index({ status: 1 });
 UserSubscriptionSchema.index({ paymentId: 1 }, { unique: true, sparse: true });
+UserSubscriptionSchema.index({ paymentIds: 1 });

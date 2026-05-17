@@ -29,6 +29,8 @@ import { AiModule } from './modules/ai/ai.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -75,6 +77,8 @@ import { AppService } from './app.service';
     OnboardingModule,
     AiModule,
     PaymentModule,
+    WalletModule,
+    TrackingModule,
     AdminModule,
     NotificationsModule,
   ],

@@ -7,6 +7,18 @@ import { User, UserDocument } from '../../users/schemas/user.schema';
 import { UserRole } from '../../../common/enums/user-role.enum';
 
 type CreateTutorProfileInput = CreateTutorProfileDto & { userId?: string };
+type PublicMentorUser = {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+};
+
+type TutorProfilePublicResponse = Record<string, unknown> & {
+  id: string;
+  userId: string;
+  mentorUser?: PublicMentorUser;
+};
 
 @Injectable()
 export class TutorProfileService {
@@ -29,35 +41,49 @@ export class TutorProfileService {
     page = 1,
     limit = 10,
     filters: FilterQuery<TutorProfileDocument> = {},
-  ): Promise<{ data: TutorProfileDocument[]; total: number; page: number; totalPages: number }> {
+  ): Promise<{ data: TutorProfilePublicResponse[]; total: number; page: number; totalPages: number }> {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      this.tutorProfileModel.find(filters).skip(skip).limit(limit).sort({ createdAt: -1 }).exec(),
+      this.tutorProfileModel
+        .find(filters)
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .populate('userId', 'name email avatar')
+        .exec(),
       this.tutorProfileModel.countDocuments(filters).exec(),
     ]);
 
     return {
-      data,
+      data: data.map((profile) => this.serializeProfile(profile)),
       total,
       page,
       totalPages: Math.ceil(total / limit),
     };
   }
 
-  async findOne(id: string): Promise<TutorProfileDocument> {
-    const profile = await this.tutorProfileModel.findById(id).exec();
+  async findOne(id: string): Promise<TutorProfilePublicResponse> {
+    const profile = await this.tutorProfileModel.findById(id).populate('userId', 'name email avatar').exec();
     if (!profile) {
       throw new NotFoundException(`Tutor profile with ID ${id} not found`);
     }
-    return profile;
+    return this.serializeProfile(profile);
   }
 
-  async findByUser(userId: string): Promise<TutorProfileDocument | null> {
-    return this.tutorProfileModel.findOne({ userId }).exec();
+  async findByUser(userId: string): Promise<TutorProfilePublicResponse | null> {
+    const profile = await this.tutorProfileModel
+      .findOne({ userId })
+      .populate('userId', 'name email avatar')
+      .exec();
+    return profile ? this.serializeProfile(profile) : null;
   }
 
-  async findActive(): Promise<TutorProfileDocument[]> {
-    return this.tutorProfileModel.find({ status: 'active' }).exec();
+  async findActive(): Promise<TutorProfilePublicResponse[]> {
+    const profiles = await this.tutorProfileModel
+      .find({ status: 'active' })
+      .populate('userId', 'name email avatar')
+      .exec();
+    return profiles.map((profile) => this.serializeProfile(profile));
   }
 
   async update(id: string, updateDto: Partial<UpdateTutorProfileDto>): Promise<TutorProfileDocument> {
@@ -102,9 +128,7 @@ export class TutorProfileService {
     return profile;
   }
 
-  async searchTutors(
-    criteria: { expertise?: string; industries?: string[] },
-  ): Promise<TutorProfileDocument[]> {
+  async searchTutors(criteria: { expertise?: string; industries?: string[] }): Promise<TutorProfilePublicResponse[]> {
     const query: FilterQuery<TutorProfileDocument> = { status: 'active' };
     if (criteria.expertise) {
       query.$or = [
@@ -116,6 +140,42 @@ export class TutorProfileService {
     if (criteria.industries) {
       query['professionalBackground.industries'] = { $in: criteria.industries };
     }
-    return this.tutorProfileModel.find(query).exec();
+    const profiles = await this.tutorProfileModel.find(query).populate('userId', 'name email avatar').exec();
+    return profiles.map((profile) => this.serializeProfile(profile));
+  }
+
+  private serializeProfile(profile: TutorProfileDocument): TutorProfilePublicResponse {
+    const raw = typeof profile.toJSON === 'function'
+      ? profile.toJSON()
+      : ({ ...profile } as Record<string, unknown>);
+    const rawUser = raw.userId;
+    const hasPopulatedUser =
+      Boolean(rawUser) &&
+      typeof rawUser === 'object' &&
+      ('name' in (rawUser as Record<string, unknown>) ||
+        'email' in (rawUser as Record<string, unknown>) ||
+        'avatar' in (rawUser as Record<string, unknown>));
+    const populatedUser = hasPopulatedUser ? (rawUser as Record<string, unknown>) : null;
+    const rawUserId = populatedUser ? populatedUser._id || populatedUser.id : rawUser;
+    const profileId = raw.id || raw._id;
+    const response = {
+      ...raw,
+      id: profileId ? String(profileId) : '',
+      userId: rawUserId ? String(rawUserId) : '',
+    } as TutorProfilePublicResponse;
+
+    delete response._id;
+    delete response.__v;
+
+    if (populatedUser && response.userId) {
+      response.mentorUser = {
+        id: response.userId,
+        name: String(populatedUser.name || ''),
+        email: String(populatedUser.email || ''),
+        avatar: String(populatedUser.avatar || ''),
+      };
+    }
+
+    return response;
   }
 }

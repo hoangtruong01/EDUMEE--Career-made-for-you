@@ -1,3 +1,6 @@
+'use client';
+
+import { useAuth } from '@/context/auth-context';
 import { Heart } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -17,6 +20,12 @@ const SUPPORT = [
 ];
 
 export default function Footer() {
+  const { role } = useAuth();
+  const supportItems =
+    role === 'mentor' || role === 'admin'
+      ? SUPPORT.filter((item) => item.href !== '/mentor-matching')
+      : SUPPORT;
+
   return (
     <footer className="border-border bg-background border-t">
       {/* ─── Main grid ─── */}
@@ -58,7 +67,7 @@ export default function Footer() {
           <div>
             <h4 className="mb-3 text-sm font-semibold">Hỗ trợ</h4>
             <ul className="text-muted-foreground space-y-2 text-sm">
-              {SUPPORT.map(({ href, label }) => (
+              {supportItems.map(({ href, label }) => (
                 <li key={href}>
                   <Link href={href} className="hover:text-foreground transition-colors">
                     {label}

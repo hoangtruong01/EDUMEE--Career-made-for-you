@@ -8,7 +8,7 @@ export default registerAs('jwt', () => ({
   accessTokenSecret:
     process.env.JWT_SECRET_ACCESS_TOKEN ||
     'your-access-token-secret-change-in-production',
-  accessTokenExpireIn: process.env.ACCESS_TOKEN_EXPIRE_IN || '15m',
+  accessTokenExpireIn: process.env.ACCESS_TOKEN_EXPIRE_IN || '1h',
   emailVerifySecret:
     process.env.JWT_SECRET_EMAIL_VERIFY_TOKEN || 'email-verify-secret',
   emailVerifyExpiresIn: process.env.EMAIL_VERIFYING_TOKEN_EXPIRE_IN || '24h',

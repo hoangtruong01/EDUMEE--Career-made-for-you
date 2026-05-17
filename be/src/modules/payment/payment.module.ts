@@ -17,11 +17,15 @@ import {
   MentorAvailabilitySlot,
   MentorAvailabilitySlotSchema,
 } from '../mentoring/schemas/mentor-availability-slot.schema';
+import { AuditModule } from '../audit/audit.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
   imports: [
     AiModule,
     NotificationsModule,
+    AuditModule,
+    WalletModule,
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },

@@ -43,15 +43,23 @@ export interface AdminAiPlanPayload {
   displayOrder?: number;
   billingCycleDiscounts?: Partial<Record<BillingCycle, number>>;
   allowedBillingCycles?: BillingCycle[];
-  seatLimit?: number;
+  seatLimit?: number | null;
   limits?: AiPlanLimits;
   features?: AiPlanFeatures;
+}
+
+export interface AiPlanSubscriberStats {
+  activeSubscribers: number;
+  totalSubscribers: number;
+  cancelledSubscribers: number;
+  expiredSubscribers: number;
 }
 
 export interface AdminAiPlan extends AdminAiPlanPayload {
   id: string;
   createdAt?: string;
   updatedAt?: string;
+  subscriberStats?: AiPlanSubscriberStats;
   pricingByBillingCycle?: Partial<
     Record<
       BillingCycle,
@@ -67,6 +75,25 @@ export interface AdminAiPlan extends AdminAiPlanPayload {
       }
     >
   >;
+}
+
+export interface AssignAiPlanUserPayload {
+  userId?: string;
+  identifier?: string;
+  planId: string;
+  billingCycle: BillingCycle;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AssignedAiPlanSubscription {
+  id: string;
+  userId: string;
+  planId: string;
+  billingCycle: BillingCycle;
+  startDate: string;
+  endDate?: string;
+  status: string;
 }
 
 export const adminAiPlanService = {
@@ -88,5 +115,9 @@ export const adminAiPlanService = {
 
   deleteAdminAiPlan(token: string, id: string) {
     return apiClient.delete<void>(`/ai-plans/${id}`, token);
+  },
+
+  assignUserToPlan(token: string, payload: AssignAiPlanUserPayload) {
+    return apiClient.post<AssignedAiPlanSubscription>('/ai-subscriptions/admin/assign', payload, token);
   },
 };

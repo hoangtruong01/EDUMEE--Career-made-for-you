@@ -10,6 +10,7 @@ import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 import { CreateAiPlanDto, UpdateAiPlanDto } from '../dto';
 import { SubscriptionStatus, UserSubscription, UserSubscriptionDocument } from '../../users/schemas/user-subscriptions';
 import { BillingCycle } from '../../users/schemas/user-subscriptions';
+import { User, UserDocument } from '../../users/schemas/user.schema';
 
 export type AiPlanPricingSummary = {
   billingCycle: BillingCycle;
@@ -26,6 +27,17 @@ export type AiPlanCatalogItem = AiPlan & {
   pricingByBillingCycle: Partial<Record<BillingCycle, AiPlanPricingSummary>>;
 };
 
+export type AiPlanSubscriberStats = {
+  activeSubscribers: number;
+  totalSubscribers: number;
+  cancelledSubscribers: number;
+  expiredSubscribers: number;
+};
+
+export type AiPlanAdminItem = AiPlan & {
+  subscriberStats: AiPlanSubscriberStats;
+};
+
 @Injectable()
 export class AiPlanService {
   constructor(
@@ -33,6 +45,8 @@ export class AiPlanService {
     private readonly aiPlanModel: Model<AiPlanDocument>,
     @InjectModel(UserSubscription.name)
     private readonly userSubscriptionModel: Model<UserSubscriptionDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
   ) {}
 
   async create(dto: CreateAiPlanDto): Promise<AiPlanDocument> {
@@ -46,8 +60,14 @@ export class AiPlanService {
     return plan.save();
   }
 
-  async findAll(): Promise<AiPlanDocument[]> {
-    return this.aiPlanModel.find().sort({ displayOrder: 1, createdAt: -1 }).exec();
+  async findAll(): Promise<AiPlanAdminItem[]> {
+    const plans = await this.aiPlanModel.find().sort({ displayOrder: 1, createdAt: -1 }).exec();
+    const statsByPlanId = await this.buildSubscriberStats(plans);
+
+    return plans.map((plan) => ({
+      ...(plan.toJSON() as AiPlan),
+      subscriberStats: statsByPlanId.get(this.getPlanId(plan)) || this.emptySubscriberStats(),
+    }));
   }
 
   async findCatalog(): Promise<AiPlanCatalogItem[]> {
@@ -203,6 +223,101 @@ export class AiPlanService {
       BillingCycle.NINE_MONTHS,
       BillingCycle.YEARLY,
     ];
+  }
+
+  private async buildSubscriberStats(plans: AiPlanDocument[]): Promise<Map<string, AiPlanSubscriberStats>> {
+    const statsByPlanId = new Map<string, AiPlanSubscriberStats>();
+    if (plans.length === 0) return statsByPlanId;
+
+    const now = new Date();
+    const planIds = plans.map((plan) => this.getPlanObjectId(plan));
+    const paidPlanIds = plans
+      .filter((plan) => !plan.isDefaultPlan && Number(plan.price || 0) > 0)
+      .map((plan) => this.getPlanObjectId(plan));
+    const activeSubscriptionFilter = {
+      status: SubscriptionStatus.ACTIVE,
+      $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gt: now } }],
+    };
+
+    const [
+      totalByPlan,
+      activeByPlan,
+      cancelledByPlan,
+      expiredByPlan,
+      totalUsers,
+      activePaidUserIds,
+    ] = await Promise.all([
+      this.countDistinctSubscribersByPlan({ planId: { $in: planIds } }),
+      this.countDistinctSubscribersByPlan({ planId: { $in: planIds }, ...activeSubscriptionFilter }),
+      this.countDistinctSubscribersByPlan({
+        planId: { $in: planIds },
+        status: SubscriptionStatus.CANCELLED,
+      }),
+      this.countDistinctSubscribersByPlan({
+        planId: { $in: planIds },
+        status: SubscriptionStatus.EXPIRED,
+      }),
+      this.userModel.countDocuments().exec(),
+      paidPlanIds.length > 0
+        ? this.userSubscriptionModel
+            .distinct('userId', { planId: { $in: paidPlanIds }, ...activeSubscriptionFilter })
+            .exec()
+        : Promise.resolve([]),
+    ]);
+
+    const activePaidUserCount = new Set(activePaidUserIds.map((id) => id.toString())).size;
+    const defaultPlanCurrentUsers = Math.max(totalUsers - activePaidUserCount, 0);
+
+    for (const plan of plans) {
+      const planId = this.getPlanId(plan);
+      const stats: AiPlanSubscriberStats = {
+        activeSubscribers: activeByPlan.get(planId) || 0,
+        totalSubscribers: totalByPlan.get(planId) || 0,
+        cancelledSubscribers: cancelledByPlan.get(planId) || 0,
+        expiredSubscribers: expiredByPlan.get(planId) || 0,
+      };
+
+      if (plan.isDefaultPlan) {
+        stats.activeSubscribers = defaultPlanCurrentUsers;
+        stats.totalSubscribers = Math.max(stats.totalSubscribers, defaultPlanCurrentUsers);
+      }
+
+      statsByPlanId.set(planId, stats);
+    }
+
+    return statsByPlanId;
+  }
+
+  private async countDistinctSubscribersByPlan(filter: Record<string, unknown>): Promise<Map<string, number>> {
+    const rows = await this.userSubscriptionModel
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: filter },
+        { $group: { _id: '$planId', userIds: { $addToSet: '$userId' } } },
+        { $project: { count: { $size: '$userIds' } } },
+      ])
+      .exec();
+
+    return rows.reduce((acc, row) => {
+      acc.set(row._id.toString(), row.count || 0);
+      return acc;
+    }, new Map<string, number>());
+  }
+
+  private emptySubscriberStats(): AiPlanSubscriberStats {
+    return {
+      activeSubscribers: 0,
+      totalSubscribers: 0,
+      cancelledSubscribers: 0,
+      expiredSubscribers: 0,
+    };
+  }
+
+  private getPlanId(plan: AiPlanDocument): string {
+    return this.getPlanObjectId(plan).toString();
+  }
+
+  private getPlanObjectId(plan: AiPlanDocument): Types.ObjectId {
+    return plan._id as Types.ObjectId;
   }
 
   private async unsetOtherDefaultPlans(currentPlanId?: unknown): Promise<void> {

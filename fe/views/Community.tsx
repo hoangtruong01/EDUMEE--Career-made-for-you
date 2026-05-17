@@ -227,7 +227,7 @@ const PostCard = ({
                 if (postId) onToggleMenu(postId);
               }}
               className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-full p-1.5 transition-colors"
-              aria-label="Mo tuy chon"
+              aria-label="Mở tùy chọn"
             >
               <MoreVertical className="h-4 w-4" />
             </button>

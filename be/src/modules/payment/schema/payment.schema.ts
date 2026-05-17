@@ -11,6 +11,7 @@ export enum PaymentProvider {
     VNPAY = 'vnpay',
     ZALOPAY = 'zalopay',
     SEPAY = 'sepay',
+    EDUMEE_CREDIT = 'edumee_credit',
 }
 
 export enum PaymentStatus {
@@ -19,6 +20,7 @@ export enum PaymentStatus {
     FAILED = 'failed',
     CANCELLED = 'cancelled',
     REFUNDED = 'refunded',
+    REFUND_PENDING = 'refund_pending',
 }
 
 export enum PaymentPurpose {
@@ -59,6 +61,15 @@ export class Payment {
 
     @Prop({ type: Number, required: true })
     amount!: number;
+
+    @Prop({ type: Number })
+    subtotalAmount?: number;
+
+    @Prop({ type: Number, default: 0 })
+    creditAppliedAmount?: number;
+
+    @Prop({ type: Types.ObjectId, ref: 'WalletLedgerEntry' })
+    creditHoldId?: Types.ObjectId;
 
     @Prop({ type: String, default: 'USD' })
     currency!: string;
@@ -101,6 +112,9 @@ export class Payment {
 
     @Prop({ type: Date })
     refundedAt?: Date;
+
+    @Prop({ type: Number })
+    refundedAmount?: number;
 
     @Prop({ type: String })
     refundReason?: string;

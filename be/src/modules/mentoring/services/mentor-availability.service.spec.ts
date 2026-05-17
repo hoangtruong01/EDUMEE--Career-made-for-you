@@ -14,6 +14,10 @@ const createExecMock = <T>(value: T) => ({
   exec: jest.fn().mockResolvedValue(value),
 });
 
+const createFindMock = <T>(value: T) => ({
+  sort: jest.fn().mockReturnValue(createExecMock(value)),
+});
+
 describe('MentorAvailabilityService', () => {
   let service: MentorAvailabilityService;
 
@@ -24,6 +28,7 @@ describe('MentorAvailabilityService', () => {
   slotModel.findOneAndUpdate = jest.fn();
   slotModel.updateMany = jest.fn();
   slotModel.exists = jest.fn();
+  slotModel.find = jest.fn();
 
   const tutorProfileModel = {
     findById: jest.fn(),
@@ -47,6 +52,7 @@ describe('MentorAvailabilityService', () => {
     slotModel.findById.mockReturnValue(createExecMock(null));
     slotModel.findByIdAndUpdate.mockReturnValue(createExecMock(null));
     slotModel.findByIdAndDelete.mockReturnValue(createExecMock(null));
+    slotModel.find.mockReturnValue(createFindMock([]));
     notificationService.create.mockResolvedValue({});
 
     const module: TestingModule = await Test.createTestingModule({
@@ -105,6 +111,39 @@ describe('MentorAvailabilityService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('finds current mentor slots using both ObjectId and legacy string mentorId values', async () => {
+    const mentorId = new Types.ObjectId();
+    const slots = [
+      {
+        _id: new Types.ObjectId(),
+        mentorId: mentorId.toString(),
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+      },
+    ];
+    slotModel.find.mockReturnValue(createFindMock(slots));
+
+    const result = await service.findMine({ userId: mentorId.toString(), role: 'mentor' });
+
+    expect(result).toBe(slots);
+    expect(slotModel.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          expect.objectContaining({ mentorId }),
+          expect.objectContaining({ $expr: { $eq: ['$mentorId', mentorId.toString()] } }),
+        ]),
+      }),
+      expect.any(Object),
+    );
+    expect(slotModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          expect.objectContaining({ mentorId }),
+          expect.objectContaining({ $expr: { $eq: ['$mentorId', mentorId.toString()] } }),
+        ]),
+      }),
+    );
+  });
+
   it('creates fixed 90-minute slots across repeated weeks', async () => {
     const mentorId = new Types.ObjectId();
     const tutorProfileId = new Types.ObjectId();
@@ -129,6 +168,7 @@ describe('MentorAvailabilityService', () => {
     expect(result.created).toHaveLength(2);
     expect(slotModel).toHaveBeenCalledWith(
       expect.objectContaining({
+        mentorId,
         startAt: expect.any(Date),
         endAt: expect.any(Date),
         status: MentorAvailabilitySlotStatus.AVAILABLE,
@@ -139,6 +179,110 @@ describe('MentorAvailabilityService', () => {
         recipientId: mentorId,
       }),
     );
+  });
+
+  it('creates date-only bulk slots on the selected local calendar day', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 4, 16, 0, 0));
+    try {
+      const mentorId = new Types.ObjectId();
+      const tutorProfileId = new Types.ObjectId();
+      tutorProfileModel.findById.mockReturnValue(
+        createExecMock({
+          _id: tutorProfileId,
+          userId: mentorId,
+          status: TutorStatus.ACTIVE,
+        }),
+      );
+
+      const result = await service.createBulkSlots(
+        { userId: mentorId.toString(), role: 'mentor' },
+        {
+          tutorProfileId: tutorProfileId.toString(),
+          weekStart: '2026-05-11',
+          slotStarts: [{ dayIndex: 6, startTime: '21:30' }],
+          repeatWeeks: 1,
+        },
+      );
+
+      expect(result.created).toHaveLength(1);
+      expect(result.skipped).toHaveLength(0);
+      expect(slotModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startAt: new Date(2026, 4, 17, 21, 30),
+          endAt: new Date(2026, 4, 17, 23, 0),
+          status: MentorAvailabilitySlotStatus.AVAILABLE,
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps supporting ISO weekStart values for bulk slots', async () => {
+    const mentorId = new Types.ObjectId();
+    const tutorProfileId = new Types.ObjectId();
+    tutorProfileModel.findById.mockReturnValue(
+      createExecMock({
+        _id: tutorProfileId,
+        userId: mentorId,
+        status: TutorStatus.ACTIVE,
+      }),
+    );
+
+    const result = await service.createBulkSlots(
+      { userId: mentorId.toString(), role: 'mentor' },
+      {
+        tutorProfileId: tutorProfileId.toString(),
+        weekStart: '2099-01-05T00:00:00.000Z',
+        slotStarts: [{ dayIndex: 6, startTime: '21:30' }],
+        repeatWeeks: 1,
+      },
+    );
+
+    expect(result.created).toHaveLength(1);
+    expect(result.skipped).toHaveLength(0);
+    expect(slotModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startAt: expect.any(Date),
+        endAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('skips past bulk slots with a clear reason', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 4, 16, 12, 0));
+    try {
+      const mentorId = new Types.ObjectId();
+      const tutorProfileId = new Types.ObjectId();
+      tutorProfileModel.findById.mockReturnValue(
+        createExecMock({
+          _id: tutorProfileId,
+          userId: mentorId,
+          status: TutorStatus.ACTIVE,
+        }),
+      );
+
+      const result = await service.createBulkSlots(
+        { userId: mentorId.toString(), role: 'mentor' },
+        {
+          tutorProfileId: tutorProfileId.toString(),
+          weekStart: '2026-05-11',
+          slotStarts: [{ dayIndex: 0, startTime: '08:00' }],
+          repeatWeeks: 1,
+        },
+      );
+
+      expect(result.created).toHaveLength(0);
+      expect(result.skipped).toEqual([
+        expect.objectContaining({
+          dayIndex: 0,
+          startTime: '08:00',
+          reason: 'past_slot',
+        }),
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('skips overlapping bulk slots without failing the whole request', async () => {
@@ -169,6 +313,14 @@ describe('MentorAvailabilityService', () => {
         reason: 'overlap',
       }),
     ]);
+    expect(slotModel.exists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          expect.objectContaining({ mentorId }),
+          expect.objectContaining({ $expr: { $eq: ['$mentorId', mentorId.toString()] } }),
+        ]),
+      }),
+    );
   });
 
   it('updates an available slot to a new future 90-minute range', async () => {

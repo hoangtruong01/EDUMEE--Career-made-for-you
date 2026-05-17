@@ -1,11 +1,31 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsEnum,
+  IsBoolean,
   IsOptional,
-    IsObject
+  IsObject,
+  ValidateNested,
 } from 'class-validator';
 import { BookingStatus, SessionType } from '../schemas/booking-session.schema';
+
+export class BookingPaymentReturnUrlsDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  success?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  error?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  cancel?: string;
+}
 
 export class CreateBookingSessionDto {
   @ApiProperty({ description: 'Tutor profile ID' })
@@ -43,6 +63,17 @@ export class CreateBookingSessionDto {
   @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
+
+  @ApiPropertyOptional({ type: BookingPaymentReturnUrlsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingPaymentReturnUrlsDto)
+  paymentReturnUrls?: BookingPaymentReturnUrlsDto;
+
+  @ApiPropertyOptional({ description: 'Apply available Edumee Credit before SePay checkout.' })
+  @IsOptional()
+  @IsBoolean()
+  useEdumeeCredit?: boolean;
 }
 
 export class UpdateBookingSessionDto extends PartialType(CreateBookingSessionDto) {

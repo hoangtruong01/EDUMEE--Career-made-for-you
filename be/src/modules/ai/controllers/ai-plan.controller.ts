@@ -1,16 +1,23 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { CreateAiPlanDto, UpdateAiPlanDto } from '../dto';
 import { AiPlanService } from '../services/ai-plan.service';
+import { CurrentUser, type RequestUser } from '../../auth/decorators/current-user.decorator';
+import { AuditLogService } from '../../audit/audit-log.service';
+import { AuditLogCategory, AuditLogStatus } from '../../audit/schema/audit-log.schema';
 
 @ApiTags('ai-plans')
 @Controller('ai-plans')
 export class AiPlanController {
-  constructor(private readonly aiPlanService: AiPlanService) {}
+  constructor(
+    private readonly aiPlanService: AiPlanService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List public AI plans for purchase and display' })
@@ -48,8 +55,21 @@ export class AiPlanController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Create AI plan (admin)' })
   @ApiResponse({ status: HttpStatus.CREATED })
-  create(@Body() dto: CreateAiPlanDto) {
-    return this.aiPlanService.create(dto);
+  create(
+    @Body() dto: CreateAiPlanDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'ai_plans.create',
+        resource: 'ai_plan',
+        metadata: { name: dto.name },
+      },
+      () => this.aiPlanService.create(dto),
+    );
   }
 
   @Patch(':id')
@@ -57,8 +77,23 @@ export class AiPlanController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update AI plan (admin)' })
-  update(@Param('id') id: string, @Body() dto: UpdateAiPlanDto) {
-    return this.aiPlanService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAiPlanDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'ai_plans.update',
+        resource: 'ai_plan',
+        resourceId: id,
+        metadata: { name: dto.name },
+      },
+      () => this.aiPlanService.update(id, dto),
+    );
   }
 
   @Delete(':id')
@@ -67,7 +102,53 @@ export class AiPlanController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Delete AI plan (admin)' })
-  async remove(@Param('id') id: string) {
-    await this.aiPlanService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    await this.withAudit(
+      {
+        actor,
+        request,
+        action: 'ai_plans.delete',
+        resource: 'ai_plan',
+        resourceId: id,
+      },
+      () => this.aiPlanService.remove(id),
+    );
+  }
+
+  private async withAudit<T>(
+    params: {
+      actor: RequestUser;
+      request: Request;
+      action: string;
+      resource: string;
+      resourceId?: string;
+      metadata?: Record<string, unknown>;
+    },
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      const result = await callback();
+      await this.auditLogService.record({
+        ...params,
+        status: AuditLogStatus.SUCCESS,
+        category: AuditLogCategory.USER_ACTION,
+      });
+      return result;
+    } catch (error) {
+      await this.auditLogService.record({
+        ...params,
+        status: AuditLogStatus.FAILED,
+        category: AuditLogCategory.USER_ACTION,
+        metadata: {
+          ...(params.metadata || {}),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
   }
 }

@@ -7,7 +7,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { getAuthUserId } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
-import { UpsertAiSubscriptionDto } from '../dto';
+import { AssignAiSubscriptionDto, UpsertAiSubscriptionDto } from '../dto';
 import { AiSubscriptionService } from '../services/ai-subscription.service';
 import { AiQuotaService } from '../services/ai-quota.service';
 import { AiFeature } from '../schema/ai-usage-logs.schema';
@@ -36,6 +36,21 @@ export class AiSubscriptionController {
   upsert(@Body() dto: UpsertAiSubscriptionDto) {
     return this.aiSubscriptionService.upsertActiveSubscription({
       userId: dto.userId,
+      planId: dto.planId,
+      billingCycle: dto.billingCycle,
+      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+    });
+  }
+
+  @Post('admin/assign')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Assign AI plan to selected user, with email/phone fallback (admin)' })
+  assign(@Body() dto: AssignAiSubscriptionDto) {
+    return this.aiSubscriptionService.assignUserToPlan({
+      userId: dto.userId,
+      identifier: dto.identifier,
       planId: dto.planId,
       billingCycle: dto.billingCycle,
       startDate: dto.startDate ? new Date(dto.startDate) : undefined,

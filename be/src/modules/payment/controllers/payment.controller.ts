@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -14,13 +15,18 @@ import {
   RefundPaymentDto,
 } from '../dto';
 import { PaymentService } from '../services';
+import { AuditLogService } from '../../audit/audit-log.service';
+import { AuditLogCategory, AuditLogStatus } from '../../audit/schema/audit-log.schema';
 
 @ApiTags('payments')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('payments')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   @Post('ai-plan/purchase')
   @ApiOperation({ summary: 'Create a pending AI plan SePay purchase and return a browser redirect URL' })
@@ -44,16 +50,45 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Process a verified provider-agnostic payment event (admin test webhook)' })
-  webhookTest(@Body() dto: PaymentWebhookTestDto) {
-    return this.paymentService.handleVerifiedPaymentEvent(dto);
+  webhookTest(
+    @Body() dto: PaymentWebhookTestDto,
+    @CurrentUser() actor: AuthUserLike & { email?: string; name?: string },
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'payments.webhook_test',
+        resource: 'payment',
+        resourceId: dto.paymentId,
+        metadata: { eventType: dto.eventType },
+      },
+      () => this.paymentService.handleVerifiedPaymentEvent(dto),
+    );
   }
 
   @Post(':id/refund')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Refund a paid payment and revoke linked premium entitlement (admin)' })
-  refund(@Param('id') id: string, @Body() dto: RefundPaymentDto) {
-    return this.paymentService.refundPayment(id, dto);
+  refund(
+    @Param('id') id: string,
+    @Body() dto: RefundPaymentDto,
+    @CurrentUser() actor: AuthUserLike & { email?: string; name?: string },
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'payments.refund',
+        resource: 'payment',
+        resourceId: id,
+        metadata: { amount: dto.amount, reason: dto.reason },
+      },
+      () => this.paymentService.refundPayment(id, dto),
+    );
   }
 
   @Get('me')
@@ -66,5 +101,38 @@ export class PaymentController {
   @ApiOperation({ summary: 'Get a payment by id for its owner or admin' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     return this.paymentService.findOneForActor(id, user);
+  }
+
+  private async withAudit<T>(
+    params: {
+      actor: AuthUserLike & { email?: string; name?: string };
+      request: Request;
+      action: string;
+      resource: string;
+      resourceId?: string;
+      metadata?: Record<string, unknown>;
+    },
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      const result = await callback();
+      await this.auditLogService.record({
+        ...params,
+        status: AuditLogStatus.SUCCESS,
+        category: AuditLogCategory.USER_ACTION,
+      });
+      return result;
+    } catch (error) {
+      await this.auditLogService.record({
+        ...params,
+        status: AuditLogStatus.FAILED,
+        category: AuditLogCategory.USER_ACTION,
+        metadata: {
+          ...(params.metadata || {}),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
   }
 }

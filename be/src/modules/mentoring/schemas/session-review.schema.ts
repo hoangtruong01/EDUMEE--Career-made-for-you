@@ -48,6 +48,9 @@ export class SessionReview {
   @Prop({ type: String, enum: ReviewStatus, default: ReviewStatus.PENDING })
   status!: ReviewStatus;
 
+  @Prop({ type: Boolean, default: true })
+  isAnonymous!: boolean;
+
   // Overall ratings
   @Prop({ required: true, type: Object })
   overallRatings!: {
@@ -140,7 +143,10 @@ export class SessionReview {
 export const SessionReviewSchema = SchemaFactory.createForClass(SessionReview);
 
 // Indexes
-SessionReviewSchema.index({ tutoringSessionId: 1 });
+SessionReviewSchema.index(
+  { tutoringSessionId: 1, reviewerId: 1 },
+  { unique: true, name: 'session_review_unique_reviewer_per_session' },
+);
 SessionReviewSchema.index({ reviewerId: 1, reviewerType: 1 });
 SessionReviewSchema.index({ reviewedUserId: 1, status: 1 });
 SessionReviewSchema.index({ 'overallRatings.overallSatisfaction': -1 });

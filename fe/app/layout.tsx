@@ -2,6 +2,7 @@ import AppProviders from '@/components/providers/AppProviders';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import type { Metadata } from 'next';
+import '@livekit/components-styles';
 
 // Dùng đường dẫn tuyệt đối có chữ @ để không bao giờ bị lỗi path
 import './globals.css';

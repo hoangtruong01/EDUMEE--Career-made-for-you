@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsEnum,
   IsNumber,
   IsObject,
@@ -54,6 +55,11 @@ export class CreateAiPlanPurchaseDto {
   @ValidateNested()
   @Type(() => PaymentReturnUrlsDto)
   returnUrls?: PaymentReturnUrlsDto;
+
+  @ApiPropertyOptional({ description: 'Apply available Edumee Credit before creating SePay checkout.' })
+  @IsOptional()
+  @IsBoolean()
+  useEdumeeCredit?: boolean;
 }
 
 export class CreateMentorBookingPurchaseDto {
@@ -74,6 +80,11 @@ export class CreateMentorBookingPurchaseDto {
   @ValidateNested()
   @Type(() => PaymentReturnUrlsDto)
   returnUrls?: PaymentReturnUrlsDto;
+
+  @ApiPropertyOptional({ description: 'Apply available Edumee Credit before creating SePay checkout.' })
+  @IsOptional()
+  @IsBoolean()
+  useEdumeeCredit?: boolean;
 }
 
 export enum TestPaymentEventType {

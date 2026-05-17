@@ -1,6 +1,8 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/auth-context';
+import { useBookingChat } from '@/context/booking-chat-context';
 import {
   Command,
   CommandEmpty,
@@ -18,33 +20,38 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ApiError } from '@/lib/api-client';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  type MentorPortalData,
+  mentorPortalQueryKey,
+  mentorPortalReviewsQueryKey,
+  updateMentorPortalBookingCache,
+  useMentorPortalData,
+  useMentorPortalReviews,
+} from '@/hooks/useMentorPortalData';
+import { useBookingRealtimeSync } from '@/hooks/useBookingRealtimeSync';
 import { authStorage } from '@/lib/auth-storage';
 import { careerTagsService, type CareerTag, type SkillTag } from '@/lib/career-tags.service';
 import {
   BookingSession,
-  MentorNotification,
   MentorAvailabilitySlot,
   mentorService,
-  notificationService,
+  SessionReview,
   TutorProfile,
 } from '@/lib/mentor.service';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   BadgeCheck,
-  Bell,
   Calendar,
-  CalendarCheck2,
   Check,
-  CheckCheck,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
   Clock,
-  Link as LinkIcon,
   Loader2,
+  MessageSquare,
   Plus,
   Repeat,
   Star,
@@ -57,6 +64,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 const statusLabel: Record<string, string> = {
   awaiting_payment: 'Chờ thanh toán',
@@ -65,7 +73,7 @@ const statusLabel: Record<string, string> = {
   completed: 'Đã hoàn thành',
   cancelled_by_mentee: 'Học viên đã hủy',
   cancelled_by_mentor: 'Mentor đã hủy',
-  rescheduled: 'Đề xuất đổi lịch',
+  rescheduled: 'Đã đổi lịch',
   no_show_mentee: 'Học viên vắng',
   no_show_mentor: 'Mentor vắng',
 };
@@ -88,6 +96,10 @@ const statusTone: Record<string, string> = {
   rescheduled: 'bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
 };
 
+const EMPTY_MENTOR_BOOKINGS: BookingSession[] = [];
+const EMPTY_MENTOR_SLOTS: MentorAvailabilitySlot[] = [];
+const EMPTY_MENTOR_REVIEWS: SessionReview[] = [];
+
 function formatMoney(amount?: number, currency = 'VND') {
   if (!amount) return 'Miễn phí';
   return new Intl.NumberFormat('vi-VN', {
@@ -103,10 +115,6 @@ function getMentorName(profile?: TutorProfile | null) {
 
 function getPrimaryRate(profile?: TutorProfile | null) {
   return profile?.pricing?.sessionRates?.[0];
-}
-
-function isProfileMissing(error: unknown) {
-  return error instanceof ApiError && error.statusCode === 404;
 }
 
 function splitList(value: string) {
@@ -572,9 +580,6 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               Gửi hồ sơ cho admin duyệt
             </Button>
-            <Link href="/mentor-matching">
-              <Button variant="outline">Xem danh sách mentor</Button>
-            </Link>
           </div>
         </PortalPanel>
       </div>
@@ -628,7 +633,7 @@ function ProfileStatusCard({ profile }: { profile: TutorProfile }) {
             {profileStatusLabel[profile.status] || profile.status}
           </h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Hồ sơ {getMentorName(profile)} hiện chưa thể mở lịch tư vấn công khai. Bạn có thể theo dõi trạng thái tại đây.
+            Hồ sơ {getMentorName(profile)} hiện chưa thể mở lịch tư vấn công khai. Bạn có thể theo dõi trạng thái ở trang này.
           </p>
           {rejectedReason && (
             <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
@@ -664,6 +669,134 @@ type SelectedCell = {
   dayIndex: number;
   rowIndex: number;
 };
+
+type MentorDataRefresh = (silent?: boolean) => Promise<MentorAvailabilitySlot[] | void>;
+type BookingUpdateHandler = (booking: BookingSession) => void;
+
+type BookingActionDialogState =
+  | { type: 'cancel_booking'; booking: BookingSession }
+  | { type: 'complete_booking'; booking: BookingSession }
+  | { type: 'delete_slot'; slot: MentorAvailabilitySlot }
+  | { type: 'decline_reschedule'; booking: BookingSession; proposalId: string };
+
+function getBookingActionCopy(action: BookingActionDialogState) {
+  switch (action.type) {
+    case 'cancel_booking':
+      return {
+        title: 'Hủy booking này?',
+        description: 'Booking sẽ được cập nhật ngay và slot liên quan sẽ được làm mới nhẹ.',
+        confirmLabel: 'Hủy booking',
+        reasonLabel: 'Lý do hủy booking',
+        reasonPlaceholder: 'Nhập lý do để học viên hiểu rõ hơn...',
+        icon: XCircle,
+        destructive: true,
+      };
+    case 'complete_booking':
+      return {
+        title: 'Kết thúc buổi tư vấn?',
+        description: 'Buổi tư vấn sẽ chuyển sang trạng thái đã hoàn thành và học viên có thể đánh giá mentor.',
+        confirmLabel: 'Kết thúc buổi học',
+        icon: CheckCircle2,
+        destructive: false,
+      };
+    case 'delete_slot':
+      return {
+        title: 'Xóa slot lịch rảnh?',
+        description: 'Slot trống này sẽ biến mất khỏi lịch làm việc của bạn.',
+        confirmLabel: 'Xóa slot',
+        icon: Trash2,
+        destructive: true,
+      };
+    case 'decline_reschedule':
+      return {
+        title: 'Từ chối đề xuất đổi lịch?',
+        description: 'Học viên sẽ nhận được phản hồi của bạn trong phần trao đổi booking.',
+        confirmLabel: 'Từ chối đề xuất',
+        reasonLabel: 'Lý do từ chối',
+        reasonPlaceholder: 'Ví dụ: Khung giờ này chưa phù hợp, mình đề xuất giờ khác...',
+        icon: XCircle,
+        destructive: true,
+      };
+  }
+}
+
+function BookingActionDialog({
+  action,
+  reason,
+  busy,
+  onReasonChange,
+  onClose,
+  onConfirm,
+}: {
+  action: BookingActionDialogState | null;
+  reason: string;
+  busy: boolean;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  if (!action) return null;
+
+  const copy = getBookingActionCopy(action);
+  const Icon = copy.icon;
+  const needsReason = action.type === 'cancel_booking' || action.type === 'decline_reschedule';
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div
+            className={cn(
+              'mb-2 flex h-11 w-11 items-center justify-center rounded-xl',
+              copy.destructive
+                ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+            )}
+          >
+            <Icon className="h-5 w-5" />
+          </div>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
+        </DialogHeader>
+
+        {needsReason && (
+          <label className="space-y-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <span>{copy.reasonLabel}</span>
+            <Textarea
+              value={reason}
+              onChange={(event) => onReasonChange(event.target.value)}
+              placeholder={copy.reasonPlaceholder}
+              className="min-h-28 rounded-xl border-slate-200 bg-white text-slate-950 focus-visible:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus-visible:ring-sky-500/10"
+            />
+          </label>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Hủy
+          </Button>
+          <Button
+            type="button"
+            variant={copy.destructive ? 'destructive' : 'default'}
+            onClick={() => {
+              void onConfirm();
+            }}
+            disabled={busy}
+            className={copy.destructive ? undefined : 'bg-emerald-600 hover:bg-emerald-700'}
+          >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {copy.confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -710,6 +843,16 @@ function getBookingStart(booking: BookingSession) {
 
 function getBookingEnd(booking: BookingSession, start = getBookingStart(booking)) {
   return new Date(start.getTime() + booking.schedulingDetails.duration * 60_000);
+}
+
+type RescheduleProposal = NonNullable<BookingSession['rescheduleProposals']>[number];
+
+function getPendingRescheduleProposal(booking: BookingSession): RescheduleProposal | null {
+  return booking.rescheduleProposals?.find((proposal) => proposal.status === 'pending') || null;
+}
+
+function getProposalRoleLabel(role: RescheduleProposal['proposedByRole']) {
+  return role === 'mentor' ? 'mentor' : 'học viên';
 }
 
 function getScheduleRange(slots: MentorAvailabilitySlot[], bookings: BookingSession[]) {
@@ -833,7 +976,7 @@ function MentorScheduleTimetable({
   profile: TutorProfile;
   slots: MentorAvailabilitySlot[];
   bookings: BookingSession[];
-  onChanged: () => void;
+  onChanged: () => void | Promise<MentorAvailabilitySlot[] | void>;
 }) {
   const token = authStorage.getAccessToken();
   const weekStart = useMemo(() => startOfWeek(new Date()), []);
@@ -855,6 +998,8 @@ function MentorScheduleTimetable({
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [busyId, setBusyId] = useState('');
+  const [actionDialog, setActionDialog] = useState<BookingActionDialogState | null>(null);
+  const [actionReason, setActionReason] = useState('');
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(new Date()), 30_000);
@@ -929,8 +1074,10 @@ function MentorScheduleTimetable({
       setSelectedEntryId('');
       setMessage('Đã xóa khung giờ.');
       onChanged();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xóa khung giờ.');
+      return false;
     } finally {
       setBusyId('');
     }
@@ -949,18 +1096,38 @@ function MentorScheduleTimetable({
     }
   };
 
-  const cancelBooking = async (booking: BookingSession) => {
-    const reason = window.prompt('Lý do hủy booking?') || undefined;
+  const cancelBooking = async (booking: BookingSession, reason?: string) => {
     setBusyId(booking.id);
     try {
       await mentorService.cancelBooking(token, booking.id, reason);
       setMessage('Đã hủy booking.');
       onChanged();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể hủy booking.');
+      return false;
     } finally {
       setBusyId('');
     }
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionReason('');
+  };
+
+  const handleActionDialogConfirm = async () => {
+    if (!actionDialog) return;
+
+    let succeeded = false;
+    if (actionDialog.type === 'cancel_booking') {
+      succeeded = await cancelBooking(actionDialog.booking, actionReason.trim() || undefined);
+    }
+    if (actionDialog.type === 'delete_slot') {
+      succeeded = await deleteSlot(actionDialog.slot.id);
+    }
+
+    if (succeeded) closeActionDialog();
   };
 
   return (
@@ -1300,7 +1467,10 @@ function MentorScheduleTimetable({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => cancelBooking(selectedEntry.booking as BookingSession)}
+                      onClick={() => {
+                        setActionReason('');
+                        setActionDialog({ type: 'cancel_booking', booking: selectedEntry.booking as BookingSession });
+                      }}
                       disabled={busyId === selectedEntry.booking.id}
                     >
                       Hủy booking
@@ -1310,7 +1480,12 @@ function MentorScheduleTimetable({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteSlot(selectedEntry.slot?.id || '')}
+                      onClick={() => {
+                        if (selectedEntry.slot) {
+                          setActionReason('');
+                          setActionDialog({ type: 'delete_slot', slot: selectedEntry.slot });
+                        }
+                      }}
                       disabled={!selectedEntry.slot || busyId === selectedEntry.slot.id}
                     >
                       {busyId === selectedEntry.slot?.id ? (
@@ -1326,6 +1501,14 @@ function MentorScheduleTimetable({
             )}
           </aside>
         </div>
+        <BookingActionDialog
+          action={actionDialog}
+          reason={actionReason}
+          busy={Boolean(busyId)}
+          onReasonChange={setActionReason}
+          onClose={closeActionDialog}
+          onConfirm={handleActionDialogConfirm}
+        />
       </div>
     </PortalPanel>
   );
@@ -1442,21 +1625,27 @@ function MentorAvailabilityManager({
 function MentorBookingList({
   bookings,
   onChanged,
+  onBookingUpdated,
+  onOpenChat,
 }: {
   bookings: BookingSession[];
-  onChanged: () => void;
+  onChanged: MentorDataRefresh;
+  onBookingUpdated: BookingUpdateHandler;
+  onOpenChat: (booking: BookingSession) => void;
 }) {
   const token = authStorage.getAccessToken();
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [actionDialog, setActionDialog] = useState<BookingActionDialogState | null>(null);
+  const [actionReason, setActionReason] = useState('');
 
   const confirmBooking = async (booking: BookingSession) => {
     setBusyId(booking.id);
     setMessage('');
     try {
-      await mentorService.confirmBooking(token, booking.id);
+      const updatedBooking = await mentorService.confirmBooking(token, booking.id);
+      onBookingUpdated(updatedBooking);
       setMessage('Đã xác nhận booking.');
-      onChanged();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xác nhận booking.');
     } finally {
@@ -1464,19 +1653,56 @@ function MentorBookingList({
     }
   };
 
-  const cancelBooking = async (booking: BookingSession) => {
-    const reason = window.prompt('Lý do hủy booking?') || undefined;
+  const cancelBooking = async (booking: BookingSession, reason?: string) => {
     setBusyId(booking.id);
     setMessage('');
     try {
-      await mentorService.cancelBooking(token, booking.id, reason);
+      const updatedBooking = await mentorService.cancelBooking(token, booking.id, reason);
+      onBookingUpdated(updatedBooking);
       setMessage('Đã hủy booking.');
-      onChanged();
+      void onChanged(true);
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể hủy booking.');
+      return false;
     } finally {
       setBusyId('');
     }
+  };
+
+  const completeBooking = async (booking: BookingSession) => {
+    setBusyId(booking.id);
+    setMessage('');
+    try {
+      const updatedBooking = await mentorService.completeBooking(token, booking.id);
+      onBookingUpdated(updatedBooking);
+      setMessage('Đã kết thúc buổi tư vấn.');
+      return true;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể kết thúc buổi tư vấn.');
+      return false;
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionReason('');
+  };
+
+  const handleActionDialogConfirm = async () => {
+    if (!actionDialog) return;
+
+    let succeeded = false;
+    if (actionDialog.type === 'cancel_booking') {
+      succeeded = await cancelBooking(actionDialog.booking, actionReason.trim() || undefined);
+    }
+    if (actionDialog.type === 'complete_booking') {
+      succeeded = await completeBooking(actionDialog.booking);
+    }
+
+    if (succeeded) closeActionDialog();
   };
 
   return (
@@ -1488,7 +1714,7 @@ function MentorBookingList({
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-          <div className="hidden grid-cols-[1fr_160px_150px_180px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400 lg:grid">
+          <div className="hidden grid-cols-[1fr_160px_150px_260px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400 lg:grid">
             <span>Nội dung</span>
             <span>Thời gian</span>
             <span>Trạng thái</span>
@@ -1498,12 +1724,14 @@ function MentorBookingList({
             {bookings.map((booking) => {
               const canConfirm = booking.status === 'pending';
               const canCancel = ['pending', 'confirmed', 'rescheduled'].includes(booking.status);
+              const canComplete = ['confirmed', 'rescheduled'].includes(booking.status);
+              const meetingHref = getBookingMeetingHref(booking);
               const date = new Date(
                 booking.schedulingDetails.confirmedDateTime || booking.schedulingDetails.requestedDateTime,
               );
 
               return (
-                <div key={booking.id} className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[1fr_160px_150px_180px] lg:items-center">
+                <div key={booking.id} className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[1fr_160px_150px_260px] lg:items-center">
                   <div>
                     <p className="font-semibold text-slate-950 dark:text-slate-50">{booking.sessionType.replace(/_/g, ' ')}</p>
                     <p className="mt-1 text-slate-500 dark:text-slate-400">
@@ -1519,6 +1747,14 @@ function MentorBookingList({
                     </span>
                   </div>
                   <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                    {meetingHref && ['confirmed', 'rescheduled'].includes(booking.status) && (
+                      <Button size="sm" asChild className="bg-sky-600 hover:bg-sky-700">
+                        <Link href={meetingHref}>
+                          <Video className="h-4 w-4" />
+                          Vào phòng call
+                        </Link>
+                      </Button>
+                    )}
                     {canConfirm && (
                       <Button size="sm" onClick={() => confirmBooking(booking)} disabled={busyId === booking.id} className="bg-sky-600 hover:bg-sky-700">
                         {busyId === booking.id && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -1526,7 +1762,40 @@ function MentorBookingList({
                       </Button>
                     )}
                     {canCancel && (
-                      <Button size="sm" variant="outline" onClick={() => cancelBooking(booking)} disabled={busyId === booking.id}>
+                      <Button size="sm" variant="outline" onClick={() => onOpenChat(booking)}>
+                        <MessageSquare className="h-4 w-4" />
+                        Nhắn tin với học viên
+                      </Button>
+                    )}
+                    {canComplete && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setActionReason('');
+                          setActionDialog({ type: 'complete_booking', booking });
+                        }}
+                        disabled={busyId === booking.id}
+                        className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                      >
+                        {busyId === booking.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        Kết thúc
+                      </Button>
+                    )}
+                    {canCancel && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setActionReason('');
+                          setActionDialog({ type: 'cancel_booking', booking });
+                        }}
+                        disabled={busyId === booking.id}
+                      >
                         Hủy booking
                       </Button>
                     )}
@@ -1537,6 +1806,14 @@ function MentorBookingList({
           </div>
         </div>
       )}
+      <BookingActionDialog
+        action={actionDialog}
+        reason={actionReason}
+        busy={Boolean(busyId)}
+        onReasonChange={setActionReason}
+        onClose={closeActionDialog}
+        onConfirm={handleActionDialogConfirm}
+      />
     </PortalPanel>
   );
 }
@@ -1544,7 +1821,6 @@ function MentorBookingList({
 const MENTOR_SLOT_MINUTES = 90;
 const MENTOR_WORK_START_MINUTE = 8 * 60;
 const MENTOR_WORK_END_MINUTE = 23 * 60;
-const MENTOR_SLOT_ROW_HEIGHT = 58;
 const MENTOR_SLOT_STARTS = Array.from(
   { length: Math.floor((MENTOR_WORK_END_MINUTE - MENTOR_WORK_START_MINUTE) / MENTOR_SLOT_MINUTES) },
   (_, index) => MENTOR_WORK_START_MINUTE + index * MENTOR_SLOT_MINUTES,
@@ -1564,8 +1840,35 @@ function formatMinuteLabel(minute: number) {
   return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 }
 
+function formatDateOnly(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateOnlyInput(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
 function getWeekRangeLabel(weekStart: Date) {
   return `${formatScheduleDate(weekStart)} - ${formatScheduleDate(addDays(weekStart, 6))}`;
+}
+
+const bulkSkipReasonLabel: Record<string, string> = {
+  past_slot: 'đã qua thời gian nên backend không tạo',
+  overlap: 'trùng với lịch đã có',
+  duplicate: 'đã tồn tại trong hệ thống',
+  duplicate_in_request: 'bị chọn trùng trong lần lưu này',
+};
+
+function formatBulkSkippedSlot(skipped: { dayIndex: number; startTime: string; startAt?: string; reason: string }) {
+  const startAt = skipped.startAt ? new Date(skipped.startAt) : null;
+  const when = startAt && !Number.isNaN(startAt.getTime())
+    ? `${startAt.toLocaleDateString('vi-VN')} ${formatScheduleTime(startAt)}`
+    : `${WEEKDAY_LABELS[skipped.dayIndex] || `Ngày ${skipped.dayIndex + 1}`} ${skipped.startTime}`;
+  return `${when}: ${bulkSkipReasonLabel[skipped.reason] || skipped.reason}`;
 }
 
 function getBookingMeetingHref(booking: BookingSession) {
@@ -1579,49 +1882,52 @@ function MentorSchedulingWorkspace({
   slots,
   bookings,
   onChanged,
+  onBookingUpdated,
+  onOpenChat,
 }: {
   profile: TutorProfile;
   slots: MentorAvailabilitySlot[];
   bookings: BookingSession[];
-  onChanged: () => void;
+  onChanged: MentorDataRefresh;
+  onBookingUpdated: BookingUpdateHandler;
+  onOpenChat: (booking: BookingSession) => void;
 }) {
   const token = authStorage.getAccessToken();
-  const currentAvailabilityWeekStart = useMemo(() => startOfWeek(new Date()), []);
-  const [availabilityWeekStart, setAvailabilityWeekStart] = useState(() => startOfWeek(new Date()));
-  const availabilityWeekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(availabilityWeekStart, index)),
-    [availabilityWeekStart],
+  const currentCalendarWeekStart = useMemo(() => startOfWeek(new Date()), []);
+  const [calendarWeekStart, setCalendarWeekStart] = useState(() => startOfWeek(new Date()));
+  const calendarWeekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(calendarWeekStart, index)),
+    [calendarWeekStart],
   );
   const [selectedSlotKeys, setSelectedSlotKeys] = useState<string[]>([]);
   const [isFixedSchedule, setIsFixedSchedule] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(8);
-  const [bookingWeekStart, setBookingWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedBookingId, setSelectedBookingId] = useState('');
   const [selectedAvailabilitySlotId, setSelectedAvailabilitySlotId] = useState('');
-  const [editDayIndex, setEditDayIndex] = useState(0);
+  const [editDate, setEditDate] = useState(() => formatDateOnly(new Date()));
   const [editStartMinute, setEditStartMinute] = useState(MENTOR_WORK_START_MINUTE);
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [busyId, setBusyId] = useState('');
+  const [proposalDate, setProposalDate] = useState(() => formatDateOnly(new Date()));
+  const [proposalStartMinute, setProposalStartMinute] = useState(MENTOR_WORK_START_MINUTE);
+  const [proposalReason, setProposalReason] = useState('');
+  const [actionDialog, setActionDialog] = useState<BookingActionDialogState | null>(null);
+  const [actionReason, setActionReason] = useState('');
   const now = new Date();
 
   const slotsByCell = useMemo(() => {
     const map = new Map<string, MentorAvailabilitySlot>();
     slots.forEach((slot) => {
       const start = new Date(slot.startAt);
-      const dayIndex = availabilityWeekDays.findIndex((day) => sameDay(day, start));
+      const dayIndex = calendarWeekDays.findIndex((day) => sameDay(day, start));
       const minute = minutesFromMidnight(start);
       if (dayIndex >= 0 && MENTOR_SLOT_STARTS.includes(minute)) {
         map.set(getSlotKey(dayIndex, minute), slot);
       }
     });
     return map;
-  }, [availabilityWeekDays, slots]);
-
-  const bookingWeekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(bookingWeekStart, index)),
-    [bookingWeekStart],
-  );
+  }, [calendarWeekDays, slots]);
 
   const visibleBookings = useMemo(
     () =>
@@ -1630,18 +1936,59 @@ function MentorSchedulingWorkspace({
         .map((booking) => {
           const start = getBookingStart(booking);
           const end = getBookingEnd(booking, start);
-          const dayIndex = bookingWeekDays.findIndex((day) => sameDay(day, start));
+          const dayIndex = calendarWeekDays.findIndex((day) => sameDay(day, start));
           return { booking, start, end, dayIndex };
         })
         .filter((entry) => entry.dayIndex >= 0 && !Number.isNaN(entry.start.getTime()))
         .sort((first, second) => first.start.getTime() - second.start.getTime()),
-    [bookingWeekDays, bookings],
+    [calendarWeekDays, bookings],
   );
+
+  const bookingsBySlotId = useMemo(
+    () => new Map(visibleBookings.map(({ booking }) => [booking.availabilitySlotId, booking])),
+    [visibleBookings],
+  );
+
+  const bookingsByCell = useMemo(() => {
+    const map = new Map<string, BookingSession>();
+    visibleBookings.forEach(({ booking, start, dayIndex }) => {
+      const minute = minutesFromMidnight(start);
+      if (MENTOR_SLOT_STARTS.includes(minute)) {
+        map.set(getSlotKey(dayIndex, minute), booking);
+      }
+    });
+    return map;
+  }, [visibleBookings]);
 
   const selectedBooking = selectedBookingId
     ? bookings.find((booking) => booking.id === selectedBookingId) || null
     : null;
   const selectedMeetingHref = selectedBooking ? getBookingMeetingHref(selectedBooking) : '';
+  const selectedPendingProposal = selectedBooking ? getPendingRescheduleProposal(selectedBooking) : null;
+  const canRespondToSelectedProposal = selectedPendingProposal?.proposedByRole === 'mentee';
+  const proposalDuration = Math.max(1, selectedBooking?.schedulingDetails.duration || MENTOR_SLOT_MINUTES);
+  const proposalDateValue = parseDateOnlyInput(proposalDate);
+  const proposalStartAt = proposalDateValue
+    ? dateAtMinutes(proposalDateValue, proposalStartMinute)
+    : new Date(Number.NaN);
+  const proposalEndAt = new Date(proposalStartAt.getTime() + proposalDuration * 60_000);
+  const proposalDateInvalid = !proposalDateValue || Number.isNaN(proposalStartAt.getTime());
+  const proposalInPast = !proposalDateInvalid && proposalStartAt <= now;
+
+  useEffect(() => {
+    if (selectedBooking) {
+      const bookingStart = getBookingStart(selectedBooking);
+      const defaultStart = bookingStart > new Date()
+        ? bookingStart
+        : dateAtMinutes(addDays(new Date(), 1), MENTOR_WORK_START_MINUTE);
+      const startMinute = minutesFromMidnight(defaultStart);
+      setProposalDate(formatDateOnly(defaultStart));
+      setProposalStartMinute(
+        MENTOR_SLOT_STARTS.includes(startMinute) ? startMinute : MENTOR_WORK_START_MINUTE,
+      );
+    }
+    setProposalReason('');
+  }, [selectedBooking?.id]);
   const selectedAvailabilitySlot = selectedAvailabilitySlotId
     ? slots.find((slot) => slot.id === selectedAvailabilitySlotId) || null
     : null;
@@ -1652,23 +1999,26 @@ function MentorSchedulingWorkspace({
     selectedAvailabilitySlot.status === 'available' &&
     !!selectedAvailabilityStart &&
     selectedAvailabilityStart >= now;
-  const editStartAt = dateAtMinutes(availabilityWeekDays[editDayIndex] || availabilityWeekStart, editStartMinute);
+  const editDateValue = parseDateOnlyInput(editDate);
+  const editStartAt = editDateValue ? dateAtMinutes(editDateValue, editStartMinute) : new Date(Number.NaN);
   const editEndAt = new Date(editStartAt.getTime() + MENTOR_SLOT_MINUTES * 60_000);
-  const editSlotInPast = editStartAt < now;
+  const editSlotDateInvalid = !editDateValue || Number.isNaN(editStartAt.getTime());
+  const editSlotInPast = !editSlotDateInvalid && editStartAt < now;
 
-  const changeAvailabilityWeek = (days: number) => {
-    setAvailabilityWeekStart((current) => addDays(current, days));
+  const changeCalendarWeek = (days: number) => {
+    setCalendarWeekStart((current) => addDays(current, days));
     setSelectedSlotKeys([]);
     setSelectedAvailabilitySlotId('');
+    setSelectedBookingId('');
     setMessage('');
   };
 
   const openAvailabilitySlot = (slot: MentorAvailabilitySlot) => {
     const start = new Date(slot.startAt);
-    const dayIndex = availabilityWeekDays.findIndex((day) => sameDay(day, start));
     setSelectedSlotKeys([]);
     setSelectedAvailabilitySlotId(slot.id);
-    setEditDayIndex(Math.max(0, dayIndex));
+    setSelectedBookingId('');
+    setEditDate(formatDateOnly(start));
     setEditStartMinute(MENTOR_SLOT_STARTS.includes(minutesFromMidnight(start)) ? minutesFromMidnight(start) : MENTOR_WORK_START_MINUTE);
     setMessage('');
   };
@@ -1698,13 +2048,33 @@ function MentorSchedulingWorkspace({
         }));
       const result = await mentorService.createBulkAvailabilitySlots(token, {
         tutorProfileId: profile.id,
-        weekStart: availabilityWeekStart.toISOString(),
+        weekStart: formatDateOnly(calendarWeekStart),
         slotStarts,
         repeatWeeks: isFixedSchedule ? repeatWeeks : 1,
       });
       setSelectedSlotKeys([]);
-      setMessage(`Đã tạo ${result.created.length} slot, bỏ qua ${result.skipped.length} slot.`);
-      onChanged();
+      const refreshedSlots = await onChanged();
+      const createdIds = new Set(result.created.map((slot) => slot.id).filter(Boolean));
+      const refreshedIds = Array.isArray(refreshedSlots)
+        ? new Set(refreshedSlots.map((slot) => slot.id).filter(Boolean))
+        : null;
+      const missingAfterReload =
+        refreshedIds && createdIds.size > 0 && [...createdIds].some((id) => !refreshedIds.has(id));
+      const skippedDetails = result.skipped
+        .slice(0, 4)
+        .map(formatBulkSkippedSlot)
+        .join('\n');
+      const moreSkipped = result.skipped.length > 4 ? `\n...và ${result.skipped.length - 4} slot khác.` : '';
+      const createdMessage =
+        result.created.length > 0
+          ? `Đã tạo ${result.created.length} slot.`
+          : 'Không tạo được slot mới nào.';
+      const skippedMessage =
+        result.skipped.length > 0 ? `\nBỏ qua ${result.skipped.length} slot:\n${skippedDetails}${moreSkipped}` : '';
+      const reloadMessage = missingAfterReload
+        ? '\nĐã lưu nhưng chưa tải lại được lịch, vui lòng refresh trang để kiểm tra lại.'
+        : '';
+      setMessage(`${createdMessage}${skippedMessage}${reloadMessage}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể tạo lịch trống.');
     } finally {
@@ -1714,6 +2084,11 @@ function MentorSchedulingWorkspace({
 
   const updateSelectedAvailabilitySlot = async () => {
     if (!selectedAvailabilitySlot || !canEditSelectedAvailability) return;
+
+    if (editSlotDateInvalid) {
+      setMessage('Vui lòng chọn ngày hợp lệ.');
+      return;
+    }
 
     if (editSlotInPast) {
       setMessage('Không thể chuyển slot sang thời gian trong quá khứ.');
@@ -1738,19 +2113,18 @@ function MentorSchedulingWorkspace({
     }
   };
 
-  const deleteSelectedAvailabilitySlot = async () => {
-    if (!selectedAvailabilitySlot || !canEditSelectedAvailability) return;
-    if (!window.confirm('Xóa slot lịch rảnh này?')) return;
-
-    setBusyId(selectedAvailabilitySlot.id);
+  const deleteAvailabilitySlot = async (slot: MentorAvailabilitySlot) => {
+    setBusyId(slot.id);
     setMessage('');
     try {
-      await mentorService.deleteAvailabilitySlot(token, selectedAvailabilitySlot.id);
+      await mentorService.deleteAvailabilitySlot(token, slot.id);
       setSelectedAvailabilitySlotId('');
       setMessage('Đã xóa slot lịch rảnh.');
       onChanged();
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xóa slot lịch rảnh.');
+      return false;
     } finally {
       setBusyId('');
     }
@@ -1760,9 +2134,9 @@ function MentorSchedulingWorkspace({
     setBusyId(booking.id);
     setMessage('');
     try {
-      await mentorService.confirmBooking(token, booking.id);
+      const updatedBooking = await mentorService.confirmBooking(token, booking.id);
+      onBookingUpdated(updatedBooking);
       setMessage('Đã xác nhận booking và tạo link video call.');
-      onChanged();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xác nhận booking.');
     } finally {
@@ -1770,39 +2144,147 @@ function MentorSchedulingWorkspace({
     }
   };
 
-  const cancelBooking = async (booking: BookingSession) => {
-    const reason = window.prompt('Lý do hủy booking?') || undefined;
+  const cancelBooking = async (booking: BookingSession, reason?: string) => {
     setBusyId(booking.id);
     setMessage('');
     try {
-      await mentorService.cancelBooking(token, booking.id, reason);
+      const updatedBooking = await mentorService.cancelBooking(token, booking.id, reason);
+      onBookingUpdated(updatedBooking);
       setMessage('Đã hủy booking.');
-      onChanged();
+      void onChanged(true);
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể hủy booking.');
+      return false;
     } finally {
       setBusyId('');
     }
   };
 
+  const proposeReschedule = async (booking: BookingSession) => {
+    if (getPendingRescheduleProposal(booking)) {
+      setMessage('Booking này đang có đề xuất đổi lịch chờ phản hồi.');
+      return;
+    }
+
+    if (proposalDateInvalid) {
+      setMessage('Vui lòng chọn ngày và giờ hợp lệ để đề xuất đổi lịch.');
+      return;
+    }
+
+    if (proposalInPast) {
+      setMessage('Khung giờ đổi lịch phải nằm trong tương lai.');
+      return;
+    }
+
+    setBusyId(`reschedule-${booking.id}`);
+    setMessage('');
+    let createdSlot: MentorAvailabilitySlot | null = null;
+    try {
+      createdSlot = await mentorService.createAvailabilitySlot(token, {
+        tutorProfileId: profile.id,
+        startAt: proposalStartAt.toISOString(),
+        endAt: proposalEndAt.toISOString(),
+        status: 'available',
+      });
+
+      const updatedBooking = await mentorService.createRescheduleProposal(token, booking.id, {
+        newDateTime: proposalStartAt.toISOString(),
+        duration: proposalDuration,
+        timeZone: booking.schedulingDetails.timeZone,
+        availabilitySlotId: createdSlot.id,
+        reason: proposalReason,
+        message: proposalReason,
+      });
+      onBookingUpdated(updatedBooking);
+      void onChanged(true);
+      setProposalReason('');
+      setMessage('Đã gửi đề xuất đổi lịch cho học viên.');
+    } catch (error) {
+      if (createdSlot?.id) {
+        await mentorService.deleteAvailabilitySlot(token, createdSlot.id).catch(() => undefined);
+      }
+      setMessage(error instanceof Error ? error.message : 'Không thể gửi đề xuất đổi lịch.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const acceptProposal = async (booking: BookingSession, proposalId: string) => {
+    setBusyId(`accept-${proposalId}`);
+    setMessage('');
+    try {
+      const updatedBooking = await mentorService.acceptRescheduleProposal(token, booking.id, proposalId);
+      onBookingUpdated(updatedBooking);
+      setMessage('Đã đồng ý đổi lịch.');
+      void onChanged(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể đồng ý đề xuất.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const declineProposal = async (booking: BookingSession, proposalId: string, reason?: string) => {
+    setBusyId(`decline-${proposalId}`);
+    setMessage('');
+    try {
+      const updatedBooking = await mentorService.declineRescheduleProposal(token, booking.id, proposalId, reason);
+      onBookingUpdated(updatedBooking);
+      void onChanged(true);
+      setMessage('Đã từ chối đề xuất đổi lịch.');
+      return true;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể từ chối đề xuất.');
+      return false;
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionReason('');
+  };
+
+  const handleActionDialogConfirm = async () => {
+    if (!actionDialog) return;
+
+    let succeeded = false;
+    if (actionDialog.type === 'cancel_booking') {
+      succeeded = await cancelBooking(actionDialog.booking, actionReason.trim() || undefined);
+    }
+    if (actionDialog.type === 'delete_slot') {
+      succeeded = await deleteAvailabilitySlot(actionDialog.slot);
+    }
+    if (actionDialog.type === 'decline_reschedule') {
+      succeeded = await declineProposal(
+        actionDialog.booking,
+        actionDialog.proposalId,
+        actionReason.trim() || undefined,
+      );
+    }
+
+    if (succeeded) closeActionDialog();
+  };
   return (
     <div className="space-y-6">
       <PortalPanel
         id="availability"
-        title="Nhập thời gian rảnh"
-        description="Chọn các slot 90 phút mentor có thể nhận video call trong tuần hiện tại."
+        title="Lịch làm việc của tôi"
+        description="Tạo lịch rảnh và theo dõi toàn bộ slot đã mở, đang giữ, đã booking trong cùng một thời khóa biểu."
       >
         <div className="space-y-4">
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-bold text-slate-950 dark:text-slate-50">
-                Tuần {getWeekRangeLabel(availabilityWeekStart)}
+                Tuần {getWeekRangeLabel(calendarWeekStart)}
               </p>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 Slot bắt đầu từ 08:00 đến 21:30, mỗi slot kéo dài đến tối đa 23:00.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => changeAvailabilityWeek(-7)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => changeCalendarWeek(-7)}>
                   <ChevronLeft className="h-4 w-4" />
                   Tuần trước
                 </Button>
@@ -1811,15 +2293,16 @@ function MentorSchedulingWorkspace({
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    setAvailabilityWeekStart(currentAvailabilityWeekStart);
+                    setCalendarWeekStart(currentCalendarWeekStart);
                     setSelectedSlotKeys([]);
                     setSelectedAvailabilitySlotId('');
+                    setSelectedBookingId('');
                     setMessage('');
                   }}
                 >
                   Tuần này
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => changeAvailabilityWeek(7)}>
+                <Button type="button" size="sm" variant="outline" onClick={() => changeCalendarWeek(7)}>
                   Tuần tới
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -1865,16 +2348,41 @@ function MentorSchedulingWorkspace({
           </div>
 
           {message && (
-            <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <p
+              className={cn(
+                'whitespace-pre-line rounded-xl px-3 py-2 text-sm',
+                message.startsWith('Không tạo được') || message.includes('Bỏ qua')
+                  ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+              )}
+            >
               {message}
             </p>
           )}
+
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-white px-2.5 py-1 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+              Trống: click để chọn tạo lịch
+            </span>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              Đã mở
+            </span>
+            <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+              Chờ xác nhận
+            </span>
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+              Đang giữ / chờ thanh toán
+            </span>
+            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+              Đã booking
+            </span>
+          </div>
 
           <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
             <div className="min-w-[920px]">
               <div className="grid grid-cols-[88px_repeat(7,minmax(112px,1fr))] border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
                 <div className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Giờ</div>
-                {availabilityWeekDays.map((day, index) => (
+                {calendarWeekDays.map((day, index) => (
                   <div key={day.toISOString()} className="border-l border-slate-200 px-3 py-3 dark:border-slate-800">
                     <p className="text-sm font-bold text-slate-950 dark:text-slate-50">{WEEKDAY_LABELS[index]}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{formatScheduleDate(day)}</p>
@@ -1890,14 +2398,17 @@ function MentorSchedulingWorkspace({
                   <div className="flex items-center justify-end px-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {formatMinuteLabel(minute)}
                   </div>
-                  {availabilityWeekDays.map((day, dayIndex) => {
+                  {calendarWeekDays.map((day, dayIndex) => {
                     const key = getSlotKey(dayIndex, minute);
                     const start = dateAtMinutes(day, minute);
                     const end = new Date(start.getTime() + MENTOR_SLOT_MINUTES * 60_000);
                     const existingSlot = slotsByCell.get(key);
+                    const booking = existingSlot
+                      ? bookingsBySlotId.get(existingSlot.id)
+                      : bookingsByCell.get(key);
                     const isPast = start < now;
                     const isSelected = selectedSlotKeys.includes(key);
-                    const disabled = isSaving || (!existingSlot && isPast);
+                    const disabled = isSaving || (!booking && !existingSlot && isPast);
                     const slotLabel = existingSlot
                       ? existingSlot.status === 'available'
                         ? 'Đã mở'
@@ -1924,6 +2435,26 @@ function MentorSchedulingWorkspace({
                         : isSelected
                           ? 'border-sky-600 bg-sky-600 text-white shadow-sm'
                           : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-sky-500/10';
+                    const bookingClass =
+                      booking?.status === 'pending'
+                        ? 'border-sky-300 bg-sky-50 text-sky-800 hover:shadow-sm dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200'
+                        : booking?.status === 'confirmed'
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                          : booking?.status === 'rescheduled'
+                            ? 'border-violet-300 bg-violet-50 text-violet-800 hover:shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200'
+                            : booking?.status === 'awaiting_payment'
+                              ? 'border-amber-300 bg-amber-50 text-amber-800 hover:shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+                              : 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200';
+                    const calendarLabel = booking
+                      ? statusLabel[booking.status] || booking.status
+                      : existingSlot?.status === 'available' && isPast
+                        ? 'Đã qua'
+                        : slotLabel;
+                    const calendarClass = booking
+                      ? bookingClass
+                      : existingSlot?.status === 'available' && isPast
+                        ? 'border-slate-200 bg-slate-50 text-slate-400 hover:shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500'
+                        : slotClass;
 
                     return (
                       <button
@@ -1931,6 +2462,11 @@ function MentorSchedulingWorkspace({
                         type="button"
                         disabled={disabled}
                         onClick={() => {
+                          if (booking) {
+                            setSelectedAvailabilitySlotId('');
+                            setSelectedBookingId(booking.id);
+                            return;
+                          }
                           if (existingSlot) {
                             openAvailabilitySlot(existingSlot);
                             return;
@@ -1939,10 +2475,10 @@ function MentorSchedulingWorkspace({
                         }}
                         className={cn(
                           'm-1 flex h-12 flex-col justify-center rounded-lg border px-2 text-left text-xs transition',
-                          slotClass,
+                          calendarClass,
                         )}
                       >
-                        <span className="font-bold">{slotLabel}</span>
+                        <span className="truncate font-bold">{calendarLabel}</span>
                         <span className="opacity-80">
                           {formatScheduleTime(start)} - {formatScheduleTime(end)}
                         </span>
@@ -1956,243 +2492,17 @@ function MentorSchedulingWorkspace({
         </div>
       </PortalPanel>
 
-      <Dialog open={!!selectedAvailabilitySlot} onOpenChange={(open) => !open && setSelectedAvailabilitySlotId('')}>
-        <DialogContent className="max-w-xl">
-          {selectedAvailabilitySlot && selectedAvailabilityStart && selectedAvailabilityEnd && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Chi tiết slot lịch rảnh</DialogTitle>
-                <DialogDescription>
-                  {selectedAvailabilityStart.toLocaleDateString('vi-VN')} ·{' '}
-                  {formatScheduleTime(selectedAvailabilityStart)} - {formatScheduleTime(selectedAvailabilityEnd)}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="grid gap-3 text-sm md:grid-cols-2">
-                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Trạng thái</p>
-                    <p className="mt-1 font-bold text-slate-950 dark:text-slate-50">
-                      {selectedAvailabilitySlot.status}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Thời lượng</p>
-                    <p className="mt-1 font-bold text-slate-950 dark:text-slate-50">
-                      {Math.round((selectedAvailabilityEnd.getTime() - selectedAvailabilityStart.getTime()) / 60_000)} phút
-                    </p>
-                  </div>
-                </div>
-
-                {canEditSelectedAvailability ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="space-y-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      <span>Ngày trong tuần đang xem</span>
-                      <select
-                        value={editDayIndex}
-                        onChange={(event) => setEditDayIndex(Number(event.target.value))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:ring-sky-500/10"
-                      >
-                        {availabilityWeekDays.map((day, index) => (
-                          <option key={day.toISOString()} value={index}>
-                            {WEEKDAY_LABELS[index]} - {formatScheduleDate(day)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="space-y-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      <span>Giờ bắt đầu</span>
-                      <select
-                        value={editStartMinute}
-                        onChange={(event) => setEditStartMinute(Number(event.target.value))}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:ring-sky-500/10"
-                      >
-                        {MENTOR_SLOT_STARTS.map((minute) => (
-                          <option key={minute} value={minute}>
-                            {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + MENTOR_SLOT_MINUTES)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-900 md:col-span-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-slate-500 dark:text-slate-400">Sau khi sửa</span>
-                        <span className="font-bold text-slate-950 dark:text-slate-50">
-                          {editStartAt.toLocaleDateString('vi-VN')} · {formatScheduleTime(editStartAt)} -{' '}
-                          {formatScheduleTime(editEndAt)}
-                        </span>
-                      </div>
-                    </div>
-                    {editSlotInPast && (
-                      <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-200 md:col-span-2">
-                        Không thể chuyển slot sang thời gian trong quá khứ.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    Slot này không thể sửa hoặc xóa vì đã qua thời gian, đang giữ chỗ, hoặc đã có booking.
-                  </p>
-                )}
-              </div>
-
-              {canEditSelectedAvailability && (
-                <DialogFooter className="gap-2 sm:gap-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={deleteSelectedAvailabilitySlot}
-                    disabled={busyId === selectedAvailabilitySlot.id}
-                  >
-                    {busyId === selectedAvailabilitySlot.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    Xóa slot
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={updateSelectedAvailabilitySlot}
-                    disabled={busyId === selectedAvailabilitySlot.id || editSlotInPast}
-                    className="bg-sky-600 hover:bg-sky-700"
-                  >
-                    {busyId === selectedAvailabilitySlot.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                    Lưu thay đổi
-                  </Button>
-                </DialogFooter>
-              )}
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <PortalPanel
-        id="booked-timetable"
-        title="Thời khóa biểu booking"
-        description="Theo dõi các slot học viên đã booking và xử lý xác nhận video call."
+      <Dialog
+        open={!!selectedAvailabilitySlot || !!selectedBooking}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAvailabilitySlotId('');
+            setSelectedBookingId('');
+          }
+        }}
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <CalendarCheck2 className="h-4 w-4 text-sky-600" />
-              Tuần {getWeekRangeLabel(bookingWeekStart)}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setBookingWeekStart((current) => addDays(current, -7))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Tuần trước
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setBookingWeekStart((current) => addDays(current, 7))}
-              >
-                Tuần tới
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="min-w-[920px]">
-              <div className="grid grid-cols-[88px_repeat(7,minmax(112px,1fr))] border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-                <div className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Giờ</div>
-                {bookingWeekDays.map((day, index) => (
-                  <div key={day.toISOString()} className="border-l border-slate-200 px-3 py-3 dark:border-slate-800">
-                    <p className="text-sm font-bold text-slate-950 dark:text-slate-50">{WEEKDAY_LABELS[index]}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatScheduleDate(day)}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-[88px_repeat(7,minmax(112px,1fr))]">
-                <div>
-                  {MENTOR_SLOT_STARTS.map((minute) => (
-                    <div
-                      key={minute}
-                      className="border-b border-slate-100 px-3 py-1 text-right text-xs font-semibold text-slate-400 dark:border-slate-800"
-                      style={{ height: MENTOR_SLOT_ROW_HEIGHT }}
-                    >
-                      {formatMinuteLabel(minute)}
-                    </div>
-                  ))}
-                </div>
-
-                {bookingWeekDays.map((day, dayIndex) => (
-                  <div
-                    key={day.toISOString()}
-                    className="relative border-l border-slate-200 dark:border-slate-800"
-                    style={{ height: MENTOR_SLOT_STARTS.length * MENTOR_SLOT_ROW_HEIGHT }}
-                  >
-                    {MENTOR_SLOT_STARTS.map((minute) => (
-                      <div
-                        key={minute}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                        style={{ height: MENTOR_SLOT_ROW_HEIGHT }}
-                      />
-                    ))}
-
-                    {visibleBookings
-                      .filter((entry) => entry.dayIndex === dayIndex)
-                      .map(({ booking, start, end }) => {
-                        const top =
-                          ((minutesFromMidnight(start) - MENTOR_WORK_START_MINUTE) / MENTOR_SLOT_MINUTES) *
-                          MENTOR_SLOT_ROW_HEIGHT;
-                        const height = Math.max(
-                          44,
-                          ((end.getTime() - start.getTime()) / (MENTOR_SLOT_MINUTES * 60_000)) *
-                            MENTOR_SLOT_ROW_HEIGHT -
-                            8,
-                        );
-                        return (
-                          <button
-                            key={booking.id}
-                            type="button"
-                            onClick={() => setSelectedBookingId(booking.id)}
-                            className={cn(
-                              'absolute left-1 right-1 z-10 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition hover:shadow-md',
-                              statusTone[booking.status] || statusTone.pending,
-                            )}
-                            style={{ top: Math.max(2, top + 4), height }}
-                          >
-                            <span className="block truncate font-bold">{booking.sessionType.replace(/_/g, ' ')}</span>
-                            <span className="block truncate opacity-80">
-                              {formatScheduleTime(start)} - {formatScheduleTime(end)}
-                            </span>
-                            <span className="block truncate opacity-80">
-                              {statusLabel[booking.status] || booking.status}
-                            </span>
-                          </button>
-                        );
-                      })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {visibleBookings.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              Tuần này chưa có booking nào.
-            </div>
-          )}
-        </div>
-      </PortalPanel>
-
-      <Dialog open={!!selectedBooking} onOpenChange={(open) => !open && setSelectedBookingId('')}>
         <DialogContent className="max-w-2xl">
-          {selectedBooking && (
+          {selectedBooking ? (
             <>
               <DialogHeader>
                 <DialogTitle>{selectedBooking.sessionType.replace(/_/g, ' ')}</DialogTitle>
@@ -2253,6 +2563,141 @@ function MentorSchedulingWorkspace({
                 </div>
               </div>
 
+              {ACTIVE_BOOKING_STATUSES.includes(selectedBooking.status) && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                      onClick={() => onOpenChat(selectedBooking)}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Nhắn tin với học viên
+                    </Button>
+                    {(selectedBooking.communicationThread || []).length > 0 && (
+                      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                        {(selectedBooking.communicationThread || []).length} tin nhắn trong booking này.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
+                    <p className="text-sm font-bold text-violet-900 dark:text-violet-100">Đề xuất đổi lịch</p>
+                    {selectedPendingProposal ? (
+                      <div className="mt-3 space-y-3 rounded-lg bg-white p-3 text-sm ring-1 ring-violet-100 dark:bg-slate-900 dark:ring-violet-500/20">
+                        <div>
+                          <p className="font-semibold text-slate-950 dark:text-slate-50">
+                            {getProposalRoleLabel(selectedPendingProposal.proposedByRole)} đề xuất:{' '}
+                            {new Date(selectedPendingProposal.newDateTime).toLocaleString('vi-VN')}
+                          </p>
+                          <p className="mt-1 text-slate-500 dark:text-slate-400">
+                            Thời lượng {selectedPendingProposal.duration} phút
+                          </p>
+                          {(selectedPendingProposal.reason || selectedPendingProposal.message) && (
+                            <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-violet-800 dark:bg-violet-500/10 dark:text-violet-100">
+                              {selectedPendingProposal.reason || selectedPendingProposal.message}
+                            </p>
+                          )}
+                        </div>
+                        {canRespondToSelectedProposal ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setActionReason('');
+                                setActionDialog({
+                                  type: 'decline_reschedule',
+                                  booking: selectedBooking,
+                                  proposalId: selectedPendingProposal.id,
+                                });
+                              }}
+                              disabled={busyId === `decline-${selectedPendingProposal.id}`}
+                            >
+                              Từ chối
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => acceptProposal(selectedBooking, selectedPendingProposal.id)}
+                              disabled={busyId === `accept-${selectedPendingProposal.id}`}
+                              className="bg-emerald-600 hover:bg-emerald-700"
+                            >
+                              {busyId === `accept-${selectedPendingProposal.id}` && (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              )}
+                              Đồng ý
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-xs font-semibold text-violet-700 dark:text-violet-200">
+                            Đang chờ học viên phản hồi. Bạn chưa thể tạo đề xuất mới cho booking này.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                            <span>Chọn ngày</span>
+                            <input
+                              type="date"
+                              value={proposalDate}
+                              min={formatDateOnly(new Date())}
+                              onChange={(event) => setProposalDate(event.target.value)}
+                              className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-900 dark:border-violet-500/30 dark:bg-slate-900 dark:text-slate-50"
+                            />
+                          </label>
+                          <label className="space-y-1.5 text-xs font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                            <span>Chọn giờ</span>
+                            <select
+                              value={proposalStartMinute}
+                              onChange={(event) => setProposalStartMinute(Number(event.target.value))}
+                              className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-900 dark:border-violet-500/30 dark:bg-slate-900 dark:text-slate-50"
+                            >
+                              {MENTOR_SLOT_STARTS.map((minute) => (
+                                <option key={minute} value={minute}>
+                                  {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + proposalDuration)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <p className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-violet-700 ring-1 ring-violet-100 dark:bg-slate-900 dark:text-violet-200 dark:ring-violet-500/20">
+                          Hệ thống sẽ tạo lịch trống mới: {' '}
+                          {proposalDateInvalid
+                            ? 'Chưa chọn thời gian hợp lệ'
+                            : `${proposalStartAt.toLocaleDateString('vi-VN')} · ${formatScheduleTime(proposalStartAt)} - ${formatScheduleTime(proposalEndAt)}`}
+                        </p>
+                        <input
+                          value={proposalReason}
+                          onChange={(event) => setProposalReason(event.target.value)}
+                          placeholder="Lý do / lời nhắn"
+                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm dark:border-violet-500/30 dark:bg-slate-900"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => proposeReschedule(selectedBooking)}
+                          disabled={
+                            busyId === `reschedule-${selectedBooking.id}` ||
+                            proposalDateInvalid ||
+                            proposalInPast
+                          }
+                        >
+                          {busyId === `reschedule-${selectedBooking.id}` && (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          )}
+                          Gửi đề xuất
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <DialogFooter className="gap-2 sm:gap-2">
                 {selectedBooking.status === 'pending' && (
                   <Button
@@ -2273,7 +2718,10 @@ function MentorSchedulingWorkspace({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => cancelBooking(selectedBooking)}
+                    onClick={() => {
+                      setActionReason('');
+                      setActionDialog({ type: 'cancel_booking', booking: selectedBooking });
+                    }}
                     disabled={busyId === selectedBooking.id}
                   >
                     Hủy booking
@@ -2281,93 +2729,139 @@ function MentorSchedulingWorkspace({
                 )}
               </DialogFooter>
             </>
-          )}
+          ) : selectedAvailabilitySlot && selectedAvailabilityStart && selectedAvailabilityEnd ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Chi tiết slot lịch rảnh</DialogTitle>
+                <DialogDescription>
+                  {selectedAvailabilityStart.toLocaleDateString('vi-VN')} ·{' '}
+                  {formatScheduleTime(selectedAvailabilityStart)} - {formatScheduleTime(selectedAvailabilityEnd)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="grid gap-3 text-sm md:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Trạng thái</p>
+                    <p className="mt-1 font-bold text-slate-950 dark:text-slate-50">
+                      {selectedAvailabilitySlot.status}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Thời lượng</p>
+                    <p className="mt-1 font-bold text-slate-950 dark:text-slate-50">
+                      {Math.round((selectedAvailabilityEnd.getTime() - selectedAvailabilityStart.getTime()) / 60_000)} phút
+                    </p>
+                  </div>
+                </div>
+
+                {canEditSelectedAvailability ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span>Ngày</span>
+                      <input
+                        type="date"
+                        value={editDate}
+                        min={formatDateOnly(now)}
+                        onChange={(event) => setEditDate(event.target.value)}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:ring-sky-500/10"
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <span>Giờ bắt đầu</span>
+                      <select
+                        value={editStartMinute}
+                        onChange={(event) => setEditStartMinute(Number(event.target.value))}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:ring-sky-500/10"
+                      >
+                        {MENTOR_SLOT_STARTS.map((minute) => (
+                          <option key={minute} value={minute}>
+                            {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + MENTOR_SLOT_MINUTES)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-900 md:col-span-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-500 dark:text-slate-400">Sau khi sửa</span>
+                        <span className="font-bold text-slate-950 dark:text-slate-50">
+                          {editSlotDateInvalid
+                            ? 'Chọn ngày hợp lệ'
+                            : `${editStartAt.toLocaleDateString('vi-VN')} · ${formatScheduleTime(editStartAt)} - ${formatScheduleTime(editEndAt)}`}
+                        </span>
+                      </div>
+                    </div>
+                    {editSlotDateInvalid && (
+                      <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-200 md:col-span-2">
+                        Vui lòng chọn ngày hợp lệ.
+                      </p>
+                    )}
+                    {editSlotInPast && (
+                      <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-200 md:col-span-2">
+                        Không thể chuyển slot sang thời gian trong quá khứ.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    Slot này không thể sửa hoặc xóa vì đã qua thời gian, đang giữ chỗ, hoặc đã có booking.
+                  </p>
+                )}
+              </div>
+
+              {canEditSelectedAvailability && (
+                <DialogFooter className="gap-2 sm:gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      setActionReason('');
+                      setActionDialog({ type: 'delete_slot', slot: selectedAvailabilitySlot });
+                    }}
+                    disabled={busyId === selectedAvailabilitySlot.id}
+                  >
+                    {busyId === selectedAvailabilitySlot.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    Xóa slot
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={updateSelectedAvailabilitySlot}
+                    disabled={busyId === selectedAvailabilitySlot.id || editSlotDateInvalid || editSlotInPast}
+                    className="bg-sky-600 hover:bg-sky-700"
+                  >
+                    {busyId === selectedAvailabilitySlot.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    Lưu thay đổi
+                  </Button>
+                </DialogFooter>
+              )}
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
+
+      <BookingActionDialog
+        action={actionDialog}
+        reason={actionReason}
+        busy={Boolean(busyId)}
+        onReasonChange={setActionReason}
+        onClose={closeActionDialog}
+        onConfirm={handleActionDialogConfirm}
+      />
     </div>
-  );
-}
-
-function NotificationCenter({
-  notifications,
-  streamStatus,
-  onMarkRead,
-  onMarkAllRead,
-}: {
-  notifications: MentorNotification[];
-  streamStatus: 'connecting' | 'live' | 'closed';
-  onMarkRead: (id: string) => void;
-  onMarkAllRead: () => void;
-}) {
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
-  const statusClass =
-    streamStatus === 'live'
-      ? 'bg-emerald-500'
-      : streamStatus === 'connecting'
-        ? 'bg-amber-500'
-        : 'bg-slate-400';
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="relative">
-          <span className={cn('absolute right-2 top-2 h-2 w-2 rounded-full', statusClass)} />
-          <Bell className="h-4 w-4" />
-          {unreadCount > 0 && (
-            <span className="ml-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              {unreadCount}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 rounded-2xl p-0">
-        <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
-          <div>
-            <p className="font-bold text-slate-950 dark:text-slate-50">Thông báo</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{unreadCount} chưa đọc</p>
-          </div>
-          {unreadCount > 0 && (
-            <Button type="button" size="sm" variant="ghost" onClick={onMarkAllRead}>
-              <CheckCheck className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-          {notifications.length === 0 ? (
-            <div className="p-4 text-sm text-slate-500 dark:text-slate-400">Chưa có thông báo.</div>
-          ) : (
-            notifications.slice(0, 8).map((notification) => (
-              <button
-                key={notification.id}
-                type="button"
-                onClick={() => !notification.readAt && onMarkRead(notification.id)}
-                className={cn(
-                  'block w-full border-b border-slate-100 p-4 text-left text-sm last:border-b-0 dark:border-slate-800',
-                  notification.readAt
-                    ? 'bg-white dark:bg-slate-900'
-                    : 'bg-sky-50 dark:bg-sky-500/10',
-                )}
-              >
-                <p className="font-semibold text-slate-950 dark:text-slate-50">{notification.title}</p>
-                <p className="mt-1 text-slate-500 dark:text-slate-400">{notification.body}</p>
-                {notification.payload?.meetingLink && (
-                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-300">
-                    <LinkIcon className="h-3.5 w-3.5" />
-                    Video call
-                  </span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
 function ProfileSummary({ profile, activeBookings }: { profile: TutorProfile; activeBookings: number }) {
   return (
-    <PortalPanel id="profile" title="Hồ sơ mentor" description="Thông tin đang dùng để hiển thị trong marketplace.">
+    <PortalPanel id="profile" title="Hồ sơ mentor" description="Thông tin đang dùng trong cổng mentor.">
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">{getMentorName(profile)}</h3>
@@ -2395,97 +2889,236 @@ function ProfileSummary({ profile, activeBookings }: { profile: TutorProfile; ac
   );
 }
 
-export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings';
+const reviewMetricLabels = [
+  { key: 'communication', label: 'Giao tiếp' },
+  { key: 'expertise', label: 'Chuyên môn' },
+  { key: 'helpfulness', label: 'Hữu ích' },
+  { key: 'professionalism', label: 'Chuyên nghiệp' },
+  { key: 'punctuality', label: 'Đúng giờ' },
+] as const;
+
+function getReviewRating(review: SessionReview) {
+  const rating = review.overallRatings?.overallSatisfaction;
+  return typeof rating === 'number' && Number.isFinite(rating) ? rating : 0;
+}
+
+function formatRating(rating: number) {
+  if (!rating) return '--';
+  return Number.isInteger(rating) ? rating.toString() : rating.toFixed(1);
+}
+
+function formatReviewDate(value?: string) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+}
+
+function getReviewComment(review: SessionReview) {
+  const comment = review.writtenFeedback?.comment;
+  return typeof comment === 'string' ? comment.trim() : '';
+}
+
+function getReviewAuthorName(review: SessionReview) {
+  if (review.isAnonymous === true) return 'Học viên ẩn danh';
+  const reviewer = typeof review.reviewerId === 'object' && review.reviewerId ? review.reviewerId : null;
+  const name = typeof reviewer?.name === 'string' ? reviewer.name.trim() : '';
+  return name || 'Học viên';
+}
+
+function RatingStars({ rating }: { rating: number }) {
+  const roundedRating = Math.round(rating);
+  return (
+    <div className="flex items-center gap-1" aria-label={`${formatRating(rating)} sao`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={cn(
+            'h-4 w-4',
+            star <= roundedRating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700',
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MentorReviewsPanel({ reviews }: { reviews: SessionReview[] }) {
+  const ratings = reviews.map(getReviewRating).filter((rating) => rating > 0);
+  const averageRating = ratings.length ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length : 0;
+  const fiveStarCount = ratings.filter((rating) => Math.round(rating) >= 5).length;
+  const recommendAnswers = reviews
+    .map((review) => review.overallRatings?.wouldRecommend)
+    .filter((value): value is boolean => typeof value === 'boolean');
+  const recommendRate = recommendAnswers.length
+    ? Math.round((recommendAnswers.filter(Boolean).length / recommendAnswers.length) * 100)
+    : null;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Điểm trung bình</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">
+            {formatRating(averageRating)}
+            <span className="text-base font-bold text-slate-400">/5</span>
+          </p>
+        </article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Tổng đánh giá</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">{reviews.length}</p>
+        </article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Đánh giá 5 sao</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">{fiveStarCount}</p>
+        </article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Tỷ lệ giới thiệu</p>
+          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">
+            {recommendRate === null ? '--' : `${recommendRate}%`}
+          </p>
+        </article>
+      </div>
+
+      <PortalPanel
+        title="Phản hồi học viên"
+        description="Các đánh giá đã gửi sau khi buổi tư vấn hoàn thành."
+      >
+        {reviews.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            Chưa có đánh giá nào. Đánh giá sẽ xuất hiện sau khi học viên hoàn thành feedback.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reviews.map((review, index) => {
+              const rating = getReviewRating(review);
+              const comment = getReviewComment(review);
+              const metrics = reviewMetricLabels
+                .map(({ key, label }) => ({ label, value: review.overallRatings?.[key] }))
+                .filter((item) => typeof item.value === 'number') as Array<{ label: string; value: number }>;
+
+              return (
+                <article
+                  key={review.id || review._id || `${review.createdAt || 'review'}-${index}`}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <RatingStars rating={rating} />
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                          {formatRating(rating)}/5
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">
+                        {getReviewAuthorName(review)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                      {formatReviewDate(review.createdAt)}
+                    </span>
+                  </div>
+
+                  <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {comment || 'Học viên chưa để lại nhận xét.'}
+                  </p>
+
+                  {metrics.length > 0 && (
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                      {metrics.map((metric) => (
+                        <div
+                          key={metric.label}
+                          className="rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900"
+                        >
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{metric.label}</p>
+                          <p className="mt-1 font-bold text-slate-950 dark:text-slate-50">{metric.value}/5</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </PortalPanel>
+    </div>
+  );
+}
+
+export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings' | 'reviews';
 
 export default function MentorDashboard({ view = 'overview' }: { view?: MentorDashboardView }) {
-  const [myProfile, setMyProfile] = useState<TutorProfile | null>(null);
-  const [mySlots, setMySlots] = useState<MentorAvailabilitySlot[]>([]);
-  const [bookings, setBookings] = useState<BookingSession[]>([]);
-  const [notifications, setNotifications] = useState<MentorNotification[]>([]);
-  const [streamStatus, setStreamStatus] = useState<'connecting' | 'live' | 'closed'>('closed');
-  const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const { accessToken } = useAuth();
+  const { openBookingChat } = useBookingChat();
+  const queryClient = useQueryClient();
+  const mentorPortalQuery = useMentorPortalData();
 
-  const loadData = useCallback(async (silent = false) => {
-    const token = authStorage.getAccessToken();
-    if (!token) return;
-    if (!silent) setIsLoading(true);
-    setMessage('');
-    try {
-      const [profile, myBookings] = await Promise.all([
-        mentorService.getMyTutorProfile(token).catch((error) => {
-          if (isProfileMissing(error)) return null;
-          throw error;
-        }),
-        mentorService.getMyBookings(token),
-      ]);
+  const portalData = mentorPortalQuery.data;
+  const myProfile = portalData?.profile ?? null;
+  const mentorUserId = myProfile?.userId || '';
+  const mentorReviewsQuery = useMentorPortalReviews(view === 'reviews' && Boolean(myProfile));
+  const mySlots = useMemo(() => portalData?.slots ?? EMPTY_MENTOR_SLOTS, [portalData?.slots]);
+  const bookings = useMemo(() => portalData?.bookings ?? EMPTY_MENTOR_BOOKINGS, [portalData?.bookings]);
+  const reviews = useMemo(
+    () => mentorReviewsQuery.data ?? EMPTY_MENTOR_REVIEWS,
+    [mentorReviewsQuery.data],
+  );
+  const queryError =
+    mentorPortalQuery.error instanceof Error ? mentorPortalQuery.error.message : '';
+  const reviewsError =
+    view === 'reviews' && mentorReviewsQuery.error instanceof Error ? mentorReviewsQuery.error.message : '';
+  const isLoading =
+    mentorPortalQuery.isLoading || (view === 'reviews' && mentorReviewsQuery.isLoading);
 
-      const slots = profile ? await mentorService.getMyAvailabilitySlots(token) : [];
-      setMyProfile(profile);
-      setBookings(myBookings.asMentor);
-      setMySlots(slots);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể tải dữ liệu mentor.');
-    } finally {
-      if (!silent) setIsLoading(false);
+  const refreshMentorPortalData = useCallback(async () => {
+    if (!accessToken) {
+      return [];
     }
-  }, []);
 
-  const loadNotifications = useCallback(async () => {
-    const token = authStorage.getAccessToken();
-    if (!token) return;
+    await queryClient.invalidateQueries({
+      queryKey: mentorPortalQueryKey(accessToken),
+      exact: true,
+    });
+
+    if (view === 'reviews') {
+      void queryClient.invalidateQueries({
+        queryKey: mentorPortalReviewsQueryKey(accessToken),
+        exact: true,
+      });
+    }
+
+    return queryClient.getQueryData<{
+      slots: MentorAvailabilitySlot[];
+    }>(mentorPortalQueryKey(accessToken))?.slots ?? [];
+  }, [accessToken, queryClient, view]);
+
+  const refreshSlotsOnly = useCallback(async (_silent = true) => {
+    if (!accessToken || !myProfile?.id) {
+      return [];
+    }
+
     try {
-      const nextNotifications = await notificationService.getNotifications(token);
-      setNotifications(nextNotifications);
+      const slots = await mentorService.getMyAvailabilitySlots(accessToken);
+      queryClient.setQueryData<MentorPortalData>(mentorPortalQueryKey(accessToken), (current) =>
+        current ? { ...current, slots } : current,
+      );
+      return slots;
     } catch {
-      setNotifications([]);
+      return [];
     }
-  }, []);
+  }, [accessToken, myProfile?.id, queryClient]);
 
-  useEffect(() => {
-    void loadData();
-    void loadNotifications();
-  }, [loadData, loadNotifications]);
+  const applyBookingUpdate = useCallback((updatedBooking: BookingSession) => {
+    if (mentorUserId && updatedBooking.mentorId !== mentorUserId) return;
+    updateMentorPortalBookingCache(queryClient, accessToken, updatedBooking);
+  }, [accessToken, mentorUserId, queryClient]);
 
-  useEffect(() => {
-    const token = authStorage.getAccessToken();
-    if (!token) return;
-
-    return notificationService.subscribe(
-      token,
-      (notification) => {
-        setNotifications((current) => [
-          notification,
-          ...current.filter((item) => item.id !== notification.id),
-        ]);
-        void loadData(true);
-      },
-      setStreamStatus,
-    );
-  }, [loadData]);
-
-  const markNotificationRead = useCallback(async (id: string) => {
-    const token = authStorage.getAccessToken();
-    if (!token) return;
-    try {
-      const updated = await notificationService.markRead(token, id);
-      setNotifications((current) => current.map((item) => (item.id === id ? updated : item)));
-    } catch {
-      // Realtime state will reconcile on the next notification fetch.
-    }
-  }, []);
-
-  const markAllNotificationsRead = useCallback(async () => {
-    const token = authStorage.getAccessToken();
-    if (!token) return;
-    try {
-      await notificationService.markAllRead(token);
-      const readAt = new Date().toISOString();
-      setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt || readAt })));
-    } catch {
-      // Realtime state will reconcile on the next notification fetch.
-    }
-  }, []);
+  useBookingRealtimeSync({
+    enabled: Boolean(myProfile),
+    onBookingUpdated: applyBookingUpdate,
+    onRefresh: refreshMentorPortalData,
+  });
 
   const activeBookings = useMemo(
     () => bookings.filter((booking) => ['pending', 'confirmed', 'rescheduled'].includes(booking.status)),
@@ -2498,12 +3131,14 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     profile: 'Hồ sơ mentor',
     availability: 'Lịch làm việc',
     bookings: 'Booking cần xử lý',
+    reviews: 'Đánh giá của tôi',
   };
   const pageDescription: Record<MentorDashboardView, string> = {
     overview: 'Theo dõi nhanh trạng thái hồ sơ, lịch trống và booking 1-1.',
-    profile: 'Kiểm tra hồ sơ mentor đang dùng để hiển thị trong marketplace.',
+    profile: 'Kiểm tra hồ sơ mentor và thông tin làm việc trong cổng mentor.',
     availability: 'Quản lý khung giờ trống bằng thời khóa biểu theo từng ngày và từng giờ.',
     bookings: 'Theo dõi và xử lý các buổi tư vấn học viên đã đặt với bạn.',
+    reviews: 'Theo dõi phản hồi học viên gửi sau các buổi tư vấn.',
   };
 
   return (
@@ -2521,27 +3156,20 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
             {pageDescription[view]}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <NotificationCenter
-            notifications={notifications}
-            streamStatus={streamStatus}
-            onMarkRead={markNotificationRead}
-            onMarkAllRead={markAllNotificationsRead}
-          />
-          <Link href="/mentor-matching">
-            <Button variant="outline">Xem marketplace</Button>
-          </Link>
-        </div>
       </section>
 
-      {message && <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{message}</p>}
+      {(queryError || reviewsError) && (
+        <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          {queryError || reviewsError}
+        </p>
+      )}
 
       {isLoading ? (
         <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <Loader2 className="h-7 w-7 animate-spin text-sky-600" />
         </div>
       ) : !myProfile ? (
-        <ApplyMentorForm onSubmitted={loadData} />
+        <ApplyMentorForm onSubmitted={refreshMentorPortalData} />
       ) : (
         <>
           {view === 'overview' && (
@@ -2584,10 +3212,20 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
                   profile={myProfile}
                   slots={mySlots}
                   bookings={bookings}
-                  onChanged={loadData}
+                  onChanged={refreshSlotsOnly}
+                  onBookingUpdated={applyBookingUpdate}
+                  onOpenChat={openBookingChat}
                 />
               )}
-              {view === 'bookings' && <MentorBookingList bookings={bookings} onChanged={loadData} />}
+              {view === 'bookings' && (
+                <MentorBookingList
+                  bookings={bookings}
+                  onChanged={refreshSlotsOnly}
+                  onBookingUpdated={applyBookingUpdate}
+                  onOpenChat={openBookingChat}
+                />
+              )}
+              {view === 'reviews' && <MentorReviewsPanel reviews={reviews} />}
             </>
           )}
         </>

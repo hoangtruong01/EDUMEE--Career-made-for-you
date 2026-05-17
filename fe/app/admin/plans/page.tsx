@@ -2,15 +2,19 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowDownUp,
+  CheckCircle2,
   CreditCard,
   Eye,
   Layers3,
   Loader2,
   PencilLine,
   Plus,
+  Search,
   ShieldCheck,
   Trash2,
+  X,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPanel, AdminSectionHeader, AdminStatCard } from '@/components/admin/AdminPrimitives';
@@ -48,6 +52,7 @@ import {
   type AiPlanLimits,
   type BillingCycle,
 } from '@/lib/admin-ai-plan.service';
+import { adminService, type AdminUser } from '@/lib/admin.service';
 import { cn } from '@/lib/utils';
 
 type SheetMode = 'create' | 'detail' | 'edit';
@@ -83,13 +88,18 @@ const LIMIT_FIELDS: Array<{ key: LimitKey; label: string }> = [
   { key: 'assessmentsLifetimeLimit', label: 'Assessments trọn đời' },
   { key: 'chatMessagesPerMonth', label: 'Tin nhắn AI / tháng' },
   { key: 'simulationsPerMonth', label: 'Simulation / tháng' },
-  { key: 'careerRecommendationRunsPerMonth', label: 'Career recommendation / tháng' },
-  { key: 'maxCareerRecommendationsPerRun', label: 'Career recommendation tối đa / lần' },
+  { key: 'careerRecommendationRunsPerMonth', label: 'Lượt AI gợi ý nghề / tháng' },
+  { key: 'maxCareerRecommendationsPerRun', label: 'Số nghề AI gợi ý / lần làm bài' },
   { key: 'careerComparisonsPerMonth', label: 'Career comparison / tháng' },
   { key: 'maxCareersPerComparison', label: 'Career tối đa / comparison' },
   { key: 'personalizedRoadmapsPerMonth', label: 'Roadmap / tháng' },
   { key: 'mentorBookingsPerMonth', label: 'Mentor booking / tháng' },
 ];
+
+const LIMIT_FIELD_LABELS = LIMIT_FIELDS.reduce<Record<LimitKey, string>>((acc, field) => {
+  acc[field.key] = field.label;
+  return acc;
+}, {} as Record<LimitKey, string>);
 
 const FEATURE_FIELDS: Array<{ key: FeatureKey; label: string }> = [
   { key: 'careerRecommendation', label: 'Career Recommendation' },
@@ -101,6 +111,73 @@ const FEATURE_FIELDS: Array<{ key: FeatureKey; label: string }> = [
   { key: 'teamDashboard', label: 'Team Dashboard' },
   { key: 'reportExport', label: 'Report Export' },
   { key: 'multiUserManagement', label: 'Multi User Management' },
+];
+
+const ACCESS_CONTROL_GROUPS: Array<{
+  title: string;
+  description: string;
+  featureKey?: FeatureKey;
+  limitKeys: LimitKey[];
+}> = [
+  {
+    title: 'Assessment',
+    description: 'Assessment luôn được phép; quota quyết định số lượt người dùng có thể làm.',
+    limitKeys: ['assessmentsPerMonth', 'assessmentsLifetimeLimit'],
+  },
+  {
+    title: 'Career Recommendation',
+    description: 'Bật/tắt gợi ý nghề và giới hạn số lần chạy hoặc số nghề AI trả về mỗi lần. Free nên là 1; Plus admin tự nhập số nghề muốn AI trả về mỗi lần.',
+    featureKey: 'careerRecommendation',
+    limitKeys: ['careerRecommendationRunsPerMonth', 'maxCareerRecommendationsPerRun'],
+  },
+  {
+    title: 'AI Chatbot',
+    description: 'Bật/tắt chatbot AI và giới hạn số tin nhắn trong tháng.',
+    featureKey: 'aiChatbot',
+    limitKeys: ['chatMessagesPerMonth'],
+  },
+  {
+    title: 'Job Simulation',
+    description: 'Bật/tắt mô phỏng nghề và giới hạn số lượt simulation trong tháng.',
+    featureKey: 'jobSimulation',
+    limitKeys: ['simulationsPerMonth'],
+  },
+  {
+    title: 'Career Comparison',
+    description: 'Bật/tắt so sánh nghề và giới hạn số lần so sánh hoặc số nghề mỗi lần.',
+    featureKey: 'careerComparison',
+    limitKeys: ['careerComparisonsPerMonth', 'maxCareersPerComparison'],
+  },
+  {
+    title: 'Personalized Roadmap',
+    description: 'Bật/tắt roadmap cá nhân và giới hạn số roadmap tạo trong tháng.',
+    featureKey: 'personalizedRoadmap',
+    limitKeys: ['personalizedRoadmapsPerMonth'],
+  },
+  {
+    title: 'Mentor Booking',
+    description: 'Bật/tắt đặt lịch mentor và giới hạn số booking trong tháng.',
+    featureKey: 'mentorBooking',
+    limitKeys: ['mentorBookingsPerMonth'],
+  },
+];
+
+const STANDALONE_FEATURE_FIELDS: Array<{ key: FeatureKey; label: string; description: string }> = [
+  {
+    key: 'teamDashboard',
+    label: 'Team Dashboard',
+    description: 'Bật/tắt dashboard dành cho team hoặc business plan.',
+  },
+  {
+    key: 'reportExport',
+    label: 'Report Export',
+    description: 'Bật/tắt quyền xuất báo cáo.',
+  },
+  {
+    key: 'multiUserManagement',
+    label: 'Multi User Management',
+    description: 'Bật/tắt quản lý nhiều người dùng trong cùng một plan.',
+  },
 ];
 
 const BILLING_CYCLE_MONTHS = BILLING_CYCLE_OPTIONS.reduce<Record<BillingCycle, number>>(
@@ -255,6 +332,35 @@ function formatCurrency(amount: number | undefined, currency = 'VND'): string {
   }).format(numericAmount);
 }
 
+function getPlanBillingCycles(plan: AdminAiPlan): BillingCycle[] {
+  if (plan.allowedBillingCycles?.length) return plan.allowedBillingCycles;
+
+  const pricingCycles = Object.keys(plan.pricingByBillingCycle || {}) as BillingCycle[];
+  return pricingCycles.length ? pricingCycles : ['monthly'];
+}
+
+function getPlanPricingForCycle(plan: AdminAiPlan, cycle: BillingCycle) {
+  const serverPricing = plan.pricingByBillingCycle?.[cycle];
+  if (serverPricing) return serverPricing;
+
+  const months = BILLING_CYCLE_MONTHS[cycle] || 1;
+  const monthlyPrice = Number(plan.price || 0);
+  const subtotal = monthlyPrice * months;
+  const discountPercentage = Math.min(Math.max(plan.billingCycleDiscounts?.[cycle] || 0, 0), 100);
+  const discountAmount = (subtotal * discountPercentage) / 100;
+
+  return {
+    billingCycle: cycle,
+    months,
+    monthlyPrice,
+    subtotal,
+    discountPercentage,
+    discountAmount,
+    total: Math.max(subtotal - discountAmount, 0),
+    currency: plan.currency || 'VND',
+  };
+}
+
 function formatDateTime(value?: string): string {
   if (!value) return '--';
 
@@ -265,6 +371,19 @@ function formatDateTime(value?: string): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date);
+}
+
+function formatNumber(value: number | undefined): string {
+  return new Intl.NumberFormat('vi-VN').format(value || 0);
+}
+
+function getSubscriberStats(plan?: AdminAiPlan | null) {
+  return {
+    activeSubscribers: plan?.subscriberStats?.activeSubscribers || 0,
+    totalSubscribers: plan?.subscriberStats?.totalSubscribers || 0,
+    cancelledSubscribers: plan?.subscriberStats?.cancelledSubscribers || 0,
+    expiredSubscribers: plan?.subscriberStats?.expiredSubscribers || 0,
+  };
 }
 
 function buildPlanPayload(formState: PlanFormState): AdminAiPlanPayload {
@@ -302,9 +421,7 @@ function buildPlanPayload(formState: PlanFormState): AdminAiPlanPayload {
   }
 
   const seatLimit = parseOptionalNumber(formState.seatLimit);
-  if (seatLimit !== undefined) {
-    payload.seatLimit = seatLimit;
-  }
+  payload.seatLimit = seatLimit ?? null;
 
   const limits = LIMIT_FIELDS.reduce<Partial<Record<LimitKey, number>>>((acc, field) => {
     const numericValue = parseOptionalNumber(formState.limits[field.key]);
@@ -313,9 +430,7 @@ function buildPlanPayload(formState: PlanFormState): AdminAiPlanPayload {
     }
     return acc;
   }, {});
-  if (Object.keys(limits).length > 0) {
-    payload.limits = limits;
-  }
+  payload.limits = limits;
 
   return payload;
 }
@@ -374,16 +489,20 @@ export default function AdminPlansPage() {
   const [togglingPlanId, setTogglingPlanId] = useState<string | null>(null);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
   const [formState, setFormState] = useState<PlanFormState>(createInitialFormState());
+  const [assignBillingCycle, setAssignBillingCycle] = useState<BillingCycle>('monthly');
+  const [isAssigningUser, setIsAssigningUser] = useState(false);
 
   const loadPlans = useCallback(async () => {
-    if (!accessToken) return;
+    if (!accessToken) return [];
 
     try {
       setIsLoading(true);
       const response = await adminAiPlanService.getAdminAiPlans(accessToken);
       setPlans(response);
+      return response;
     } catch (error) {
       toast.error(getErrorMessage(error, 'Không thể tải danh sách gói AI.'));
+      return [];
     } finally {
       setIsLoading(false);
     }
@@ -396,13 +515,16 @@ export default function AdminPlansPage() {
   const stats = useMemo(() => {
     const activePlans = plans.filter((plan) => plan.isActive !== false).length;
     const defaultPlan = plans.find((plan) => plan.isDefaultPlan);
-    const multiCyclePlans = plans.filter((plan) => (plan.allowedBillingCycles?.length || 0) > 1).length;
+    const activeSubscribers = plans.reduce(
+      (sum, plan) => sum + getSubscriberStats(plan).activeSubscribers,
+      0,
+    );
 
     return {
       totalPlans: plans.length,
       activePlans,
       defaultPlanName: defaultPlan?.name || 'Chưa đặt',
-      multiCyclePlans,
+      activeSubscribers,
     };
   }, [plans]);
 
@@ -436,6 +558,7 @@ export default function AdminPlansPage() {
     setSelectedPlanId(null);
     setSelectedPlan(null);
     setFormState(createInitialFormState());
+    setAssignBillingCycle('monthly');
     setIsSheetOpen(true);
   };
 
@@ -448,8 +571,14 @@ export default function AdminPlansPage() {
       setIsSheetOpen(true);
       setIsSheetLoading(true);
       const plan = await adminAiPlanService.getAdminAiPlanById(accessToken, planId);
-      setSelectedPlan(plan);
-      setFormState(buildFormState(plan));
+      const planFromList = plans.find((currentPlan) => currentPlan.id === planId);
+      const planWithStats = {
+        ...plan,
+        subscriberStats: plan.subscriberStats || planFromList?.subscriberStats,
+      };
+      setSelectedPlan(planWithStats);
+      setFormState(buildFormState(planWithStats));
+      setAssignBillingCycle(getPlanBillingCycles(planWithStats)[0] || 'monthly');
     } catch (error) {
       toast.error(getErrorMessage(error, 'Không thể tải chi tiết gói AI.'));
       setIsSheetOpen(false);
@@ -466,13 +595,17 @@ export default function AdminPlansPage() {
       const updatedPlan = await adminAiPlanService.updateAdminAiPlan(accessToken, plan.id, {
         isActive: nextChecked,
       });
+      const updatedPlanWithStats = {
+        ...updatedPlan,
+        subscriberStats: updatedPlan.subscriberStats || plan.subscriberStats,
+      };
       setPlans((currentPlans) =>
-        currentPlans.map((currentPlan) => (currentPlan.id === plan.id ? updatedPlan : currentPlan)),
+        currentPlans.map((currentPlan) => (currentPlan.id === plan.id ? updatedPlanWithStats : currentPlan)),
       );
 
       if (selectedPlan?.id === plan.id) {
-        setSelectedPlan(updatedPlan);
-        setFormState(buildFormState(updatedPlan));
+        setSelectedPlan(updatedPlanWithStats);
+        setFormState(buildFormState(updatedPlanWithStats));
       }
 
       toast.success(`Đã ${nextChecked ? 'bật' : 'tắt'} gói ${plan.name}.`);
@@ -535,6 +668,50 @@ export default function AdminPlansPage() {
     }
   };
 
+  const handleAssignUserToPlan = async (user: AdminUser): Promise<boolean> => {
+    if (!accessToken || !selectedPlan) return false;
+
+    if (!user.id) {
+      toast.error('Chọn user từ kết quả tìm kiếm trước khi add vào plan.');
+      return false;
+    }
+
+    const availableCycles = getPlanBillingCycles(selectedPlan);
+    const billingCycle = availableCycles.includes(assignBillingCycle)
+      ? assignBillingCycle
+      : availableCycles[0] || 'monthly';
+
+    try {
+      setIsAssigningUser(true);
+      await adminAiPlanService.assignUserToPlan(accessToken, {
+        userId: user.id,
+        planId: selectedPlan.id,
+        billingCycle,
+      });
+
+      toast.success(`Đã add ${user.name || user.email} vào gói ${selectedPlan.name}.`);
+
+      const refreshedPlans = await loadPlans();
+      const refreshedPlan = refreshedPlans.find((plan) => plan.id === selectedPlan.id);
+      if (refreshedPlan) {
+        setSelectedPlan((currentPlan) =>
+          currentPlan
+            ? {
+                ...currentPlan,
+                subscriberStats: refreshedPlan.subscriberStats,
+              }
+            : refreshedPlan,
+        );
+      }
+      return true;
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Không thể add user vào plan.'));
+      return false;
+    } finally {
+      setIsAssigningUser(false);
+    }
+  };
+
   const isReadOnly = sheetMode === 'detail';
 
   return (
@@ -554,7 +731,7 @@ export default function AdminPlansPage() {
         <AdminStatCard title="Tổng số gói" value={String(stats.totalPlans)} icon={CreditCard} iconClassName="bg-violet-500" />
         <AdminStatCard title="Gói đang active" value={String(stats.activePlans)} icon={ShieldCheck} iconClassName="bg-emerald-500" />
         <AdminStatCard title="Default plan" value={stats.defaultPlanName} icon={Layers3} iconClassName="bg-sky-500" />
-        <AdminStatCard title="Gói nhiều chu kỳ" value={String(stats.multiCyclePlans)} icon={ArrowDownUp} iconClassName="bg-amber-500" />
+        <AdminStatCard title="Người dùng có gói AI" value={formatNumber(stats.activeSubscribers)} icon={Users} iconClassName="bg-amber-500" />
       </div>
 
       <AdminPanel className="overflow-hidden p-0">
@@ -580,7 +757,8 @@ export default function AdminPlansPage() {
                 <TableHead>Tên gói</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead>Default</TableHead>
-                <TableHead>Giá</TableHead>
+                <TableHead>Người đăng ký</TableHead>
+                <TableHead>Giá thanh toán</TableHead>
                 <TableHead>Billing cycles</TableHead>
                 <TableHead>Seat limit</TableHead>
                 <TableHead>Order</TableHead>
@@ -591,6 +769,13 @@ export default function AdminPlansPage() {
             <TableBody>
               {plans.map((plan) => {
                 const isPlanActive = plan.isActive !== false;
+                const subscriberStats = getSubscriberStats(plan);
+                const billingCyclePricing = getPlanBillingCycles(plan).map((cycle) =>
+                  getPlanPricingForCycle(plan, cycle),
+                );
+                const showBasePrice = billingCyclePricing.some(
+                  (pricing) => pricing.months > 1 || pricing.discountPercentage > 0,
+                );
 
                 return (
                   <TableRow key={plan.id}>
@@ -639,8 +824,36 @@ export default function AdminPlansPage() {
                         <span className="text-sm text-slate-400 dark:text-slate-500">--</span>
                       )}
                     </TableCell>
-                    <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
-                      {formatCurrency(plan.price, plan.currency || 'VND')}
+                    <TableCell>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900 dark:text-slate-100">
+                          {formatNumber(subscriberStats.activeSubscribers)}
+                        </p>
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                          {plan.isDefaultPlan
+                            ? 'đang dùng Free'
+                            : `${formatNumber(subscriberStats.totalSubscribers)} tổng`}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="min-w-48">
+                      <div className="space-y-1">
+                        {billingCyclePricing.map((pricing) => (
+                          <div key={pricing.billingCycle} className="whitespace-nowrap">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">
+                              {formatCurrency(pricing.total, pricing.currency || plan.currency || 'VND')}
+                            </span>
+                            <span className="ml-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                              / {formatBillingCycleLabel(pricing.billingCycle)}
+                            </span>
+                          </div>
+                        ))}
+                        {showBasePrice ? (
+                          <p className="pt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Giá cơ sở: {formatCurrency(plan.price, plan.currency || 'VND')}/tháng
+                          </p>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-56 text-sm text-slate-600 dark:text-slate-300">
                       {formatBillingCycles(plan.allowedBillingCycles)}
@@ -709,6 +922,7 @@ export default function AdminPlansPage() {
             setSelectedPlanId(null);
             setSelectedPlan(null);
             setFormState(createInitialFormState());
+            setAssignBillingCycle('monthly');
           }
         }}
       >
@@ -745,12 +959,26 @@ export default function AdminPlansPage() {
                 </div>
               ) : null}
 
+              {selectedPlan && sheetMode !== 'create' ? (
+                <SubscriberStatsPanel plan={selectedPlan} />
+              ) : null}
+
+              {selectedPlan && sheetMode !== 'create' ? (
+                <AssignUserToPlanPanel
+                  accessToken={accessToken}
+                  plan={selectedPlan}
+                  billingCycle={assignBillingCycle}
+                  isSubmitting={isAssigningUser}
+                  onBillingCycleChange={setAssignBillingCycle}
+                  onSubmit={handleAssignUserToPlan}
+                />
+              ) : null}
+
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="basic">Basic</TabsTrigger>
                   <TabsTrigger value="pricing">Pricing</TabsTrigger>
-                  <TabsTrigger value="limits">Limits</TabsTrigger>
-                  <TabsTrigger value="features">Features</TabsTrigger>
+                  <TabsTrigger value="access">Quyền & giới hạn</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="basic" className="space-y-6 pt-4">
@@ -842,20 +1070,6 @@ export default function AdminPlansPage() {
                         onChange={(event) => {
                           setFormState((current) => ({ ...current, price: event.target.value }));
                         }}
-                      />
-                    </FieldBlock>
-
-                    <FieldBlock label="Seat limit">
-                      <Input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={formState.seatLimit}
-                        disabled={isReadOnly}
-                        onChange={(event) => {
-                          setFormState((current) => ({ ...current, seatLimit: event.target.value }));
-                        }}
-                        placeholder="Để trống nếu không áp dụng"
                       />
                     </FieldBlock>
                   </div>
@@ -964,45 +1178,100 @@ export default function AdminPlansPage() {
                   </FieldBlock>
                 </TabsContent>
 
-                <TabsContent value="limits" className="space-y-6 pt-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {LIMIT_FIELDS.map((field) => (
-                      <FieldBlock key={field.key} label={field.label}>
-                        <Input
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={formState.limits[field.key]}
-                          disabled={isReadOnly}
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setFormState((current) => ({
-                              ...current,
-                              limits: {
-                                ...current.limits,
-                                [field.key]: nextValue,
-                              },
-                            }));
-                          }}
-                          placeholder="Để trống nếu không áp dụng"
-                        />
-                      </FieldBlock>
+                <TabsContent value="access" className="space-y-6 pt-4">
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4 text-sm text-slate-600 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-slate-300">
+                    <p className="font-bold text-slate-900 dark:text-slate-100">Cách hiểu quyền & giới hạn</p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <p>Để trống = không giới hạn quota đó.</p>
+                      <p>Nhập 0 = không cho sử dụng quota đó.</p>
+                      <p>Tắt feature = user không dùng được feature này, kể cả khi limit có số.</p>
+                      <p>Seat limit chỉ áp dụng cho gói team/business; để trống nếu không giới hạn hoặc không áp dụng.</p>
+                    </div>
+                  </div>
+
+                  <FieldBlock label="Seat limit">
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={formState.seatLimit}
+                      disabled={isReadOnly}
+                      onChange={(event) => {
+                        setFormState((current) => ({ ...current, seatLimit: event.target.value }));
+                      }}
+                      placeholder="Để trống nếu không giới hạn hoặc không áp dụng"
+                    />
+                  </FieldBlock>
+
+                  <div className="space-y-4">
+                    {ACCESS_CONTROL_GROUPS.map((group) => (
+                      <div
+                        key={group.title}
+                        className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-900 dark:text-slate-100">{group.title}</p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{group.description}</p>
+                          </div>
+                          {group.featureKey ? (
+                            <Switch
+                              checked={formState.features[group.featureKey]}
+                              disabled={isReadOnly}
+                              onCheckedChange={(checked) => {
+                                setFormState((current) => ({
+                                  ...current,
+                                  features: {
+                                    ...current.features,
+                                    [group.featureKey as FeatureKey]: checked,
+                                  },
+                                }));
+                              }}
+                            />
+                          ) : (
+                            <Badge className="w-fit border-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              Quota only
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          {group.limitKeys.map((limitKey) => (
+                            <FieldBlock key={limitKey} label={LIMIT_FIELD_LABELS[limitKey]}>
+                              <Input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={formState.limits[limitKey]}
+                                disabled={isReadOnly}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setFormState((current) => ({
+                                    ...current,
+                                    limits: {
+                                      ...current.limits,
+                                      [limitKey]: nextValue,
+                                    },
+                                  }));
+                                }}
+                                placeholder="Trống = không giới hạn, 0 = khóa"
+                              />
+                            </FieldBlock>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </TabsContent>
 
-                <TabsContent value="features" className="space-y-4 pt-4">
                   <div className="grid gap-3 md:grid-cols-2">
-                    {FEATURE_FIELDS.map((field) => (
+                    {STANDALONE_FEATURE_FIELDS.map((field) => (
                       <label
                         key={field.key}
-                        className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-4 dark:border-slate-800"
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-4 dark:border-slate-800"
                       >
                         <div>
                           <p className="font-semibold text-slate-900 dark:text-slate-100">{field.label}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Feature flag được bật hoặc tắt theo plan này.
-                          </p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{field.description}</p>
                         </div>
                         <Switch
                           checked={formState.features[field.key]}
@@ -1055,6 +1324,303 @@ export default function AdminPlansPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+function SubscriberStatsPanel({ plan }: { plan: AdminAiPlan }) {
+  const stats = getSubscriberStats(plan);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Thống kê người đăng ký
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {plan.isDefaultPlan
+              ? 'Free là entitlement mặc định cho user chưa có paid plan active.'
+              : 'Số liệu được đếm theo user distinct, không đếm trùng các lần gia hạn.'}
+          </p>
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
+          <Users className="h-5 w-5" />
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SubscriberMetric label="Đang dùng" value={stats.activeSubscribers} tone="success" />
+        <SubscriberMetric label="Từng đăng ký" value={stats.totalSubscribers} />
+        <SubscriberMetric label="Đã hủy" value={stats.cancelledSubscribers} tone="warning" />
+        <SubscriberMetric label="Hết hạn" value={stats.expiredSubscribers} tone="danger" />
+      </div>
+    </div>
+  );
+}
+
+function AssignUserToPlanPanel({
+  accessToken,
+  plan,
+  billingCycle,
+  isSubmitting,
+  onBillingCycleChange,
+  onSubmit,
+}: {
+  accessToken: string | null;
+  plan: AdminAiPlan;
+  billingCycle: BillingCycle;
+  isSubmitting: boolean;
+  onBillingCycleChange: (value: BillingCycle) => void;
+  onSubmit: (user: AdminUser) => Promise<boolean>;
+}) {
+  const cycles = getPlanBillingCycles(plan);
+  const selectedCycle = cycles.includes(billingCycle) ? billingCycle : cycles[0] || 'monthly';
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [results, setResults] = useState<AdminUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadUsers = async () => {
+      if (!accessToken || debouncedSearchTerm.length < 2 || selectedUser) {
+        setResults([]);
+        setIsSearching(false);
+        setSearchError(null);
+        return;
+      }
+
+      try {
+        setIsSearching(true);
+        setSearchError(null);
+        const response = await adminService.getAllUsers(accessToken, 1, 8, {
+          search: debouncedSearchTerm,
+        });
+        if (!isActive) return;
+        setResults(response.users);
+      } catch (error) {
+        if (!isActive) return;
+        setResults([]);
+        setSearchError(getErrorMessage(error, 'Không thể tìm user.'));
+      } finally {
+        if (isActive) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    void loadUsers();
+
+    return () => {
+      isActive = false;
+    };
+  }, [accessToken, debouncedSearchTerm, selectedUser]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (selectedUser) {
+      setSelectedUser(null);
+    }
+  };
+
+  const handleSelectUser = (user: AdminUser) => {
+    setSelectedUser(user);
+    setSearchTerm(formatAdminUserLabel(user));
+    setDebouncedSearchTerm('');
+    setResults([]);
+    setSearchError(null);
+  };
+
+  const handleClearUser = () => {
+    setSelectedUser(null);
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+    setResults([]);
+    setSearchError(null);
+  };
+
+  return (
+    <form
+      className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!selectedUser) return;
+        const didAssign = await onSubmit(selectedUser);
+        if (didAssign) {
+          handleClearUser();
+        }
+      }}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Add user vào plan</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Tìm kiếm rồi chọn đúng user trước khi add. Nếu user đang có plan active, hệ thống sẽ chuyển sang plan này.
+          </p>
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300">
+          <UserPlus className="h-5 w-5" />
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
+        <FieldBlock label="Tìm user">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              className="pl-9 pr-10"
+              value={searchTerm}
+              disabled={isSubmitting}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Nhập tên, email hoặc SĐT"
+            />
+            {selectedUser ? (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                onClick={handleClearUser}
+                disabled={isSubmitting}
+                aria-label="Đổi user"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : isSearching ? (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+            ) : null}
+          </div>
+        </FieldBlock>
+
+        <FieldBlock label="Billing cycle">
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100"
+            value={selectedCycle}
+            disabled={isSubmitting}
+            onChange={(event) => onBillingCycleChange(event.target.value as BillingCycle)}
+          >
+            {cycles.map((cycle) => (
+              <option key={cycle} value={cycle}>
+                {formatBillingCycleLabel(cycle)}
+              </option>
+            ))}
+          </select>
+        </FieldBlock>
+
+        <Button
+          type="submit"
+          className="bg-sky-600 hover:bg-sky-700"
+          disabled={isSubmitting || !selectedUser}
+        >
+          {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+          Add user
+        </Button>
+      </div>
+
+      {selectedUser ? (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
+          <div className="flex min-w-0 items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-emerald-900 dark:text-emerald-100">{selectedUser.name || selectedUser.email}</p>
+              <p className="truncate text-xs text-emerald-700 dark:text-emerald-200">
+                {selectedUser.email}
+                {getAdminUserPhone(selectedUser) ? ` · ${getAdminUserPhone(selectedUser)}` : ''}
+                {selectedUser.plan ? ` · Plan hiện tại: ${selectedUser.plan}` : ''}
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={handleClearUser} disabled={isSubmitting}>
+            Đổi user
+          </Button>
+        </div>
+      ) : null}
+
+      {!selectedUser && debouncedSearchTerm.length >= 2 ? (
+        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+          {searchError ? (
+            <div className="px-3 py-3 text-sm text-rose-600 dark:text-rose-300">{searchError}</div>
+          ) : results.length > 0 ? (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {results.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-slate-900"
+                  disabled={isSubmitting}
+                  onClick={() => handleSelectUser(user)}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name || user.email}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                      {user.email}
+                      {getAdminUserPhone(user) ? ` · ${getAdminUserPhone(user)}` : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge variant="secondary">{user.plan || 'Free'}</Badge>
+                    <p className="mt-1 text-[11px] text-slate-400">{user.status}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : isSearching ? (
+            <div className="flex items-center gap-2 px-3 py-3 text-sm text-slate-500 dark:text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Đang tìm user...
+            </div>
+          ) : (
+            <div className="px-3 py-3 text-sm text-slate-500 dark:text-slate-400">Không tìm thấy user phù hợp.</div>
+          )}
+        </div>
+      ) : null}
+    </form>
+  );
+}
+
+function getAdminUserPhone(user: AdminUser): string {
+  return user.phone_number?.trim() || '';
+}
+
+function formatAdminUserLabel(user: AdminUser): string {
+  const phone = getAdminUserPhone(user);
+  return [user.name || user.email, user.email, phone].filter(Boolean).join(' · ');
+}
+
+function SubscriberMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: 'success' | 'warning' | 'danger';
+}) {
+  const toneClass =
+    tone === 'success'
+      ? 'text-emerald-600 dark:text-emerald-300'
+      : tone === 'warning'
+        ? 'text-amber-600 dark:text-amber-300'
+        : tone === 'danger'
+          ? 'text-rose-600 dark:text-rose-300'
+          : 'text-slate-900 dark:text-slate-100';
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        {label}
+      </p>
+      <p className={cn('mt-1 text-2xl font-black', toneClass)}>{formatNumber(value)}</p>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -58,6 +59,8 @@ export interface SkippedBulkSlot {
 
 @Injectable()
 export class MentorAvailabilityService {
+  private readonly logger = new Logger(MentorAvailabilityService.name);
+
   constructor(
     @InjectModel(MentorAvailabilitySlot.name)
     private readonly slotModel: Model<MentorAvailabilitySlotDocument>,
@@ -73,7 +76,7 @@ export class MentorAvailabilityService {
 
     const slot = new this.slotModel({
       tutorProfileId: profile._id,
-      mentorId: profile.userId,
+      mentorId: this.toObjectId(profile.userId.toString()),
       startAt,
       endAt,
       status: input.status || MentorAvailabilitySlotStatus.AVAILABLE,
@@ -86,8 +89,7 @@ export class MentorAvailabilityService {
     input: CreateBulkSlotsInput,
   ): Promise<{ created: MentorAvailabilitySlotDocument[]; skipped: SkippedBulkSlot[] }> {
     const profile = await this.getOwnedActiveProfile(input.tutorProfileId, actor);
-    const weekStart = this.startOfDay(new Date(input.weekStart));
-    if (Number.isNaN(weekStart.getTime())) throw new BadRequestException('Invalid weekStart');
+    const weekStart = this.parseBulkWeekStart(input.weekStart);
     if (!Number.isInteger(input.repeatWeeks) || input.repeatWeeks < 1 || input.repeatWeeks > BULK_SLOT_MAX_REPEAT_WEEKS) {
       throw new BadRequestException('repeatWeeks must be between 1 and 12');
     }
@@ -131,7 +133,7 @@ export class MentorAvailabilityService {
         try {
           const slot = await new this.slotModel({
             tutorProfileId: profile._id,
-            mentorId: profile.userId,
+            mentorId: this.toObjectId(profile.userId.toString()),
             startAt,
             endAt,
             status: MentorAvailabilitySlotStatus.AVAILABLE,
@@ -159,22 +161,28 @@ export class MentorAvailabilityService {
       },
     });
 
+    this.logger.debug(
+      `bulk availability mentorId=${profile.userId.toString()} weekStart=${this.formatDateOnly(weekStart)} created=${created.length} skipped=${skipped.length} skippedReasons=${JSON.stringify(this.countSkippedReasons(skipped))}`,
+    );
+
     return { created, skipped };
   }
 
   async findMine(actor: AuthUserLike): Promise<MentorAvailabilitySlotDocument[]> {
     const actorId = getAuthUserId(actor);
     if (!Types.ObjectId.isValid(actorId)) throw new ForbiddenException('Missing user context');
-    await this.releaseExpiredHeldSlots({ mentorId: new Types.ObjectId(actorId) });
-    return this.slotModel.find({ mentorId: new Types.ObjectId(actorId) }).sort({ startAt: 1 }).exec();
+    const mentorFilter = this.buildMentorIdFilter(actorId);
+    await this.releaseExpiredHeldSlots(mentorFilter);
+    return this.slotModel.find(mentorFilter).sort({ startAt: 1 }).exec();
   }
 
   async findAvailableByMentor(mentorId: string): Promise<MentorAvailabilitySlotDocument[]> {
     if (!Types.ObjectId.isValid(mentorId)) throw new BadRequestException('Invalid mentorId');
-    await this.releaseExpiredHeldSlots({ mentorId: new Types.ObjectId(mentorId) });
+    const mentorFilter = this.buildMentorIdFilter(mentorId);
+    await this.releaseExpiredHeldSlots(mentorFilter);
     return this.slotModel
       .find({
-        mentorId: new Types.ObjectId(mentorId),
+        ...mentorFilter,
         status: MentorAvailabilitySlotStatus.AVAILABLE,
         startAt: { $gte: new Date() },
       })
@@ -295,6 +303,73 @@ export class MentorAvailabilityService {
       .exec();
   }
 
+  async reserveSlotForRescheduleProposal(
+    slotId: string,
+    bookingSessionId: string,
+    mentorId: string,
+    startAt: Date,
+    duration: number,
+    heldBy?: string,
+  ): Promise<MentorAvailabilitySlotDocument> {
+    if (!Types.ObjectId.isValid(slotId)) throw new BadRequestException('Invalid availabilitySlotId');
+    if (!Types.ObjectId.isValid(bookingSessionId)) throw new BadRequestException('Invalid bookingSessionId');
+    if (!Types.ObjectId.isValid(mentorId)) throw new BadRequestException('Invalid mentorId');
+    if (!Number.isFinite(duration) || duration <= 0) throw new BadRequestException('Invalid duration');
+    if (Number.isNaN(startAt.getTime()) || startAt < new Date()) {
+      throw new BadRequestException('Invalid reschedule slot start time');
+    }
+
+    const slotObjectId = new Types.ObjectId(slotId);
+    const bookingObjectId = new Types.ObjectId(bookingSessionId);
+    const endAt = new Date(startAt.getTime() + duration * 60_000);
+    const setPayload: Record<string, unknown> = {
+      status: MentorAvailabilitySlotStatus.HELD,
+      bookingSessionId: bookingObjectId,
+    };
+    if (heldBy && Types.ObjectId.isValid(heldBy)) {
+      setPayload.heldBy = new Types.ObjectId(heldBy);
+    }
+
+    await this.releaseExpiredHeldSlots({ _id: slotObjectId });
+
+    const slot = await this.slotModel
+      .findOneAndUpdate(
+        {
+          _id: slotObjectId,
+          ...this.buildMentorIdFilter(mentorId),
+          status: MentorAvailabilitySlotStatus.AVAILABLE,
+          startAt,
+          endAt,
+        },
+        {
+          $set: setPayload,
+          $unset: { heldUntil: 1 },
+        },
+        { new: true },
+      )
+      .exec();
+
+    if (!slot) throw new ConflictException('Khung giờ đề xuất không còn trống');
+    return slot;
+  }
+
+  async releaseSpecificSlotForBooking(slotId: string, bookingSessionId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(slotId) || !Types.ObjectId.isValid(bookingSessionId)) return;
+    await this.slotModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(slotId),
+          bookingSessionId: new Types.ObjectId(bookingSessionId),
+          status: { $in: [MentorAvailabilitySlotStatus.HELD, MentorAvailabilitySlotStatus.BOOKED] },
+        },
+        {
+          $set: { status: MentorAvailabilitySlotStatus.AVAILABLE },
+          $unset: { bookingSessionId: 1, heldBy: 1, heldUntil: 1 },
+        },
+      )
+      .exec();
+  }
+
   async releaseSlotForBooking(bookingSessionId: string): Promise<void> {
     if (!Types.ObjectId.isValid(bookingSessionId)) return;
     await this.slotModel
@@ -356,7 +431,7 @@ export class MentorAvailabilityService {
     excludeSlotId?: string,
   ): Promise<void> {
     const query: FilterQuery<MentorAvailabilitySlotDocument> = {
-      mentorId: new Types.ObjectId(mentorId),
+      ...this.buildMentorIdFilter(mentorId),
       status: { $ne: MentorAvailabilitySlotStatus.BLOCKED },
       startAt: { $lt: endAt },
       endAt: { $gt: startAt },
@@ -376,7 +451,7 @@ export class MentorAvailabilityService {
   ): Promise<boolean> {
     const overlapping = await this.slotModel
       .exists({
-        mentorId: new Types.ObjectId(mentorId),
+        ...this.buildMentorIdFilter(mentorId),
         status: { $ne: MentorAvailabilitySlotStatus.BLOCKED },
         startAt: { $lt: endAt },
         endAt: { $gt: startAt },
@@ -403,6 +478,50 @@ export class MentorAvailabilityService {
     return startMinute;
   }
 
+  private toObjectId(value: string): Types.ObjectId {
+    if (!Types.ObjectId.isValid(value)) throw new BadRequestException('Invalid mentorId');
+    return new Types.ObjectId(value);
+  }
+
+  private buildMentorIdFilter(mentorId: string): FilterQuery<MentorAvailabilitySlotDocument> {
+    const mentorObjectId = this.toObjectId(mentorId);
+    return {
+      $or: [
+        { mentorId: mentorObjectId },
+        { $expr: { $eq: ['$mentorId', mentorId] } },
+      ],
+    } as FilterQuery<MentorAvailabilitySlotDocument>;
+  }
+
+  private parseBulkWeekStart(value: string | Date): Date {
+    if (value instanceof Date) {
+      const weekStart = this.startOfDay(value);
+      if (Number.isNaN(weekStart.getTime())) throw new BadRequestException('Invalid weekStart');
+      return weekStart;
+    }
+
+    if (typeof value === 'string') {
+      const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnly) {
+        const [, yearText, monthText, dayText] = dateOnly;
+        const year = Number(yearText);
+        const month = Number(monthText);
+        const day = Number(dayText);
+        const weekStart = new Date(year, month - 1, day);
+        const isValidCalendarDate =
+          weekStart.getFullYear() === year &&
+          weekStart.getMonth() === month - 1 &&
+          weekStart.getDate() === day;
+        if (!isValidCalendarDate) throw new BadRequestException('Invalid weekStart');
+        return weekStart;
+      }
+    }
+
+    const weekStart = this.startOfDay(new Date(value));
+    if (Number.isNaN(weekStart.getTime())) throw new BadRequestException('Invalid weekStart');
+    return weekStart;
+  }
+
   private startOfDay(date: Date): Date {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
@@ -415,6 +534,17 @@ export class MentorAvailabilityService {
 
   private dateAtMinutes(day: Date, minutes: number): Date {
     return new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60);
+  }
+
+  private formatDateOnly(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  private countSkippedReasons(skipped: SkippedBulkSlot[]): Record<string, number> {
+    return skipped.reduce<Record<string, number>>((counts, slot) => {
+      counts[slot.reason] = (counts[slot.reason] || 0) + 1;
+      return counts;
+    }, {});
   }
 
   private isDuplicateKeyError(error: unknown): boolean {

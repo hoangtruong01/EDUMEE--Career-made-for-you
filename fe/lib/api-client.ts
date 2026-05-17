@@ -1,4 +1,5 @@
 import { authStorage } from './auth-storage';
+import { toast } from 'sonner';
 
 export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -80,6 +81,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       // Handle expired token or unauthorized access
       if (typeof window !== 'undefined') {
         authStorage.clearSession();
+        toast.warning('Phiên đăng nhập đã hết hạn');
         // Redirect to login if not already there
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login?expired=true';
@@ -119,6 +121,7 @@ export async function apiUpload<T>(path: string, formData: FormData, token?: str
     if (response.status === 401) {
       if (typeof window !== 'undefined') {
         authStorage.clearSession();
+        toast.warning('Phiên đăng nhập đã hết hạn');
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login?expired=true';
         }
