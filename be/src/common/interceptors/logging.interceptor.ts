@@ -43,10 +43,18 @@ export class LoggingInterceptor implements NestInterceptor {
 
     if (response && typeof response === 'object' && 'message' in response) {
       const message = (response as { message?: unknown }).message;
-      return Array.isArray(message) ? message.join(', ') : String(message || error.message);
+      return Array.isArray(message)
+        ? message.map((item) => this.formatUnknownErrorMessage(item, error.message)).join(', ')
+        : this.formatUnknownErrorMessage(message, error.message);
     }
 
     return error.message;
+  }
+
+  private formatUnknownErrorMessage(value: unknown, fallback: string): string {
+    if (typeof value === 'string') return value || fallback;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return fallback;
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {

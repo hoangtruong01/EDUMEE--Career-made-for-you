@@ -542,7 +542,7 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       this.bookingSessionModel.findByIdAndUpdate(id, updateDto as Partial<BookingSession>, { new: true }),
     ).exec();
     if (!populatedBooking) {
-      throw new NotFoundException(`Booking session with ID ${id} not found`);
+      throw new NotFoundException(`Booking session with ID ${String(id)} not found`);
     }
     return populatedBooking;
   }

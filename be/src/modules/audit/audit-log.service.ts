@@ -34,6 +34,11 @@ export interface AuditRecordParams {
   request?: Request;
 }
 
+type ActivityLogFacetResult = {
+  logs: Record<string, unknown>[];
+  total: { value: number }[];
+};
+
 @Injectable()
 export class AuditLogService {
   private readonly logger = new Logger(AuditLogService.name);
@@ -188,7 +193,7 @@ export class AuditLogService {
       },
     );
 
-    const [result] = await this.auditLogModel.aggregate(pipeline).exec();
+    const [result] = await this.auditLogModel.aggregate<ActivityLogFacetResult>(pipeline).exec();
     const total = result?.total?.[0]?.value || 0;
 
     return {

@@ -49,8 +49,6 @@ export default function PaymentCheckout({ token }: { token: string }) {
 
   useEffect(() => {
     let active = true;
-    setIsLoading(true);
-    setError('');
 
     paymentService
       .getCheckoutSession(token)
@@ -76,11 +74,12 @@ export default function PaymentCheckout({ token }: { token: string }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  const expiresAt = session?.expiresAt;
   const isExpired = useMemo(() => {
-    if (!session?.expiresAt) return false;
-    const expiry = new Date(session.expiresAt).getTime();
+    if (!expiresAt) return false;
+    const expiry = new Date(expiresAt).getTime();
     return Number.isFinite(expiry) && expiry <= now;
-  }, [now, session?.expiresAt]);
+  }, [expiresAt, now]);
 
   const hiddenFields = useMemo(
     () => (session ? Object.entries(session.fields).filter(([, value]) => value !== undefined && value !== null) : []),

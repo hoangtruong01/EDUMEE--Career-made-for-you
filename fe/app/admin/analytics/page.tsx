@@ -73,9 +73,9 @@ export default function AdminAnalyticsPage() {
     ];
   }, [data]);
 
-  const userGrowth = data?.userGrowth || [];
-  const assessmentCompletions = data?.assessmentCompletions || [];
-  const careerDistribution = data?.careerDistribution || [];
+  const userGrowth = useMemo(() => data?.userGrowth || [], [data?.userGrowth]);
+  const assessmentCompletions = useMemo(() => data?.assessmentCompletions || [], [data?.assessmentCompletions]);
+  const careerDistribution = useMemo(() => data?.careerDistribution || [], [data?.careerDistribution]);
   const maxGrowth = Math.max(...userGrowth.map((point) => point.value), 1);
   const maxWeekly = Math.max(...assessmentCompletions.map((point) => point.value), 1);
   const donutStyle = useMemo(() => buildDonutStyle(careerDistribution), [careerDistribution]);

@@ -47,6 +47,15 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const initialAuthState: AuthState = {
+  accessToken: '',
+  refreshToken: '',
+  role: '',
+  isAuthenticated: false,
+  isHydrated: false,
+  onboardingCompleted: false,
+};
+
 const loggedOutState: AuthState = {
   accessToken: '',
   refreshToken: '',
@@ -65,40 +74,39 @@ function redirectToExpiredLogin() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>(() => {
-    if (typeof window === 'undefined') {
-      return {
-        accessToken: '',
-        refreshToken: '',
-        role: '' as UserRole,
-        isAuthenticated: false,
-        isHydrated: false,
-        onboardingCompleted: false,
-      };
+  const [state, setState] = useState<AuthState>(initialAuthState);
 
-    }
+  useEffect(() => {
+    let cancelled = false;
 
-    const accessToken = authStorage.getAccessToken();
-    const refreshToken = authStorage.getRefreshToken();
-    const role = authStorage.getRole();
+    queueMicrotask(() => {
+      if (cancelled) return;
 
-    if (!accessToken || isJwtExpired(accessToken)) {
-      authStorage.clearSession();
-      return loggedOutState;
-    }
+      const accessToken = authStorage.getAccessToken();
+      const refreshToken = authStorage.getRefreshToken();
+      const role = authStorage.getRole();
 
+      if (!accessToken || isJwtExpired(accessToken)) {
+        authStorage.clearSession();
+        setState(loggedOutState);
+        return;
+      }
 
-    const payload = decodeJwtPayload(accessToken);
-    return {
-      accessToken,
-      refreshToken,
-      role,
-      isAuthenticated: true,
-      isHydrated: true,
-      onboardingCompleted: (payload?.onboarding_completed as boolean) || false,
+      const payload = decodeJwtPayload(accessToken);
+      setState({
+        accessToken,
+        refreshToken,
+        role,
+        isAuthenticated: true,
+        isHydrated: true,
+        onboardingCompleted: (payload?.onboarding_completed as boolean) || false,
+      });
+    });
+
+    return () => {
+      cancelled = true;
     };
-
-  });
+  }, []);
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await authService.login(payload);
@@ -208,12 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const expiryDelayMs = getJwtExpiryDelayMs(state.accessToken, TOKEN_EXPIRY_SKEW_MS);
-    if (expiryDelayMs === null || expiryDelayMs <= 0) {
-      expireSession();
-      return;
-    }
-
-    const timeoutId = window.setTimeout(expireSession, expiryDelayMs);
+    const timeoutId = window.setTimeout(expireSession, Math.max(expiryDelayMs ?? 0, 0));
     return () => window.clearTimeout(timeoutId);
   }, [expireSession, state.accessToken, state.isAuthenticated, state.isHydrated]);
   

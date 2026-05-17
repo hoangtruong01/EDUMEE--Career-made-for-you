@@ -43,6 +43,45 @@ type AdminCareerPayload = Partial<Career> & {
   skillTags?: CareerSkillTagInput[];
 };
 
+type FinancePaymentUser = {
+  name?: string;
+  email?: string;
+};
+
+type FinancePaymentPlan = {
+  name?: string;
+};
+
+type FinancePaymentRow = {
+  id?: unknown;
+  checkoutReference?: string;
+  providerPaymentId?: string;
+  userId?: unknown;
+  planId?: unknown;
+  purpose?: PaymentPurpose;
+  billingCycle?: string;
+  amount?: number;
+  subtotalAmount?: number;
+  creditAppliedAmount?: number;
+  currency?: string;
+  provider?: string;
+  status?: PaymentStatus;
+  createdAt?: Date;
+  paidAt?: Date;
+  refundedAmount?: number;
+  refundedAt?: Date;
+  refundReason?: string;
+};
+
+type PaymentAmountAggregateRow = {
+  total?: number;
+};
+
+type CareerDistributionAggregateRow = {
+  _id: string;
+  count: number;
+};
+
 
 @Injectable()
 export class AdminService {
@@ -791,9 +830,9 @@ export class AdminService {
   }
 
   private serializeFinancePayment(payment: PaymentDocument) {
-    const row = payment.toJSON() as Record<string, any>;
-    const user = row.userId as { name?: string; email?: string } | undefined;
-    const plan = row.planId as { name?: string } | undefined;
+    const row = payment.toJSON() as FinancePaymentRow;
+    const user = this.isFinancePaymentUser(row.userId) ? row.userId : undefined;
+    const plan = this.isFinancePaymentPlan(row.planId) ? row.planId : undefined;
     const subtotalAmount = Number(row.subtotalAmount);
     const creditAppliedAmount = Number(row.creditAppliedAmount || 0);
     const amount = Number(row.amount || 0);
@@ -831,7 +870,7 @@ export class AdminService {
   }
 
   private async sumPaymentAmount(filter: Record<string, unknown>): Promise<number> {
-    const result = await this.paymentModel.aggregate([
+    const result = await this.paymentModel.aggregate<PaymentAmountAggregateRow>([
       { $match: filter },
       {
         $group: {
@@ -848,7 +887,7 @@ export class AdminService {
         },
       },
     ]);
-    return Number((result[0] as { total?: number } | undefined)?.total || 0);
+    return Number(result[0]?.total || 0);
   }
 
   private async countUsersByBuckets(buckets: { label: string; from: Date; to: Date }[]) {
@@ -875,7 +914,7 @@ export class AdminService {
   }
 
   private async getCareerDistribution(from: Date, to: Date) {
-    const rows = await this.careerFitResultModel.aggregate([
+    const rows = await this.careerFitResultModel.aggregate<CareerDistributionAggregateRow>([
       {
         $match: {
           careerTitle: { $exists: true, $ne: '' },
@@ -886,12 +925,20 @@ export class AdminService {
       { $sort: { count: -1 } },
       { $limit: 5 },
     ]);
-    const total = rows.reduce((sum: number, row: { count: number }) => sum + row.count, 0);
-    return rows.map((row: { _id: string; count: number }) => ({
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
+    return rows.map((row) => ({
       name: row._id,
       value: total > 0 ? Math.round((row.count / total) * 100) : 0,
       count: row.count,
     }));
+  }
+
+  private isFinancePaymentUser(value: unknown): value is FinancePaymentUser {
+    return Boolean(value) && typeof value === 'object';
+  }
+
+  private isFinancePaymentPlan(value: unknown): value is FinancePaymentPlan {
+    return Boolean(value) && typeof value === 'object';
   }
 
   private normalizeRoleFilter(role?: string): UserRole | undefined {

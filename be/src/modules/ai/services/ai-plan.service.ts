@@ -317,7 +317,7 @@ export class AiPlanService {
   }
 
   private getPlanObjectId(plan: AiPlanDocument): Types.ObjectId {
-    return plan._id as Types.ObjectId;
+    return plan._id;
   }
 
   private async unsetOtherDefaultPlans(currentPlanId?: unknown): Promise<void> {

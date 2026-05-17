@@ -20,6 +20,28 @@ type TutorProfilePublicResponse = Record<string, unknown> & {
   mentorUser?: PublicMentorUser;
 };
 
+function isTutorStatus(value: string): value is TutorStatus {
+  return Object.values(TutorStatus).includes(value as TutorStatus);
+}
+
+function isPopulatedUser(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) &&
+    typeof value === 'object' &&
+    ('name' in (value as Record<string, unknown>) ||
+      'email' in (value as Record<string, unknown>) ||
+      'avatar' in (value as Record<string, unknown>));
+}
+
+function optionalString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function optionalIdString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value instanceof Types.ObjectId) return value.toString();
+  return '';
+}
+
 @Injectable()
 export class TutorProfileService {
   constructor(
@@ -95,12 +117,12 @@ export class TutorProfileService {
   }
 
   async updateStatus(id: string, status: string, actorId?: string, reason?: string): Promise<TutorProfileDocument> {
-    if (!Object.values(TutorStatus).includes(status as TutorStatus)) {
+    if (!isTutorStatus(status)) {
       throw new BadRequestException('Invalid tutor status');
     }
 
     const update: Record<string, unknown> = {
-      status: status as TutorStatus,
+      status,
     };
 
     if (status === TutorStatus.ACTIVE) {
@@ -145,23 +167,17 @@ export class TutorProfileService {
   }
 
   private serializeProfile(profile: TutorProfileDocument): TutorProfilePublicResponse {
-    const raw = typeof profile.toJSON === 'function'
-      ? profile.toJSON()
+    const raw: Record<string, unknown> = typeof profile.toJSON === 'function'
+      ? (profile.toJSON() as Record<string, unknown>)
       : ({ ...profile } as Record<string, unknown>);
     const rawUser = raw.userId;
-    const hasPopulatedUser =
-      Boolean(rawUser) &&
-      typeof rawUser === 'object' &&
-      ('name' in (rawUser as Record<string, unknown>) ||
-        'email' in (rawUser as Record<string, unknown>) ||
-        'avatar' in (rawUser as Record<string, unknown>));
-    const populatedUser = hasPopulatedUser ? (rawUser as Record<string, unknown>) : null;
+    const populatedUser = isPopulatedUser(rawUser) ? rawUser : null;
     const rawUserId = populatedUser ? populatedUser._id || populatedUser.id : rawUser;
     const profileId = raw.id || raw._id;
     const response = {
       ...raw,
-      id: profileId ? String(profileId) : '',
-      userId: rawUserId ? String(rawUserId) : '',
+      id: optionalIdString(profileId),
+      userId: optionalIdString(rawUserId),
     } as TutorProfilePublicResponse;
 
     delete response._id;
@@ -170,9 +186,9 @@ export class TutorProfileService {
     if (populatedUser && response.userId) {
       response.mentorUser = {
         id: response.userId,
-        name: String(populatedUser.name || ''),
-        email: String(populatedUser.email || ''),
-        avatar: String(populatedUser.avatar || ''),
+        name: optionalString(populatedUser.name),
+        email: optionalString(populatedUser.email),
+        avatar: optionalString(populatedUser.avatar),
       };
     }
 

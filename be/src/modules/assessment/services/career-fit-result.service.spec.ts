@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 import { Types } from 'mongoose';
 import { AIService } from '../../../common/services/ai.service';
 import { AiQuotaService } from '../../ai/services/ai-quota.service';
