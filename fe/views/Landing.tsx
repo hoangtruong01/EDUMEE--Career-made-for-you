@@ -25,6 +25,7 @@ import {
   Star,
   Sun,
   TrendingUp,
+  User,
   Users,
   Zap,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useAssessment } from '@/context/assessment-context';
+import { userService, type UserMe } from '@/lib/user.service';
 
 const landingThemeSubscribe = (cb: () => void) => {
   if (typeof window === 'undefined') return () => {};
@@ -184,8 +186,29 @@ const TYPING_WORDS = [
 const Landing = () => {
   const isDark = useSyncExternalStore(landingThemeSubscribe, getLandingTheme, () => false);
   const typedText = useTyping(TYPING_WORDS);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, accessToken } = useAuth();
   const { hasAssessmentResult } = useAssessment();
+  const [userMe, setUserMe] = useState<UserMe | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    let active = true;
+    userService
+      .getMe(accessToken)
+      .then((data) => {
+        if (active) setUserMe(data);
+      })
+      .catch(() => {
+        if (active) setUserMe(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accessToken]);
 
   const ctaLink = hasAssessmentResult ? '/assessment-result' : '/personality-test';
   const ctaText = hasAssessmentResult ? 'Kết quả của bạn' : 'Bắt đầu ngay';
@@ -222,9 +245,23 @@ const Landing = () => {
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
             {isAuthenticated ? (
-              <Link href="/dashboard" className="hidden sm:block">
-                <Button variant="ghost" size="sm" className="text-sm font-medium">
-                  Dashboard
+              <Link href="/dashboard">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 overflow-hidden rounded-full border border-white/10 shadow-sm transition-all hover:scale-105 active:scale-95"
+                  aria-label="Đến trang Dashboard"
+                >
+                  {userMe?.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={userMe.avatar}
+                      alt="Ảnh đại diện"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
                 </Button>
               </Link>
             ) : (

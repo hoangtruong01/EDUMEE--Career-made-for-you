@@ -25,7 +25,6 @@ export default function CompleteProfileView() {
     dob?: string;
     educationLevel?: string;
   }>({});
-  const [serverOnboardingCompleted, setServerOnboardingCompleted] = useState(onboardingCompleted);
   const router = useRouter();
 
   const toDateInputValue = (value?: string) => {
@@ -72,9 +71,6 @@ export default function CompleteProfileView() {
           setPhone(user?.phone_number || '');
           setDob(toDateInputValue(user?.date_of_birth));
           setEducationLevel(profile?.educationLevel || '');
-          if (typeof user?.onboarding_completed === 'boolean') {
-            setServerOnboardingCompleted(user.onboarding_completed);
-          }
         } catch (err: unknown) {
           const errorMessage =
             (err as { message?: string })?.message || 'Không thể tải thông tin hồ sơ';
