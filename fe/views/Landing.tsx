@@ -31,6 +31,8 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useAuth } from '@/context/auth-context';
+import { useAssessment } from '@/context/assessment-context';
 
 const landingThemeSubscribe = (cb: () => void) => {
   if (typeof window === 'undefined') return () => {};
@@ -182,6 +184,12 @@ const TYPING_WORDS = [
 const Landing = () => {
   const isDark = useSyncExternalStore(landingThemeSubscribe, getLandingTheme, () => false);
   const typedText = useTyping(TYPING_WORDS);
+  const { isAuthenticated } = useAuth();
+  const { hasAssessmentResult } = useAssessment();
+
+  const ctaLink = hasAssessmentResult ? '/assessment-result' : '/personality-test';
+  const ctaText = hasAssessmentResult ? 'Kết quả của bạn' : 'Bắt đầu ngay';
+  const ctaHeroText = hasAssessmentResult ? 'Xem kết quả của bạn' : 'Bắt đầu bài test miễn phí';
 
   if (typeof document !== 'undefined') {
     document.documentElement.classList.toggle('dark', isDark);
@@ -213,19 +221,27 @@ const Landing = () => {
             <Button variant="ghost" size="icon" aria-label="Chế độ sáng/tối" onClick={toggleTheme}>
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
-            <Link href="/login" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="text-sm font-medium">
-                Đăng nhập
-              </Button>
-            </Link>
-            <Link href="/personality-test">
+            {isAuthenticated ? (
+              <Link href="/dashboard" className="hidden sm:block">
+                <Button variant="ghost" size="sm" className="text-sm font-medium">
+                  Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/login" className="hidden sm:block">
+                <Button variant="ghost" size="sm" className="text-sm font-medium">
+                  Đăng nhập
+                </Button>
+              </Link>
+            )}
+            <Link href={ctaLink}>
               <Button
                 variant="hero"
                 size="sm"
                 className="gap-1.5 rounded-full px-3 text-xs sm:px-5 sm:text-sm"
               >
-                <span className="hidden sm:inline">Bắt đầu ngay</span>
-                <span className="sm:hidden">Bắt đầu</span>
+                <span className="hidden sm:inline">{ctaText}</span>
+                <span className="sm:hidden">{hasAssessmentResult ? 'Kết quả' : 'Bắt đầu'}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
@@ -257,10 +273,10 @@ const Landing = () => {
 
               <motion.h1
                 variants={fadeUp}
-                className="font-display mb-4 text-4xl leading-[1.1] font-extrabold tracking-tight md:text-5xl lg:text-6xl"
+                className="font-display mb-4 text-4xl leading-tight font-extrabold tracking-tight md:text-5xl lg:text-6xl"
               >
                 Khám phá con đường
-                <span className="text-gradient-animate block mt-1">sự nghiệp của bạn</span>
+                <span className="text-gradient-animate block mt-1 pb-1">sự nghiệp của bạn</span>
               </motion.h1>
 
               <motion.div variants={fadeUp} className="mb-6">
@@ -276,13 +292,13 @@ const Landing = () => {
               </motion.p>
 
               <motion.div variants={fadeUp} className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <Link href="/personality-test">
+                <Link href={ctaLink}>
                   <Button
                     variant="hero"
                     size="lg"
                     className="shimmer-btn glow-ring gap-2 rounded-full px-8 py-6 text-base font-bold"
                   >
-                    Bắt đầu bài test miễn phí
+                    {ctaHeroText}
                     <ArrowRight className="h-5 w-5" />
                   </Button>
                 </Link>
@@ -709,12 +725,12 @@ const Landing = () => {
               </p>
 
               <div className="flex flex-col items-center gap-4">
-                <Link href="/personality-test">
+                <Link href={ctaLink}>
                   <Button
                     size="lg"
                     className="shimmer-btn group relative h-12 md:h-14 gap-2 rounded-full px-8 md:px-10 text-sm md:text-base font-bold shadow-lg hover:scale-105 active:scale-95 transition-all"
                   >
-                    Bắt đầu ngay
+                    {ctaText}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </Button>
                 </Link>

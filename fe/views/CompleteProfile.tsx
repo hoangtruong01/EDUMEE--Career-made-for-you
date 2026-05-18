@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function CompleteProfileView() {
-  const { accessToken, onboardingCompleted, isAuthenticated, isHydrated } = useAuth();
+  const { accessToken, onboardingCompleted, isAuthenticated, isHydrated, setOnboardingCompleted } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
@@ -107,17 +107,15 @@ export default function CompleteProfileView() {
           name,
           phone_number: phone,
           date_of_birth: dob,
+          onboarding_completed: true,
         }),
         profileService.updateMyProfile(accessToken, {
           educationLevel,
         }),
       ]);
 
-      if (!serverOnboardingCompleted) {
-        router.replace('/onboarding');
-      } else {
-        router.replace('/dashboard');
-      }
+      setOnboardingCompleted(true);
+      router.replace('/');
     } catch (err: unknown) {
       const errorMessage =
         (err as { message?: string })?.message || 'Có lỗi xảy ra khi cập nhật thông tin';
