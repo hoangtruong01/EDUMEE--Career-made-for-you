@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     minHeight: 200,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: RADIUS.xxl,
+    borderRadius: RADIUS.xl,
     marginBottom: SPACING.xl,
   },
   dimensionTag: {

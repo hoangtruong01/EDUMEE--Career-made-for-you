@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     padding: SPACING.lg,
-    borderRadius: RADIUS.xxl,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     marginBottom: SPACING.xl,
   },

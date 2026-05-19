@@ -18,6 +18,9 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
+import { useRouter } from 'expo-router';
+import { getAuthToken } from '../src/services/api';
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     PlusJakartaSans_400Regular,
@@ -43,15 +46,37 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider value={DarkTheme}>
-        <Stack initialRouteName="login">
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="admin-login" options={{ headerShown: false }} />
-          <Stack.Screen name="register" options={{ headerShown: false }} />
-          <Stack.Screen name="holland-test" options={{ headerShown: false }} />
-          <Stack.Screen name="test-result" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
+        <RootLayoutNav />
       </ThemeProvider>
     </QueryClientProvider>
+  );
+}
+
+function RootLayoutNav() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkToken = async () => {
+      try {
+        const token = await getAuthToken();
+        if (token) {
+          router.replace('/(tabs)');
+        }
+      } catch (err) {
+        console.error('Auto-login check error:', err);
+      }
+    };
+    checkToken();
+  }, []);
+
+  return (
+    <Stack initialRouteName="login">
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="admin-login" options={{ headerShown: false }} />
+      <Stack.Screen name="register" options={{ headerShown: false }} />
+      <Stack.Screen name="holland-test" options={{ headerShown: false }} />
+      <Stack.Screen name="test-result" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
   );
 }

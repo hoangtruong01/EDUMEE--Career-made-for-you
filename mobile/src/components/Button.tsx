@@ -73,7 +73,7 @@ export const Button: React.FC<ButtonProps> = ({
           <Text style={[
             styles.text, 
             { color: getTextColor() },
-            icon && { marginLeft: SPACING.sm },
+            icon ? { marginLeft: SPACING.sm } : undefined,
             textStyle
           ]}>
             {title}

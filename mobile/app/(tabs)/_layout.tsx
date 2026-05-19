@@ -14,12 +14,12 @@ export default function TabLayout() {
         tabBarStyle: {
           position: 'absolute',
           borderTopWidth: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.8)',
+          backgroundColor: 'rgba(15, 23, 42, 0.85)',
           height: 64,
           paddingBottom: 10,
         },
         tabBarBackground: () => (
-          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         ),
         headerShown: false,
       }}>
@@ -31,12 +31,27 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="explore"
         options={{
           title: 'Khám phá',
           tabBarIcon: ({ color }) => <Compass size={24} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="community"
+        options={{
+          title: 'Cộng đồng',
+          tabBarIcon: ({ color }) => <Users size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Hồ sơ',
+          tabBarIcon: ({ color }) => <User size={24} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
+

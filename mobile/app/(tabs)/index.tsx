@@ -90,20 +90,26 @@ export default function TabOneScreen() {
             <Text style={styles.bentoCardSubtitle}>Tìm kiếm con đường phù hợp</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.bentoCard, { flex: 1, backgroundColor: '#EC4899' }]}>
+          <TouchableOpacity 
+            onPress={() => router.push('/(tabs)/explore' as any)}
+            style={[styles.bentoCard, { flex: 1, backgroundColor: '#EC4899' }]}
+          >
             <TrendingUp size={24} color="#fff" />
             <Text style={styles.bentoCardTitle}>Xu hướng</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.bentoRow}>
-          <TouchableOpacity style={[styles.bentoCard, { flex: 1, backgroundColor: '#F59E0B' }]}>
+          <TouchableOpacity 
+            onPress={() => router.push('/(tabs)/explore' as any)}
+            style={[styles.bentoCard, { flex: 1, backgroundColor: '#F59E0B' }]}
+          >
             <BookOpen size={24} color="#fff" />
             <Text style={styles.bentoCardTitle}>Lộ trình</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            onPress={() => router.push('/(tabs)/two')}
+            onPress={() => router.push('/(tabs)/community' as any)}
             style={[styles.bentoCard, { flex: 2, backgroundColor: '#10B981' }]}
           >
             <Users size={32} color="#fff" />
@@ -112,6 +118,7 @@ export default function TabOneScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
 
       <View style={styles.footerSpace} />
     </ScrollView>
