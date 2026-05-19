@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { Readable } from 'stream';
 
 export interface UploadedImageFile {
   originalname: string;
@@ -18,24 +19,35 @@ export interface CloudinaryUploadResponse {
   [key: string]: unknown;
 }
 
-interface CloudinaryErrorResponse {
-  error?: {
-    message?: string;
-  };
-}
-
-function getCloudinaryErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object' || !('error' in payload)) {
-    return undefined;
-  }
-
-  const { error } = payload as CloudinaryErrorResponse;
-  return typeof error?.message === 'string' ? error.message : undefined;
-}
-
 @Injectable()
-export class MediaService {
+export class MediaService implements OnModuleInit {
+  private readonly logger = new Logger(MediaService.name);
+
   constructor(private readonly configService: ConfigService) {}
+
+  onModuleInit() {
+    const cloudName = this.configService.get<string>('cloudinary.cloudName');
+    const apiKey = this.configService.get<string>('cloudinary.apiKey');
+    const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      this.logger.warn(
+        'Cloudinary credentials are not fully configured. Image uploads will fail.',
+      );
+      return;
+    }
+
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
+
+    this.logger.log(
+      `Cloudinary configured for cloud: ${cloudName} (key: ${apiKey.slice(0, 6)}...)`,
+    );
+  }
 
   async uploadImage(
     file: UploadedImageFile,
@@ -44,35 +56,67 @@ export class MediaService {
     const cloudName = this.configService.get<string>('cloudinary.cloudName');
     const apiKey = this.configService.get<string>('cloudinary.apiKey');
     const apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+
     if (!cloudName || !apiKey || !apiSecret) {
       throw new Error('Cloudinary credentials are not configured');
     }
 
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signaturePayload = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
-    const signature = createHash('sha1').update(signaturePayload).digest('hex');
-    const formData = new FormData();
-    formData.set('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname);
-    formData.set('api_key', apiKey);
-    formData.set('timestamp', timestamp);
-    formData.set('folder', folder);
-    formData.set('signature', signature);
+    this.logger.log(
+      `Uploading image: ${file.originalname} (${file.size} bytes) to folder: ${folder}`,
+    );
 
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-    const payload = (await response.json()) as CloudinaryUploadResponse | CloudinaryErrorResponse;
+    try {
+      const result = await this.uploadViaStream(file, folder);
 
-    if (!response.ok) {
-      const message = getCloudinaryErrorMessage(payload) ?? 'Cloudinary upload error';
+      this.logger.log(
+        `Upload successful: ${result.public_id} → ${result.secure_url}`,
+      );
+
+      return {
+        secure_url: result.secure_url,
+        public_id: result.public_id,
+        url: result.url,
+        format: result.format,
+        resource_type: result.resource_type,
+      };
+    } catch (error: unknown) {
+      const errorObject = error as Error;
+      this.logger.error('Cloudinary upload error detail:', errorObject);
+      const message = errorObject?.message || 'Cloudinary upload error';
+      this.logger.error(`Cloudinary upload failed: ${message}`);
       throw new Error(message);
     }
+  }
 
-    if (!('secure_url' in payload) || !payload.secure_url) {
-      throw new Error('Cloudinary upload failed');
-    }
+  private uploadViaStream(
+    file: UploadedImageFile,
+    folder: string,
+  ): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: 'auto',
+          allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+          transformation: [
+            { width: 512, height: 512, crop: 'limit', quality: 'auto' },
+          ],
+        },
+        (error, result) => {
+          if (error) {
+            return reject(new Error(error.message));
+          }
+          if (!result) {
+            return reject(new Error('Cloudinary returned empty result'));
+          }
+          return resolve(result);
+        },
+      );
 
-    return payload;
+      const readable = new Readable();
+      readable.push(file.buffer);
+      readable.push(null);
+      readable.pipe(uploadStream);
+    });
   }
 }
