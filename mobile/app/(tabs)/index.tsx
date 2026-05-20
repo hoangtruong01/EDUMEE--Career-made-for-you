@@ -36,28 +36,28 @@ import { api, setAuthToken } from '../../src/services/api';
 
 const QUICK_ACTIONS = [
   {
-    label: 'Duyệt tài khoản',
+    label: 'Quản lý người dùng',
     icon: Users,
     color: '#8B5CF6',
-    hint: 'Đã mở danh sách tài khoản chờ duyệt',
+    route: '/(tabs)/profile',
   },
   {
-    label: 'Tạo nội dung',
+    label: 'Ngân hàng câu hỏi',
     icon: FileText,
     color: '#10B981',
-    hint: 'Đã mở trình tạo nội dung',
+    route: '/(tabs)/assessment',
   },
   {
-    label: 'Xem phân tích',
+    label: 'Quản lý nghề nghiệp',
     icon: TrendingUp,
     color: '#3B82F6',
-    hint: 'Đã chuyển sang trang phân tích chi tiết',
+    route: '/(tabs)/explore',
   },
   {
-    label: 'Quản lý gói',
+    label: 'Quản lý cộng đồng',
     icon: Sparkles,
     color: '#F59E0B',
-    hint: 'Đã mở trang quản lý gói Free / Plus / Pro',
+    route: '/(tabs)/community',
   },
 ];
 
@@ -330,22 +330,22 @@ export default function TabOneScreen() {
             {QUICK_ACTIONS.map((item, idx) => (
               <TouchableOpacity
                 key={idx}
-                onPress={() => setActionMessage(item.hint)}
+                onPress={() => router.push(item.route as any)}
                 style={styles.quickActionCard}
               >
                 <View style={[styles.quickActionIcon, { backgroundColor: item.color }]}>
                   <item.icon size={18} color="#fff" />
                 </View>
                 <Text style={styles.quickActionLabel}>{item.label}</Text>
-                <Plus size={16} color={COLORS.muted} style={{ marginLeft: 'auto' }} />
+                <ChevronRight size={16} color={COLORS.muted} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Quick Actions Notice */}
+          {/* Admin Notice */}
           <View style={styles.noticeBox}>
             <Sparkles size={16} color={COLORS.secondary} style={{ marginRight: 8 }} />
-            <Text style={styles.noticeText}>{actionMessage}</Text>
+            <Text style={styles.noticeText}>Nhấn vào các thao tác nhanh để truy cập trực tiếp từng module quản trị.</Text>
           </View>
 
           <View style={styles.footerSpace} />

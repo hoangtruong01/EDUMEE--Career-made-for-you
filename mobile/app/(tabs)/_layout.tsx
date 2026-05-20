@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Home, Compass, Users, User } from 'lucide-react-native';
+import { Home, Compass, Brain, Users, User } from 'lucide-react-native';
 import { COLORS } from '../../src/theme';
 import { BlurView } from 'expo-blur';
 import { StyleSheet } from 'react-native';
@@ -35,6 +35,13 @@ export default function TabLayout() {
         options={{
           title: 'Khám phá',
           tabBarIcon: ({ color }) => <Compass size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="assessment"
+        options={{
+          title: 'Trắc nghiệm',
+          tabBarIcon: ({ color }) => <Brain size={24} color={color} />,
         }}
       />
       <Tabs.Screen
