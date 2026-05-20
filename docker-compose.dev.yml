@@ -1,17 +1,6 @@
 version: '3.8'
 
-# Development override - chỉ chạy database services
-# Sử dụng: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Development override intentionally left empty.
+# MongoDB is provided through MONGODB_URI; Redis is not used.
 
-services:
-  mongodb:
-    ports:
-      - '27017:27017'
-
-  mongo-express:
-    ports:
-      - '8081:8081'
-
-  redis:
-    ports:
-      - '6379:6379'
+services: {}

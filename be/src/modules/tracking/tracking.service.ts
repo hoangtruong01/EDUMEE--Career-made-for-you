@@ -8,6 +8,11 @@ import {
   AnalyticsEvent,
   AnalyticsEventDocument,
 } from './schema/analytics-event.schema';
+import {
+  ANALYTICS_EVENT_ANONYMOUS_ID_MAX_LENGTH,
+  ANALYTICS_EVENT_PATH_MAX_LENGTH,
+  ANALYTICS_EVENT_TYPE_MAX_LENGTH,
+} from './tracking.constants';
 
 export interface TrackingEventListParams {
   page?: number;
@@ -25,8 +30,11 @@ export class TrackingService {
 
   async recordEvent(dto: CreateAnalyticsEventDto, request?: Request) {
     const path = this.sanitizePath(dto.path);
-    const eventType = dto.eventType.trim().slice(0, 80) || 'unknown';
-    const anonymousId = dto.anonymousId.trim().slice(0, 120);
+    const eventType =
+      dto.eventType.trim().slice(0, ANALYTICS_EVENT_TYPE_MAX_LENGTH) || 'unknown';
+    const anonymousId = dto.anonymousId
+      .trim()
+      .slice(0, ANALYTICS_EVENT_ANONYMOUS_ID_MAX_LENGTH);
 
     return this.analyticsEventModel.create({
       eventType,
@@ -95,9 +103,9 @@ export class TrackingService {
   private sanitizePath(path: string): string {
     const trimmed = path.trim() || '/';
     if (!trimmed.startsWith('/')) {
-      return `/${trimmed}`.slice(0, 300);
+      return `/${trimmed}`.slice(0, ANALYTICS_EVENT_PATH_MAX_LENGTH);
     }
-    return trimmed.slice(0, 300);
+    return trimmed.slice(0, ANALYTICS_EVENT_PATH_MAX_LENGTH);
   }
 
   private hashIp(ip: string): string {

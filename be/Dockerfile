@@ -1,8 +1,7 @@
-FROM node:20-alpine AS base
+FROM node:20-bookworm-slim AS base
 
 # Stage 1: Install all dependencies
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package*.json ./
 RUN npm install && npm cache clean --force
@@ -37,4 +36,4 @@ USER nestjs
 
 EXPOSE 3001
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]

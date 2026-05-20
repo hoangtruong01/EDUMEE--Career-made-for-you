@@ -1,119 +1,40 @@
-version: '3.8'
-
 services:
-  # MongoDB Database
-  mongodb:
-    image: mongo:7.0
-    container_name: edumee-mongodb
-    restart: unless-stopped
-    ports:
-      - '27017:27017'
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password123}
-      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-edumee}
-    volumes:
-      - mongodb_data:/data/db
-      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-    networks:
-      - edumee-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-
-  # MongoDB Express - Web UI for MongoDB
-  mongo-express:
-    image: mongo-express:1.0.2
-    container_name: edumee-mongo-express
-    restart: unless-stopped
-    ports:
-      - '8081:8081'
-    environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USERNAME:-admin}
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD:-password123}
-      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-password123}@mongodb:27017/
-      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
-      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-admin123}
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - edumee-network
-
-  # Redis - Caching & Session Store
-  redis:
-    image: redis:7.2-alpine
-    container_name: edumee-redis
-    restart: unless-stopped
-    ports:
-      - '6379:6379'
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
-    volumes:
-      - redis_data:/data
-    networks:
-      - edumee-network
-    healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-redis123}', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Backend NestJS (Production)
   backend:
+    image: ${BACKEND_IMAGE:-thile12/edumee-backend:latest}
+    platform: linux/amd64
     build:
       context: ./be
       dockerfile: Dockerfile
     container_name: edumee-backend
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - "3001:3001"
+    env_file:
+      - ./be/.env
     environment:
       NODE_ENV: production
       PORT: 3001
-      MONGODB_URI: mongodb://${MONGO_USERNAME:-edumee}:${MONGO_PASSWORD:-edumee123}@mongodb:27017/${MONGO_DATABASE:-edumee}?authSource=${MONGO_DATABASE:-edumee}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      ACCESS_TOKEN_EXPIRE_IN: ${ACCESS_TOKEN_EXPIRE_IN:-1h}
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - edumee-network
-    profiles:
-      - production
 
-  # Frontend Next.js (Production)
   frontend:
+    image: ${FRONTEND_IMAGE:-thile12/edumee-frontend:latest}
+    platform: linux/amd64
     build:
       context: ./fe
       dockerfile: Dockerfile
     container_name: edumee-frontend
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - "3000:3000"
+    env_file:
+      - ./fe/.env
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     depends_on:
       - backend
     networks:
       - edumee-network
-    profiles:
-      - production
-
-volumes:
-  mongodb_data:
-    driver: local
-  redis_data:
-    driver: local
 
 networks:
   edumee-network:

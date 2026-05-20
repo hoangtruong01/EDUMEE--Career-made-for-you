@@ -1,26 +1,27 @@
-name: Deploy to Production
+name: Deploy to Server
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 env:
-  NODE_VERSION: '20'
+  BACKEND_IMAGE: thile12/edumee-backend
+  FRONTEND_IMAGE: thile12/edumee-frontend
 
 jobs:
   deploy:
-    name: Deploy to Production
+    name: Deploy production
     runs-on: ubuntu-latest
-    environment: production
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -28,36 +29,152 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Get version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Validate runtime MongoDB URL
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          set -euo pipefail
 
-      - name: Build and push Backend
-        uses: docker/build-push-action@v5
+          if [ -z "${MONGODB_URI}" ]; then
+            echo "MONGODB_URI secret is empty."
+            exit 1
+          fi
+
+          node <<'NODE'
+          const rawMongoUri = process.env.MONGODB_URI;
+
+          try {
+            const mongoUrl = new URL(rawMongoUri);
+            const hostnames = mongoUrl.host
+              .split(",")
+              .map((host) => {
+                const normalizedHost = host.trim().toLowerCase();
+
+                if (normalizedHost.startsWith("[")) {
+                  return normalizedHost.slice(1, normalizedHost.indexOf("]"));
+                }
+
+                return normalizedHost.split(":")[0];
+              });
+            const loopbackHosts = new Set([
+              "localhost",
+              "127.0.0.1",
+              "::1",
+              "0.0.0.0"
+            ]);
+
+            console.log(`MONGODB_URI host(s): ${hostnames.join(", ")}`);
+
+            if (hostnames.some((hostname) => loopbackHosts.has(hostname))) {
+              console.error(
+                "MONGODB_URI must not use localhost inside containers."
+              );
+              process.exit(1);
+            }
+          } catch (error) {
+            console.error("MONGODB_URI is invalid");
+            process.exit(1);
+          }
+          NODE
+
+      - name: Build and push Docker images
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          docker build --pull -f be/Dockerfile \
+            -t "${BACKEND_IMAGE}:latest" \
+            -t "${BACKEND_IMAGE}:${GITHUB_SHA}" \
+            ./be
+
+          docker build --pull -f fe/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL}" \
+            -t "${FRONTEND_IMAGE}:latest" \
+            -t "${FRONTEND_IMAGE}:${GITHUB_SHA}" \
+            ./fe
+
+          docker push "${BACKEND_IMAGE}:latest"
+          docker push "${BACKEND_IMAGE}:${GITHUB_SHA}"
+          docker push "${FRONTEND_IMAGE}:latest"
+          docker push "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.FRONTEND_IMAGE }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/root/docker/exe201' }}
         with:
-          context: ./be
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/edumee-backend:${{ steps.version.outputs.VERSION }}
-            ${{ secrets.DOCKER_USERNAME }}/edumee-backend:production
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,DOCKER_USERNAME,DOCKER_PASSWORD,MONGODB_URI,NEXT_PUBLIC_API_BASE_URL,DEPLOY_PATH
+          script: |
+            set -eu
 
-      - name: Build and push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./fe
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/edumee-frontend:${{ steps.version.outputs.VERSION }}
-            ${{ secrets.DOCKER_USERNAME }}/edumee-frontend:production
+            echo "=== START DEPLOY ==="
 
-      # Add your deployment steps here (e.g., SSH to server, Kubernetes, etc.)
-      # - name: Deploy to server
-      #   uses: appleboy/ssh-action@v1.0.0
-      #   with:
-      #     host: ${{ secrets.SERVER_HOST }}
-      #     username: ${{ secrets.SERVER_USER }}
-      #     key: ${{ secrets.SERVER_SSH_KEY }}
-      #     script: |
-      #       cd /app/edumee
-      #       docker-compose pull
-      #       docker-compose up -d
+            cd "$DEPLOY_PATH"
+
+            if [ ! -f docker-compose.yml ]; then
+              echo "docker-compose.yml not found"
+              exit 1
+            fi
+
+            echo "Update environment"
+
+            touch .env backend.env frontend.env
+
+            set_env() {
+              file="$1"
+              key="$2"
+              value="$3"
+              escaped_value=$(printf '%s\n' "$value" | sed -e 's/[\/&]/\\&/g')
+
+              if grep -q "^${key}=" "$file"; then
+                sed -i "s/^${key}=.*/${key}=${escaped_value}/" "$file"
+              else
+                printf '%s=%s\n' "$key" "$value" >> "$file"
+              fi
+            }
+
+            set_env .env BACKEND_IMAGE "${BACKEND_IMAGE}:latest"
+            set_env .env FRONTEND_IMAGE "${FRONTEND_IMAGE}:latest"
+
+            set_env backend.env NODE_ENV production
+            set_env backend.env PORT 3001
+            set_env backend.env MONGODB_URI "$MONGODB_URI"
+
+            set_env frontend.env NODE_ENV production
+            if [ -n "${NEXT_PUBLIC_API_BASE_URL:-}" ]; then
+              set_env frontend.env NEXT_PUBLIC_API_BASE_URL "$NEXT_PUBLIC_API_BASE_URL"
+            fi
+
+            echo "Login to Docker Hub..."
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+            echo "Pull latest images..."
+            docker compose --env-file .env pull
+
+            echo "Stop old containers..."
+            docker compose --env-file .env down --remove-orphans
+
+            echo "Start new containers..."
+            docker compose --env-file .env up -d --force-recreate
+
+            echo "Container status:"
+            docker compose --env-file .env ps
+
+            echo "Recent logs:"
+            docker compose --env-file .env logs --tail=100
+
+            echo "Cleanup unused images..."
+            docker image prune -af
+
+            echo "=== DEPLOY SUCCESS ==="
