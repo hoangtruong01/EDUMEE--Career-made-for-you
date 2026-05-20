@@ -144,16 +144,23 @@ describe('PaymentService', () => {
     const result = await service.purchaseAiPlan('507f1f77bcf86cd799439011', {
       planId: '507f1f77bcf86cd799439012',
       billingCycle: BillingCycle.MONTHLY,
+      returnUrls: {
+        success: 'https://edumee.vn/dashboard?payment=success',
+        error: 'https://edumee.vn/dashboard?payment=error',
+        cancel: 'https://edumee.vn/dashboard?payment=cancel',
+      },
     });
 
     expect(result.paymentId).toBe('507f1f77bcf86cd799439099');
-    expect(result.redirectUrl).toContain('/api/v1/payments/sepay/checkout/');
+    expect(result.redirectUrl).toContain('https://edumee.vn/payment/checkout/');
+    expect(result.redirectUrl).not.toContain('localhost');
     expect(paymentModel).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 129000,
         currency: 'VND',
         provider: PaymentProvider.SEPAY,
         status: PaymentStatus.PENDING,
+        successUrl: 'https://edumee.vn/dashboard?payment=success',
       }),
     );
   });
@@ -162,6 +169,7 @@ describe('PaymentService', () => {
     const pendingPayment = {
       _id: new Types.ObjectId('507f1f77bcf86cd799439088'),
       checkoutReference: 'CHK-EXISTING',
+      successUrl: 'https://app.edumee.vn/dashboard?payment=success',
       save: jest.fn().mockResolvedValue(undefined),
     };
     paymentModel.findOne.mockReturnValueOnce(createQuery(pendingPayment));
@@ -180,7 +188,8 @@ describe('PaymentService', () => {
 
     expect(result.paymentId).toBe('507f1f77bcf86cd799439088');
     expect(result.checkoutReference).toBe('CHK-EXISTING');
-    expect(result.redirectUrl).toContain('/api/v1/payments/sepay/checkout/');
+    expect(result.redirectUrl).toContain('https://app.edumee.vn/payment/checkout/');
+    expect(result.redirectUrl).not.toContain('localhost');
     expect(pendingPayment.save).toHaveBeenCalledTimes(1);
     expect(paymentModel).not.toHaveBeenCalled();
   });

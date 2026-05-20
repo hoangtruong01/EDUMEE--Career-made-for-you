@@ -86,15 +86,29 @@ export default function PaymentCheckout({ token }: { token: string }) {
     [session],
   );
 
+  const isMentorBooking = session?.purpose === 'mentor_booking';
+  const backHref = isMentorBooking ? '/mentor-matching' : '/dashboard';
+  const backLabel = isMentorBooking ? 'Quay lại mentor' : 'Quay lại dashboard';
+  const pageTitle = isMentorBooking ? 'Xác nhận thanh toán mentor' : 'Xác nhận thanh toán gói AI';
+  const pageDescription = isMentorBooking
+    ? 'Kiểm tra lại thông tin phiên tư vấn trước khi chuyển sang cổng thanh toán.'
+    : 'Kiểm tra lại hóa đơn gói AI trước khi chuyển sang cổng thanh toán.';
+  const sidebarDescription = isMentorBooking
+    ? 'Sau khi cổng thanh toán xác nhận, booking sẽ chuyển sang trạng thái chờ mentor xác nhận.'
+    : 'Sau khi cổng thanh toán xác nhận, gói AI sẽ được kích hoạt hoặc gia hạn tự động.';
+  const expiredMessage = isMentorBooking
+    ? 'Phiên thanh toán đã hết hạn. Vui lòng quay lại trang mentor để tạo lại thanh toán.'
+    : 'Phiên thanh toán đã hết hạn. Vui lòng quay lại dashboard để tạo lại thanh toán.';
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="bg-gradient-card">
         <div className="container py-10 md:py-14">
           <div className="mx-auto max-w-5xl">
-            <Link href="/mentor-matching" className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+            <Link href={backHref} className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
               <ArrowLeft className="h-4 w-4" />
-              Quay lại mentor
+              {backLabel}
             </Link>
 
             {isLoading ? (
@@ -124,9 +138,9 @@ export default function PaymentCheckout({ token }: { token: string }) {
                         <ShieldCheck className="h-4 w-4" />
                         Thanh toán bảo mật qua SePay
                       </span>
-                      <h1 className="font-display text-3xl font-bold md:text-4xl">Xác nhận thanh toán mentor</h1>
+                      <h1 className="font-display text-3xl font-bold md:text-4xl">{pageTitle}</h1>
                       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                        Kiểm tra lại thông tin phiên tư vấn trước khi chuyển sang cổng thanh toán.
+                        {pageDescription}
                       </p>
                     </div>
                     <div className="rounded-2xl bg-primary/10 px-4 py-3 text-primary">
@@ -138,29 +152,44 @@ export default function PaymentCheckout({ token }: { token: string }) {
 
                 <div className="grid gap-6 p-6 md:grid-cols-[1fr_360px] md:p-8">
                   <section className="space-y-4">
-                    <div>
-                      <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
-                        <CalendarClock className="h-4 w-4" />
-                        Phiên tư vấn
-                      </p>
-                      <div className="rounded-2xl border border-border bg-background/70 p-5">
-                        <h2 className="font-display text-xl font-bold">
-                          {formatSessionType(session.booking?.sessionType)}
-                        </h2>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {formatDateTime(session.booking?.requestedDateTime)} · {session.booking?.duration || 90} phút
+                    {isMentorBooking ? (
+                      <div>
+                        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
+                          <CalendarClock className="h-4 w-4" />
+                          Phiên tư vấn
                         </p>
-                        {session.booking?.topicsToDiscuss?.length ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {session.booking.topicsToDiscuss.map((topic) => (
-                              <span key={topic} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                                {topic}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
+                        <div className="rounded-2xl border border-border bg-background/70 p-5">
+                          <h2 className="font-display text-xl font-bold">
+                            {formatSessionType(session.booking?.sessionType)}
+                          </h2>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            {formatDateTime(session.booking?.requestedDateTime)} · {session.booking?.duration || 90} phút
+                          </p>
+                          {session.booking?.topicsToDiscuss?.length ? (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {session.booking.topicsToDiscuss.map((topic) => (
+                                <span key={topic} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                  {topic}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
+                          <ReceiptText className="h-4 w-4" />
+                          Gói AI
+                        </p>
+                        <div className="rounded-2xl border border-border bg-background/70 p-5">
+                          <h2 className="font-display text-xl font-bold">Đơn hàng gói AI EDUMEE</h2>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            Mã hóa đơn {session.checkoutReference}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="rounded-2xl border border-border bg-background/70 p-5">
                       <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -208,7 +237,7 @@ export default function PaymentCheckout({ token }: { token: string }) {
                     </div>
                     <h2 className="mt-4 font-display text-xl font-bold">Hoàn tất qua SePay</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Sau khi cổng thanh toán xác nhận, booking sẽ chuyển sang trạng thái chờ mentor xác nhận.
+                      {sidebarDescription}
                     </p>
 
                     <form method={session.method} action={session.actionUrl} className="mt-5 space-y-4">
@@ -223,7 +252,7 @@ export default function PaymentCheckout({ token }: { token: string }) {
 
                     {isExpired ? (
                       <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        Phiên thanh toán đã hết hạn. Vui lòng quay lại trang mentor để tạo lại thanh toán.
+                        {expiredMessage}
                       </p>
                     ) : (
                       <p className="mt-3 text-xs text-muted-foreground">

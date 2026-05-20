@@ -92,6 +92,8 @@ type SepayOrderSnapshot = {
   raw: Record<string, unknown>;
 };
 
+type PaymentReturnUrlSource = Pick<Payment, 'successUrl' | 'errorUrl' | 'cancelUrl'>;
+
 type SepayApplyEventParams = {
   eventId: string;
   payload: Record<string, unknown>;
@@ -158,7 +160,7 @@ export class PaymentService {
         return {
           paymentId: reusablePendingPayment._id.toString(),
           checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
-          redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token),
+          redirectUrl: this.buildCheckoutRedirectUrl(refreshedCheckout.token, reusablePendingPayment),
         };
       }
     }
@@ -191,7 +193,7 @@ export class PaymentService {
     return {
       paymentId: savedPayment._id.toString(),
       checkoutReference,
-      redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken),
+      redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken, savedPayment),
     };
   }
 
@@ -234,7 +236,7 @@ export class PaymentService {
         return {
           paymentId: reusablePendingPayment._id.toString(),
           checkoutReference: reusablePendingPayment.checkoutReference || this.generateCheckoutReference(),
-          redirectUrl: this.buildMentorCheckoutRedirectUrl(refreshedCheckout.token),
+          redirectUrl: this.buildMentorCheckoutRedirectUrl(refreshedCheckout.token, reusablePendingPayment),
         };
       }
     }
@@ -269,7 +271,7 @@ export class PaymentService {
     return {
       paymentId: savedPayment._id.toString(),
       checkoutReference,
-      redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken),
+      redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken, savedPayment),
     };
   }
 
@@ -322,7 +324,7 @@ export class PaymentService {
       return {
         paymentId: savedPayment._id.toString(),
         checkoutReference,
-        redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken as string),
+        redirectUrl: this.buildCheckoutRedirectUrl(checkoutToken as string, savedPayment),
       };
     }
 
@@ -404,7 +406,7 @@ export class PaymentService {
       return {
         paymentId: savedPayment._id.toString(),
         checkoutReference,
-        redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken as string),
+        redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken as string, savedPayment),
       };
     }
 
@@ -1463,20 +1465,38 @@ export class PaymentService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private buildCheckoutRedirectUrl(token: string): string {
-    const configuredBaseUrl = this.configService.get<string>('PAYMENT_PUBLIC_BASE_URL');
-    const appPort = this.configService.get<number>('app.port', 3001);
-    const baseUrl = configuredBaseUrl || `http://localhost:${appPort}`;
-    return `${baseUrl.replace(/\/+$/, '')}/api/v1/payments/sepay/checkout/${encodeURIComponent(token)}`;
+  private buildCheckoutRedirectUrl(token: string, payment?: PaymentReturnUrlSource): string {
+    const baseUrl = this.resolveCheckoutFrontendBaseUrl(payment);
+    return `${baseUrl.replace(/\/+$/, '')}/payment/checkout/${encodeURIComponent(token)}`;
   }
 
-  private buildMentorCheckoutRedirectUrl(token: string): string {
-    const baseUrl =
+  private buildMentorCheckoutRedirectUrl(token: string, payment?: PaymentReturnUrlSource): string {
+    return this.buildCheckoutRedirectUrl(token, payment);
+  }
+
+  private resolveCheckoutFrontendBaseUrl(payment?: PaymentReturnUrlSource): string {
+    return (
+      this.getReturnUrlOrigin(payment) ||
       this.configService.get<string>('PAYMENT_CHECKOUT_BASE_URL') ||
       this.configService.get<string>('CLIENT_APP_BASE_URL') ||
-      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000');
+      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000')
+    );
+  }
 
-    return `${baseUrl.replace(/\/+$/, '')}/payment/checkout/${encodeURIComponent(token)}`;
+  private getReturnUrlOrigin(payment?: PaymentReturnUrlSource): string | undefined {
+    const returnUrls = [payment?.successUrl, payment?.errorUrl, payment?.cancelUrl];
+    for (const returnUrl of returnUrls) {
+      if (!returnUrl) continue;
+      try {
+        const url = new URL(returnUrl);
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+          return url.origin;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return undefined;
   }
 
   private buildImmediatePaymentRedirect(
