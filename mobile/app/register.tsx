@@ -267,6 +267,13 @@ const styles = StyleSheet.create({
     height: 50,
     color: COLORS.foreground,
     fontSize: 16,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+      },
+    }),
   },
   registerButton: {
     height: 56,

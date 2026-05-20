@@ -17,14 +17,60 @@ export const GlassView: React.FC<GlassViewProps> = ({
   style,
   ...props 
 }) => {
+  const flattenedStyle = StyleSheet.flatten(style) || {};
+
+  // Separate layout/padding styles for the inner content container from the outer container
+  const {
+    // Layout and Flexbox properties
+    flexDirection,
+    alignItems,
+    justifyContent,
+    flexWrap,
+    alignContent,
+    gap,
+    rowGap,
+    columnGap,
+    
+    // Padding properties
+    padding,
+    paddingHorizontal,
+    paddingVertical,
+    paddingTop,
+    paddingBottom,
+    paddingLeft,
+    paddingRight,
+
+    // Dimensions/Margins/Borders/etc stay on the outer container
+    ...containerStyle
+  } = flattenedStyle as any;
+
+  const contentStyle = {
+    flex: 1,
+    flexDirection,
+    alignItems,
+    justifyContent,
+    flexWrap,
+    alignContent,
+    gap,
+    rowGap,
+    columnGap,
+    padding,
+    paddingHorizontal,
+    paddingVertical,
+    paddingTop,
+    paddingBottom,
+    paddingLeft,
+    paddingRight,
+  };
+
   return (
-    <View style={[styles.container, { borderRadius }, style]} {...props}>
+    <View style={[styles.container, { borderRadius }, containerStyle]} {...props}>
       <BlurView 
         intensity={intensity} 
         tint={tint} 
         style={[StyleSheet.absoluteFill, { borderRadius }]} 
       />
-      <View style={[styles.content, { borderRadius }]}>
+      <View style={[styles.content, { borderRadius }, contentStyle]}>
         {children}
       </View>
     </View>

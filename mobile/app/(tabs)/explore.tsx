@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -7,11 +7,14 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Image, 
-  FlatList 
+  FlatList,
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../../src/theme';
 import { GlassView } from '../../src/components/GlassView';
 import { Search, Sparkles, SlidersHorizontal, ArrowRight, Award } from 'lucide-react-native';
+import { api } from '../../src/services/api';
 
 const FILTER_PILLS = [
   { id: 'all', label: 'Tất cả' },
@@ -20,68 +23,222 @@ const FILTER_PILLS = [
   { id: 'salary', label: 'Lương cao' },
 ];
 
-const MOCK_CAREERS = [
-  {
-    id: '1',
-    title: 'AI Engineer',
-    category: 'Công nghệ thông tin',
-    salary: '25M - 60M VND',
-    match: 96,
-    icon: '🧠',
-    color: '#8B5CF6',
-    description: 'Xây dựng mô hình học máy, xử lý ngôn ngữ tự nhiên và thị giác máy tính.',
-  },
-  {
-    id: '2',
-    title: 'UI/UX Designer',
-    category: 'Thiết kế sáng tạo',
-    salary: '18M - 35M VND',
-    match: 88,
-    icon: '🎨',
-    color: '#EC4899',
-    description: 'Thiết kế giao diện và trải nghiệm người dùng tối ưu trên đa nền tảng.',
-  },
-  {
-    id: '3',
-    title: 'Product Manager',
-    category: 'Kinh doanh & Quản lý',
-    salary: '22M - 45M VND',
-    match: 84,
-    icon: '📈',
-    color: '#3B82F6',
-    description: 'Quản lý vòng đời sản phẩm, định vị thị trường và tối ưu hóa tính năng.',
-  },
-  {
-    id: '4',
-    title: 'Data Analyst',
-    category: 'Công nghệ thông tin',
-    salary: '15M - 30M VND',
-    match: 79,
-    icon: '📊',
-    color: '#10B981',
-    description: 'Phân tích dữ liệu lớn, đưa ra insight kinh doanh và dự báo xu hướng.',
-  },
-];
-
 export default function ExploreScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [careers, setCareers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredCareers = MOCK_CAREERS.filter(career => {
+  const getCategoryDisplayName = (category: string) => {
+    const cat = String(category).toLowerCase();
+    switch (cat) {
+      case 'technology': return 'Công nghệ thông tin';
+      case 'healthcare': return 'Y tế & Sức khỏe';
+      case 'finance': return 'Tài chính & Đầu tư';
+      case 'education': return 'Giáo dục & Đào tạo';
+      case 'creative': return 'Thiết kế & Sáng tạo';
+      case 'business': return 'Kinh doanh & Quản lý';
+      case 'engineering': return 'Kỹ thuật & Công nghệ';
+      case 'science': return 'Nghiên cứu khoa học';
+      case 'legal': return 'Pháp lý & Luật';
+      case 'sales_marketing': return 'Sales & Marketing';
+      case 'social_services': return 'Dịch vụ xã hội';
+      default: return category || 'Khác';
+    }
+  };
+
+  const fetchCareers = async (showRefreshing = false) => {
+    try {
+      if (showRefreshing) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      // 1. Fetch all active careers
+      const careersResponse = await api.get('/careers?limit=100');
+      let careersData: any[] = [];
+      if (careersResponse.data) {
+        if (Array.isArray(careersResponse.data)) {
+          careersData = careersResponse.data;
+        } else if (careersResponse.data.success && careersResponse.data.data) {
+          const innerData = careersResponse.data.data;
+          careersData = Array.isArray(innerData) 
+            ? innerData 
+            : (Array.isArray(innerData.data) ? innerData.data : []);
+        } else if (careersResponse.data.data) {
+          const innerData = careersResponse.data.data;
+          careersData = Array.isArray(innerData) 
+            ? innerData 
+            : (Array.isArray(innerData.data) ? innerData.data : []);
+        }
+      }
+
+      // 2. Fetch user's top matched career fit results if they have completed the Holland assessment
+      let matchesMap: Record<string, number> = {};
+      try {
+        const matchesResponse = await api.get('/career-fit-results/top-matches');
+        let matchesData: any[] = [];
+        if (matchesResponse.data) {
+          if (Array.isArray(matchesResponse.data)) {
+            matchesData = matchesResponse.data;
+          } else if (matchesResponse.data.success && Array.isArray(matchesResponse.data.data)) {
+            matchesData = matchesResponse.data.data;
+          } else if (Array.isArray(matchesResponse.data.data)) {
+            matchesData = matchesResponse.data.data;
+          }
+        }
+
+        matchesData.forEach((m: any) => {
+          if (m.careerId?._id) {
+            matchesMap[m.careerId._id] = m.overallFitScore;
+          } else if (m.careerId) {
+            matchesMap[m.careerId] = m.overallFitScore;
+          } else if (m.careerTitle) {
+            matchesMap[m.careerTitle.toLowerCase()] = m.overallFitScore;
+          }
+        });
+      } catch (matchErr) {
+        console.log('User has not taken assessment or top matches fetch failed', matchErr);
+      }
+
+      // 3. Format backend careers to match the app UI requirements
+      const formatted = careersData.map((item: any) => {
+        // Match percentage logic
+        let matchScore = 0;
+        const matchById = item._id ? matchesMap[item._id] : undefined;
+        const matchByTitle = item.title ? matchesMap[item.title.toLowerCase()] : undefined;
+        if (matchById !== undefined) {
+          matchScore = matchById;
+        } else if (matchByTitle !== undefined) {
+          matchScore = matchByTitle;
+        }
+
+        // Emoji & Colors mapping based on backend enum category
+        let emoji = '🧠';
+        let color = '#8B5CF6';
+        const cat = String(item.category).toLowerCase();
+        if (cat === 'technology' || cat.includes('nghệ') || cat.includes('tin')) {
+          emoji = '🧠';
+          color = '#8B5CF6';
+        } else if (cat === 'creative' || cat.includes('kế') || cat.includes('sáng')) {
+          emoji = '🎨';
+          color = '#EC4899';
+        } else if (cat === 'business' || cat.includes('doanh') || cat.includes('quản')) {
+          emoji = '📈';
+          color = '#3B82F6';
+        } else if (cat === 'healthcare' || cat.includes('sức') || cat.includes('y')) {
+          emoji = '🏥';
+          color = '#EF4444';
+        } else if (cat === 'education' || cat.includes('dục')) {
+          emoji = '🎓';
+          color = '#10B981';
+        } else {
+          emoji = '📊';
+          color = '#F59E0B';
+        }
+
+        // Salary summary processing
+        let salaryText = 'Thỏa thuận';
+        if (item.discoveryData?.salarySummary) {
+          salaryText = item.discoveryData.salarySummary;
+        } else if (item.careerLevels?.[0]?.salary?.[0]) {
+          const s = item.careerLevels[0].salary[0];
+          const formatNumber = (num: number) => {
+            if (num >= 1000000) return `${(num / 1000000).toFixed(0)}M`;
+            return `${num / 1000}`;
+          };
+          salaryText = `${formatNumber(s.min)} - ${formatNumber(s.max)} ${s.currency || 'VND'}`;
+        }
+
+        return {
+          id: item._id || item.id,
+          title: item.title,
+          category: getCategoryDisplayName(item.category),
+          salary: salaryText,
+          match: Math.round(matchScore),
+          icon: emoji,
+          color: color,
+          description: item.description,
+        };
+      });
+
+      setCareers(formatted);
+    } catch (err: any) {
+      console.error('Fetch careers error:', err);
+      setError('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại đăng nhập hoặc mạng.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCareers();
+  }, []);
+
+  const onRefresh = () => {
+    fetchCareers(true);
+  };
+
+  const filteredCareers = careers.filter(career => {
     const matchesSearch = career.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           career.category.toLowerCase().includes(searchQuery.toLowerCase());
     
     if (!matchesSearch) return false;
     if (selectedFilter === 'all') return true;
-    if (selectedFilter === 'match') return career.match >= 85;
+    if (selectedFilter === 'match') return career.match >= 80;
     if (selectedFilter === 'ai') return career.category === 'Công nghệ thông tin';
-    if (selectedFilter === 'salary') return career.salary.includes('45M') || career.salary.includes('60M');
+    if (selectedFilter === 'salary') {
+      const maxSal = parseInt(career.salary.replace(/[^0-9]/g, '')) || 0;
+      return maxSal >= 20 || career.salary.includes('M') && (
+        career.salary.includes('25M') || 
+        career.salary.includes('30M') || 
+        career.salary.includes('35M') || 
+        career.salary.includes('45M') || 
+        career.salary.includes('60M')
+      );
+    }
     return true;
   });
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Đang tải dữ liệu nghề nghiệp...</Text>
+      </View>
+    );
+  }
+
+  if (error && careers.length === 0) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => fetchCareers()}>
+          <Text style={styles.retryBtnText}>Thử lại</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Khám phá</Text>
@@ -157,7 +314,9 @@ export default function ExploreScreen() {
                   <Text style={styles.cardCategory}>{item.category}</Text>
                 </View>
                 <View style={[styles.matchBadge, { borderColor: item.color }]}>
-                  <Text style={[styles.matchText, { color: item.color }]}>{item.match}% Match</Text>
+                  <Text style={[styles.matchText, { color: item.color }]}>
+                    {item.match > 0 ? `${item.match}% Match` : 'Khám phá'}
+                  </Text>
                 </View>
               </View>
 
@@ -369,5 +528,35 @@ const styles = StyleSheet.create({
   },
   footerSpace: {
     height: 100,
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+    flex: 1,
+  },
+  loadingText: {
+    color: COLORS.muted,
+    marginTop: SPACING.md,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: '#EF4444',
+    textAlign: 'center',
+    fontSize: 16,
+    marginBottom: SPACING.md,
+    fontWeight: '600',
+  },
+  retryBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: RADIUS.md,
+  },
+  retryBtnText: {
+    color: COLORS.foreground,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
