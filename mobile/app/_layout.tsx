@@ -19,7 +19,6 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 import { useRouter } from 'expo-router';
-import { getAuthToken } from '../src/services/api';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -55,19 +54,6 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const router = useRouter();
 
-  useEffect(() => {
-    const checkToken = async () => {
-      try {
-        const token = await getAuthToken();
-        if (token) {
-          router.replace('/(tabs)');
-        }
-      } catch (err) {
-        console.error('Auto-login check error:', err);
-      }
-    };
-    checkToken();
-  }, []);
 
   return (
     <Stack initialRouteName="login">
