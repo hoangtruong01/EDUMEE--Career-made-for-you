@@ -13,7 +13,7 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: 'welcome',
+  initialRouteName: 'index',
 };
 
 SplashScreen.preventAutoHideAsync();
@@ -56,8 +56,8 @@ function RootLayoutNav() {
 
 
   return (
-    <Stack initialRouteName="welcome">
-      <Stack.Screen name="welcome" options={{ headerShown: false }} />
+    <Stack initialRouteName="index">
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="admin-login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
