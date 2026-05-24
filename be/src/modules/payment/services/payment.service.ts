@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { SePayPgClient } from 'sepay-pg-node';
@@ -20,8 +20,10 @@ import { BillingCycle } from '../../users/schemas/user-subscriptions';
 import {
   CreateAiPlanPurchaseDto,
   CreateMentorBookingPurchaseDto,
+  CreatePaymentPurchaseDto,
   PaymentWebhookTestDto,
   RefundPaymentDto,
+  TestBankTransferDto,
   TestPaymentEventType,
 } from '../dto';
 import {
@@ -43,6 +45,7 @@ import {
   PaymentDocument,
   PaymentPurpose,
   PaymentProvider,
+  PaymentSettlementStatus,
   PaymentStatus,
 } from '../schema/payment.schema';
 import {
@@ -50,6 +53,12 @@ import {
   PaymentTransactionDocument,
   PaymentTransactionStatus,
 } from '../schema/payment-transaction.schema';
+import {
+  DEFAULT_MENTOR_PLATFORM_FEE_RATE,
+  MENTOR_FEE_SETTING_KEY,
+  PaymentSetting,
+  PaymentSettingDocument,
+} from '../schema/payment-setting.schema';
 import { NotificationService } from '../../notifications/services';
 import { NotificationType } from '../../notifications/schemas';
 import { WalletService } from '../../wallet/services';
@@ -61,8 +70,19 @@ type PaymentProcessingResult = {
   idempotent: boolean;
 };
 
-export type SepayCheckoutSession = {
+type PaymentCheckoutBookingSummary = {
+  id: string;
+  mentorId: string;
+  tutorProfileId: string;
+  sessionType: string;
+  requestedDateTime: Date;
+  duration: number;
+  topicsToDiscuss: string[];
+};
+
+export type PaymentCheckoutSession = {
   paymentId: string;
+  status: PaymentStatus;
   checkoutReference: string;
   purpose: PaymentPurpose;
   amount: number;
@@ -70,19 +90,26 @@ export type SepayCheckoutSession = {
   creditAppliedAmount?: number;
   currency: string;
   expiresAt: string;
-  method: 'POST';
-  actionUrl: string;
-  fields: Record<string, string | number>;
-  booking?: {
-    id: string;
-    mentorId: string;
-    tutorProfileId: string;
-    sessionType: string;
-    requestedDateTime: Date;
-    duration: number;
-    topicsToDiscuss: string[];
-  };
+  paidAt?: string;
+  booking?: PaymentCheckoutBookingSummary;
 };
+
+export type PaymentCheckoutStatus = {
+  paymentId: string;
+  status: PaymentStatus;
+  checkoutReference: string;
+  amount: number;
+  subtotalAmount?: number;
+  creditAppliedAmount?: number;
+  currency: string;
+  purpose: PaymentPurpose;
+  expiresAt: string;
+  paidAt?: string;
+  bookingStatus?: BookingStatus;
+};
+
+export type SepayCheckoutSession = PaymentCheckoutSession;
+export type SepayCheckoutStatus = PaymentCheckoutStatus;
 
 type SepayOrderSnapshot = {
   orderInvoiceNumber?: string;
@@ -101,7 +128,43 @@ type SepayApplyEventParams = {
   providerTransactionId?: string;
   failureReason?: string;
   outcome: 'paid' | 'failed' | 'cancelled' | 'ignored';
-  source: 'ipn' | 'sync';
+  source: 'ipn' | 'sync' | 'bank_webhook' | 'test_bank';
+};
+
+type SepayBankTransferProcessingResult = {
+  received: boolean;
+  processed: boolean;
+  idempotent?: boolean;
+  paymentId?: string;
+  status?: PaymentStatus;
+  reason?: string;
+};
+
+export type TestBankTransferResult = {
+  processed: boolean;
+  paymentId: string;
+  status: PaymentStatus;
+  checkoutReference: string;
+  testBank: {
+    beforeBalance: number;
+    afterBalance: number;
+    transactionId: string;
+  };
+};
+
+export type PaymentPurchaseResult = {
+  paymentId: string;
+  checkoutReference: string;
+  redirectUrl: string;
+  purpose: PaymentPurpose;
+  provider: PaymentProvider;
+};
+
+type MentorIncomeParams = {
+  range?: string;
+  page?: number;
+  limit?: number;
+  settlementStatus?: string;
 };
 
 @Injectable()
@@ -111,6 +174,8 @@ export class PaymentService {
     private readonly paymentModel: Model<PaymentDocument>,
     @InjectModel(PaymentTransaction.name)
     private readonly paymentTransactionModel: Model<PaymentTransactionDocument>,
+    @InjectModel(PaymentSetting.name)
+    private readonly paymentSettingModel: Model<PaymentSettingDocument>,
     @InjectModel(BookingSession.name)
     private readonly bookingSessionModel: Model<BookingSessionDocument>,
     @InjectModel(MentorAvailabilitySlot.name)
@@ -121,6 +186,53 @@ export class PaymentService {
     private readonly notificationService: NotificationService,
     private readonly walletService: WalletService,
   ) {}
+
+  async createPaymentPurchase(
+    userId: string,
+    dto: CreatePaymentPurchaseDto,
+  ): Promise<PaymentPurchaseResult> {
+    const provider = dto.provider || PaymentProvider.SEPAY;
+    if (provider !== PaymentProvider.SEPAY) {
+      throw new BadRequestException('Only SePay is supported by the unified payment purchase flow');
+    }
+
+    if (dto.purpose === PaymentPurpose.AI_PLAN) {
+      if (!dto.billingCycle) {
+        throw new BadRequestException('billingCycle is required for AI plan purchases');
+      }
+
+      const purchase = await this.purchaseAiPlan(userId, {
+        planId: dto.targetId,
+        billingCycle: dto.billingCycle,
+        paymentMethod: dto.paymentMethod,
+        returnUrls: dto.returnUrls,
+        useEdumeeCredit: dto.useEdumeeCredit,
+      });
+
+      return {
+        ...purchase,
+        purpose: PaymentPurpose.AI_PLAN,
+        provider,
+      };
+    }
+
+    if (dto.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      const purchase = await this.purchaseMentorBooking(userId, {
+        bookingSessionId: dto.targetId,
+        paymentMethod: dto.paymentMethod,
+        returnUrls: dto.returnUrls,
+        useEdumeeCredit: dto.useEdumeeCredit,
+      });
+
+      return {
+        ...purchase,
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        provider,
+      };
+    }
+
+    throw new BadRequestException('Unsupported payment purpose');
+  }
 
   async purchaseAiPlan(
     userId: string,
@@ -243,6 +355,7 @@ export class PaymentService {
 
     const checkoutReference = this.generateCheckoutReference();
     const checkoutToken = this.generateCheckoutToken();
+    const settlementFields = await this.buildPendingMentorSettlementFields(price);
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       bookingSessionId: booking._id,
@@ -260,6 +373,7 @@ export class PaymentService {
       errorUrl: dto.returnUrls?.error,
       cancelUrl: dto.returnUrls?.cancel,
       status: PaymentStatus.PENDING,
+      ...settlementFields,
     });
 
     const savedPayment = await payment.save();
@@ -366,6 +480,7 @@ export class PaymentService {
     const remainingAmount = Math.max(price - creditToApply, 0);
     const checkoutReference = this.generateCheckoutReference();
     const checkoutToken = remainingAmount > 0 ? this.generateCheckoutToken() : undefined;
+    const settlementFields = await this.buildPendingMentorSettlementFields(price);
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       bookingSessionId: booking._id,
@@ -384,6 +499,7 @@ export class PaymentService {
       cancelUrl: dto.returnUrls?.cancel,
       status: remainingAmount > 0 ? PaymentStatus.PENDING : PaymentStatus.PAID,
       paidAt: remainingAmount > 0 ? undefined : new Date(),
+      ...settlementFields,
     });
 
     if (remainingAmount > 0) {
@@ -517,6 +633,190 @@ export class PaymentService {
     };
   }
 
+  async handleSepayBankWebhook(
+    authorization: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<SepayBankTransferProcessingResult> {
+    this.assertSepayBankWebhookAuthorization(authorization);
+
+    const record = this.ensureRecord(payload);
+    return this.processSepayBankTransferRecord(record, {
+      buildEventId: (transactionId) => this.buildSepayBankWebhookEventId(transactionId),
+      source: 'bank_webhook',
+    });
+  }
+
+  async simulateCheckoutTestBankTransfer(
+    token: string,
+    dto: TestBankTransferDto,
+    actor: AuthUserLike,
+  ): Promise<TestBankTransferResult> {
+    if (!this.isPaymentTestBankEnabled()) {
+      throw new ForbiddenException('Payment test bank simulator is disabled');
+    }
+
+    const payment = await this.findPendingPaymentByCheckoutToken(token);
+    if (!payment) {
+      throw new NotFoundException('Checkout link is invalid or expired');
+    }
+
+    if (payment.provider !== PaymentProvider.SEPAY) {
+      throw new BadRequestException('Payment provider is not SePay');
+    }
+
+    const actorId = getAuthUserId(actor);
+    if (!isAdmin(actor) && payment.userId.toString() !== actorId) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    if (payment.status !== PaymentStatus.PENDING) {
+      throw new ConflictException('Payment is not pending');
+    }
+
+    const transferAmount = Number(dto.amount);
+    if (!Number.isFinite(transferAmount) || transferAmount <= 0) {
+      throw new BadRequestException('Transfer amount must be greater than 0');
+    }
+
+    if (transferAmount !== Number(payment.amount)) {
+      throw new BadRequestException('Transfer amount must match payment amount');
+    }
+
+    const content = dto.content?.trim();
+    if (!content) {
+      throw new BadRequestException('Transfer content is required');
+    }
+
+    const checkoutReference = payment.checkoutReference;
+    const parsedReference = this.extractSepayBankPaymentCode({ content });
+    if (!checkoutReference || !parsedReference) {
+      throw new BadRequestException('Transfer content must include checkout reference');
+    }
+
+    if (parsedReference !== checkoutReference.toUpperCase()) {
+      throw new BadRequestException('Transfer content checkout reference does not match this payment');
+    }
+
+    const beforeBalance = this.getTestBankInitialBalance();
+    if (transferAmount > beforeBalance) {
+      throw new BadRequestException('Insufficient test bank balance');
+    }
+
+    const transactionId = `test-bank-${Date.now()}-${randomBytes(4).toString('hex')}`;
+    const record = {
+      id: transactionId,
+      content,
+      transferType: 'in',
+      transferAmount,
+      subAccount: 'EDUMEE_TEST_BANK',
+      referenceCode: transactionId,
+    };
+
+    const processing = await this.processSepayBankTransferRecord(record, {
+      buildEventId: (id) => this.buildTestBankTransferEventId(id),
+      source: 'test_bank',
+    });
+
+    if (!processing.processed || processing.status !== PaymentStatus.PAID) {
+      throw new BadRequestException(`Test bank transfer was not processed: ${processing.reason || 'unknown'}`);
+    }
+
+    return {
+      processed: true,
+      paymentId: payment._id.toString(),
+      status: processing.status,
+      checkoutReference,
+      testBank: {
+        beforeBalance,
+        afterBalance: beforeBalance - transferAmount,
+        transactionId,
+      },
+    };
+  }
+
+  private async processSepayBankTransferRecord(
+    record: Record<string, unknown>,
+    options: {
+      buildEventId: (transactionId: string) => string;
+      source: SepayApplyEventParams['source'];
+    },
+  ): Promise<SepayBankTransferProcessingResult> {
+    const transferType = this.readString(record.transferType)?.toLowerCase();
+    if (transferType !== 'in') {
+      return {
+        received: true,
+        processed: false,
+        reason: 'unsupported_transfer_type',
+      };
+    }
+
+    const checkoutReference = this.extractSepayBankPaymentCode(record);
+    if (!checkoutReference) {
+      return {
+        received: true,
+        processed: false,
+        reason: 'missing_payment_code',
+      };
+    }
+
+    const payment = await this.paymentModel
+      .findOne({
+        provider: PaymentProvider.SEPAY,
+        checkoutReference,
+      })
+      .exec();
+
+    if (!payment) {
+      return {
+        received: true,
+        processed: false,
+        reason: 'payment_not_found',
+      };
+    }
+
+    const transferAmount = this.readNumber(record.transferAmount);
+    if (transferAmount === undefined || transferAmount !== Number(payment.amount)) {
+      return {
+        received: true,
+        processed: false,
+        paymentId: payment._id.toString(),
+        status: payment.status,
+        reason: 'amount_mismatch',
+      };
+    }
+
+    const sepayTransactionId = this.readString(record.id) || this.readNumber(record.id)?.toString();
+    if (!sepayTransactionId) {
+      return {
+        received: true,
+        processed: false,
+        paymentId: payment._id.toString(),
+        status: payment.status,
+        reason: 'missing_transaction_id',
+      };
+    }
+
+    const providerTransactionId =
+      this.readString(record.referenceCode) ||
+      sepayTransactionId;
+    const processing = await this.applySepayEvent(payment, {
+      eventId: options.buildEventId(sepayTransactionId),
+      payload: record,
+      providerPaymentId: sepayTransactionId,
+      providerTransactionId,
+      outcome: 'paid',
+      source: options.source,
+    });
+
+    return {
+      received: true,
+      processed: processing.payment.status === PaymentStatus.PAID,
+      idempotent: processing.idempotent,
+      paymentId: payment._id.toString(),
+      status: processing.payment.status,
+    };
+  }
+
   async handleVerifiedPaymentEvent(dto: PaymentWebhookTestDto): Promise<{
     payment: PaymentDocument;
     idempotent: boolean;
@@ -603,6 +903,7 @@ export class PaymentService {
     if (refundDecision.status === 'refund_pending') {
       payment.status = PaymentStatus.REFUND_PENDING;
       payment.refundReason = reason || refundDecision.reason;
+      payment.settlementStatus = PaymentSettlementStatus.WITHHELD;
       await payment.save();
       await this.paymentTransactionModel.create({
         paymentId: payment._id,
@@ -635,12 +936,158 @@ export class PaymentService {
     return { status: 'refunded', refundAmount: refundDecision.amount };
   }
 
+  async settleMentorBookingPayment(bookingId: string | Types.ObjectId): Promise<PaymentDocument | null> {
+    if (!Types.ObjectId.isValid(bookingId)) throw new BadRequestException('Invalid booking id');
+
+    const payment = await this.paymentModel
+      .findOne({
+        bookingSessionId: new Types.ObjectId(bookingId),
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        status: PaymentStatus.PAID,
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!payment) return null;
+    if (payment.settlementStatus === PaymentSettlementStatus.READY) return payment;
+    if (
+      payment.settlementStatus === PaymentSettlementStatus.REFUNDED ||
+      payment.settlementStatus === PaymentSettlementStatus.WITHHELD
+    ) {
+      return payment;
+    }
+
+    const baseAmount = this.getMentorSettlementBaseAmount(payment);
+    if (!Number.isFinite(baseAmount) || baseAmount <= 0) {
+      payment.settlementStatus = PaymentSettlementStatus.WITHHELD;
+      await payment.save();
+      return payment;
+    }
+
+    const platformFeeRate = await this.resolveMentorPlatformFeeRate(payment.platformFeeRate);
+    const platformFeeAmount = this.roundCurrency(baseAmount * platformFeeRate);
+    const mentorPayoutAmount = this.roundCurrency(Math.max(baseAmount - platformFeeAmount, 0));
+
+    payment.settlementBaseAmount = baseAmount;
+    payment.platformFeeRate = platformFeeRate;
+    payment.platformFeeAmount = platformFeeAmount;
+    payment.mentorPayoutAmount = mentorPayoutAmount;
+    payment.settlementStatus = PaymentSettlementStatus.READY;
+    payment.settledAt = new Date();
+    await payment.save();
+
+    await this.paymentTransactionModel.create({
+      paymentId: payment._id,
+      eventId: `mentor-settlement-ready-${payment._id.toString()}`,
+      eventType: 'mentor_settlement_ready',
+      status: PaymentTransactionStatus.SUCCESS,
+      payload: {
+        settlementBaseAmount: baseAmount,
+        platformFeeRate,
+        platformFeeAmount,
+        mentorPayoutAmount,
+      },
+    });
+
+    return payment;
+  }
+
   async findMine(userId: string): Promise<PaymentDocument[]> {
     if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
     return this.paymentModel
       .find({ userId: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  async getMentorIncome(userId: string, params: MentorIncomeParams = {}) {
+    if (!Types.ObjectId.isValid(userId)) throw new BadRequestException('Invalid userId');
+
+    const page = this.toPositiveInteger(params.page, 1);
+    const limit = Math.min(this.toPositiveInteger(params.limit, 10), 100);
+    const range = this.normalizeIncomeRange(params.range);
+    const dateRange = this.getIncomeDateRange(range);
+    const mentorObjectId = new Types.ObjectId(userId);
+
+    const bookings = await this.bookingSessionModel
+      .find({
+        $or: [
+          { mentorId: mentorObjectId },
+          { $expr: { $eq: ['$mentorId', userId] } },
+        ],
+      })
+      .populate('menteeUser', 'name email avatar')
+      .exec();
+    const bookingIds = bookings.map((booking) => booking._id);
+    const bookingById = new Map(bookings.map((booking) => [booking._id.toString(), booking]));
+
+    if (bookingIds.length === 0) {
+      return this.emptyMentorIncomeResponse(range, page, limit);
+    }
+
+    const filter: Record<string, unknown> = {
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      status: PaymentStatus.PAID,
+      bookingSessionId: { $in: bookingIds },
+      paidAt: { $gte: dateRange.from, $lt: dateRange.to },
+    };
+    if (params.settlementStatus && params.settlementStatus !== 'all') {
+      filter.settlementStatus = params.settlementStatus;
+    }
+
+    const payments = await this.paymentModel
+      .find(filter)
+      .sort({ paidAt: -1, createdAt: -1 })
+      .exec();
+    const defaultRate = await this.resolveMentorPlatformFeeRate();
+    const rows = payments.map((payment) => {
+      const booking = payment.bookingSessionId
+        ? bookingById.get(payment.bookingSessionId.toString())
+        : undefined;
+      return this.serializeMentorIncomeEntry(payment, booking, defaultRate);
+    });
+    const summary = rows.reduce(
+      (acc, row) => {
+        acc.grossRevenue += row.settlementBaseAmount;
+        acc.platformFeeAmount += row.platformFeeAmount;
+        acc.mentorPayoutAmount += row.mentorPayoutAmount;
+        if (row.settlementStatus === PaymentSettlementStatus.READY) {
+          acc.readyPayoutAmount += row.mentorPayoutAmount;
+        } else if (row.settlementStatus === PaymentSettlementStatus.PENDING) {
+          acc.pendingPayoutAmount += row.mentorPayoutAmount;
+        }
+        return acc;
+      },
+      {
+        grossRevenue: 0,
+        platformFeeAmount: 0,
+        mentorPayoutAmount: 0,
+        readyPayoutAmount: 0,
+        pendingPayoutAmount: 0,
+        currency: rows[0]?.currency || 'VND',
+        completedSessionCount: 0,
+      },
+    );
+
+    summary.grossRevenue = this.roundCurrency(summary.grossRevenue);
+    summary.platformFeeAmount = this.roundCurrency(summary.platformFeeAmount);
+    summary.mentorPayoutAmount = this.roundCurrency(summary.mentorPayoutAmount);
+    summary.readyPayoutAmount = this.roundCurrency(summary.readyPayoutAmount);
+    summary.pendingPayoutAmount = this.roundCurrency(summary.pendingPayoutAmount);
+    summary.completedSessionCount = rows.filter((row) => row.bookingStatus === BookingStatus.COMPLETED).length;
+
+    const total = rows.length;
+    const entries = rows.slice((page - 1) * limit, page * limit);
+
+    return {
+      range,
+      summary,
+      entries,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   async findOneForActor(id: string, actor: AuthUserLike): Promise<{
@@ -690,7 +1137,7 @@ export class PaymentService {
     return this.buildSepayCheckoutPageHtml(payment, checkout.url, checkout.fields);
   }
 
-  async getSepayCheckoutSession(token: string): Promise<SepayCheckoutSession> {
+  async getPaymentCheckoutSession(token: string): Promise<PaymentCheckoutSession> {
     const payment = await this.findPendingPaymentByCheckoutToken(token);
 
     if (!payment) {
@@ -701,18 +1148,11 @@ export class PaymentService {
       throw new BadRequestException('Payment provider is not SePay');
     }
 
-    if (payment.status !== PaymentStatus.PENDING) {
-      throw new ConflictException(`Payment is already ${payment.status}`);
-    }
-
-    const checkout = this.buildSepayCheckout(payment);
-    const fields = Object.fromEntries(
-      Object.entries(checkout.fields).filter((entry): entry is [string, string | number] => entry[1] !== undefined),
-    );
     const booking = await this.buildMentorBookingCheckoutSummary(payment);
 
     return {
       paymentId: payment._id.toString(),
+      status: payment.status,
       checkoutReference: payment.checkoutReference || 'N/A',
       purpose: payment.purpose,
       amount: payment.amount,
@@ -720,11 +1160,45 @@ export class PaymentService {
       creditAppliedAmount: payment.creditAppliedAmount,
       currency: payment.currency,
       expiresAt: payment.checkoutTokenExpiresAt?.toISOString() || new Date().toISOString(),
-      method: checkout.method,
-      actionUrl: checkout.url,
-      fields,
+      ...(payment.paidAt ? { paidAt: payment.paidAt.toISOString() } : {}),
       ...(booking ? { booking } : {}),
     };
+  }
+
+  async getSepayCheckoutSession(token: string): Promise<SepayCheckoutSession> {
+    return this.getPaymentCheckoutSession(token);
+  }
+
+  async getPaymentCheckoutStatus(token: string): Promise<PaymentCheckoutStatus> {
+    const payment = await this.findPendingPaymentByCheckoutToken(token);
+
+    if (!payment) {
+      throw new NotFoundException('Checkout link is invalid or expired');
+    }
+
+    if (payment.provider !== PaymentProvider.SEPAY) {
+      throw new BadRequestException('Payment provider is not SePay');
+    }
+
+    const bookingStatus = await this.resolveCheckoutBookingStatus(payment);
+
+    return {
+      paymentId: payment._id.toString(),
+      status: payment.status,
+      checkoutReference: payment.checkoutReference || 'N/A',
+      amount: payment.amount,
+      subtotalAmount: payment.subtotalAmount,
+      creditAppliedAmount: payment.creditAppliedAmount,
+      currency: payment.currency,
+      purpose: payment.purpose,
+      expiresAt: payment.checkoutTokenExpiresAt?.toISOString() || new Date().toISOString(),
+      ...(payment.paidAt ? { paidAt: payment.paidAt.toISOString() } : {}),
+      ...(bookingStatus ? { bookingStatus } : {}),
+    };
+  }
+
+  async getSepayCheckoutStatus(token: string): Promise<SepayCheckoutStatus> {
+    return this.getPaymentCheckoutStatus(token);
   }
 
   async renderPaymentReturnPage(
@@ -888,6 +1362,57 @@ export class PaymentService {
     throw new BadRequestException('SePay IPN secret is not configured');
   }
 
+  private assertSepayBankWebhookAuthorization(authorization: string | undefined): void {
+    const apiKey = this.configService.get<string>('SEPAY_BANK_WEBHOOK_API_KEY');
+    if (!apiKey) {
+      throw new BadRequestException('SePay bank webhook API key is not configured');
+    }
+
+    const [scheme, providedKey] = authorization?.trim().split(/\s+/, 2) || [];
+    if (scheme?.toLowerCase() !== 'apikey' || !providedKey || !this.safeEqualString(providedKey, apiKey)) {
+      throw new UnauthorizedException('Invalid SePay bank webhook API key');
+    }
+  }
+
+  private extractSepayBankPaymentCode(record: Record<string, unknown>): string | undefined {
+    const directCode = this.readString(record.code);
+    if (directCode) return directCode.toUpperCase();
+
+    const content = this.readString(record.content);
+    if (!content) return undefined;
+
+    const prefix = this.getSepayBankTransferCodePrefix();
+    const match = content
+      .toUpperCase()
+      .match(new RegExp(`\\b${this.escapeRegExp(prefix)}[A-Z0-9]{12}\\b`));
+    return match?.[0];
+  }
+
+  private getSepayBankTransferCodePrefix(): string {
+    const rawPrefix = this.configService.get<string>('SEPAY_BANK_TRANSFER_CODE_PREFIX', 'EDU') || 'EDU';
+    const normalized = rawPrefix.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalized || 'EDU';
+  }
+
+  private isPaymentTestBankEnabled(): boolean {
+    const value = this.configService.get<string | boolean>('PAYMENT_TEST_BANK_ENABLED', false);
+    if (typeof value === 'boolean') return value;
+    return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+  }
+
+  private getTestBankInitialBalance(): number {
+    const value = this.configService.get<string | number>('TEST_BANK_INITIAL_BALANCE', 1_000_000_000);
+    const balance = Number(value);
+    return Number.isFinite(balance) && balance >= 0 ? balance : 1_000_000_000;
+  }
+
+  private safeEqualString(left: string, right: string): boolean {
+    const leftBuffer = Buffer.from(left);
+    const rightBuffer = Buffer.from(right);
+    if (leftBuffer.length !== rightBuffer.length) return false;
+    return timingSafeEqual(leftBuffer, rightBuffer);
+  }
+
   private async applySepayEvent(
     payment: PaymentDocument,
     params: SepayApplyEventParams,
@@ -1014,6 +1539,9 @@ export class PaymentService {
     payment.status = PaymentStatus.FAILED;
     payment.failureReason = params.failureReason || 'Payment failed';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      payment.settlementStatus = PaymentSettlementStatus.WITHHELD;
+    }
     await payment.save();
     await this.releaseCreditHoldForPayment(payment, 'Thanh toán SePay thất bại, hoàn lại số dư đã giữ');
 
@@ -1088,6 +1616,9 @@ export class PaymentService {
     payment.status = PaymentStatus.CANCELLED;
     payment.failureReason = params.failureReason || 'Payment cancelled';
     payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      payment.settlementStatus = PaymentSettlementStatus.WITHHELD;
+    }
     await payment.save();
     await this.releaseCreditHoldForPayment(payment, 'Thanh toán SePay bị hủy, hoàn lại số dư đã giữ');
 
@@ -1178,6 +1709,14 @@ export class PaymentService {
     return ['sepay-sync', orderStatus || 'unknown', orderInvoiceNumber].join('-');
   }
 
+  private buildSepayBankWebhookEventId(sepayTransactionId: string): string {
+    return ['sepay-bank', sepayTransactionId].join(':');
+  }
+
+  private buildTestBankTransferEventId(transactionId: string): string {
+    return ['test-bank', transactionId].join(':');
+  }
+
   private ensureRecord(value: unknown): Record<string, unknown> {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       return value as Record<string, unknown>;
@@ -1185,8 +1724,29 @@ export class PaymentService {
     return {};
   }
 
+  private toPlainRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const maybeDocument = value as { toJSON?: () => Record<string, unknown> };
+    if (typeof maybeDocument.toJSON === 'function') {
+      const json = maybeDocument.toJSON();
+      return json && typeof json === 'object' && !Array.isArray(json) ? json : {};
+    }
+    return value as Record<string, unknown>;
+  }
+
   private readString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private readNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private getStoredReturnUrl(
@@ -1400,6 +1960,9 @@ export class PaymentService {
     payment.refundedAt = new Date();
     payment.refundedAmount = refundAmount;
     payment.refundReason = reason;
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      payment.settlementStatus = PaymentSettlementStatus.REFUNDED;
+    }
     await payment.save();
 
     await this.paymentTransactionModel.create({
@@ -1412,10 +1975,139 @@ export class PaymentService {
     });
   }
 
+  private serializeMentorIncomeEntry(
+    payment: PaymentDocument,
+    booking: BookingSessionDocument | undefined,
+    defaultRate: number,
+  ) {
+    const settlementBaseAmount = this.getMentorSettlementBaseAmount(payment);
+    const platformFeeRate = this.normalizeMentorPlatformFeeRate(payment.platformFeeRate, defaultRate);
+    const platformFeeAmount = this.resolveCurrencyAmount(
+      payment.platformFeeAmount,
+      this.roundCurrency(settlementBaseAmount * platformFeeRate),
+    );
+    const mentorPayoutAmount = this.resolveCurrencyAmount(
+      payment.mentorPayoutAmount,
+      this.roundCurrency(Math.max(settlementBaseAmount - platformFeeAmount, 0)),
+    );
+    const bookingRecord = this.toPlainRecord(booking);
+    const mentee = this.toPlainRecord(bookingRecord?.menteeUser);
+
+    return {
+      paymentId: payment._id.toString(),
+      bookingSessionId: payment.bookingSessionId?.toString(),
+      checkoutReference: payment.checkoutReference,
+      menteeName: this.readString(mentee?.name) || 'Học viên',
+      sessionType: this.readString(bookingRecord?.sessionType) || '',
+      bookingStatus: this.readString(bookingRecord?.status) || '',
+      settlementBaseAmount,
+      platformFeeRate,
+      platformFeeAmount,
+      mentorPayoutAmount,
+      settlementStatus: payment.settlementStatus || PaymentSettlementStatus.PENDING,
+      currency: payment.currency || 'VND',
+      paidAt: payment.paidAt,
+      settledAt: payment.settledAt,
+    };
+  }
+
+  private emptyMentorIncomeResponse(range: 'month' | 'quarter' | 'year', page: number, limit: number) {
+    return {
+      range,
+      summary: {
+        grossRevenue: 0,
+        platformFeeAmount: 0,
+        mentorPayoutAmount: 0,
+        readyPayoutAmount: 0,
+        pendingPayoutAmount: 0,
+        currency: 'VND',
+        completedSessionCount: 0,
+      },
+      entries: [],
+      total: 0,
+      page,
+      limit,
+      totalPages: 1,
+    };
+  }
+
+  private normalizeIncomeRange(range?: string): 'month' | 'quarter' | 'year' {
+    return range === 'quarter' || range === 'year' ? range : 'month';
+  }
+
+  private getIncomeDateRange(range: 'month' | 'quarter' | 'year'): { from: Date; to: Date } {
+    const now = new Date();
+    const to = now;
+    if (range === 'year') {
+      return { from: new Date(now.getFullYear(), 0, 1), to };
+    }
+    if (range === 'quarter') {
+      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      return { from: new Date(now.getFullYear(), quarterStartMonth, 1), to };
+    }
+    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to };
+  }
+
+  private toPositiveInteger(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  }
+
+  private normalizeMentorPlatformFeeRate(value: unknown, fallback: number): number {
+    const rawRate = Number(value);
+    if (Number.isFinite(rawRate) && rawRate >= 0) {
+      return Math.min(rawRate > 1 ? rawRate / 100 : rawRate, 1);
+    }
+    return Math.min(Math.max(fallback, 0), 1);
+  }
+
+  private resolveCurrencyAmount(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? this.roundCurrency(parsed) : fallback;
+  }
+
   private getPaymentTotalAmount(payment: PaymentDocument): number {
     const subtotal = Number(payment.subtotalAmount);
     if (Number.isFinite(subtotal) && subtotal > 0) return subtotal;
     return Number(payment.amount || 0) + Number(payment.creditAppliedAmount || 0);
+  }
+
+  private async buildPendingMentorSettlementFields(baseAmount: number): Promise<Partial<Payment>> {
+    const settlementBaseAmount = this.roundCurrency(baseAmount);
+    return {
+      settlementBaseAmount,
+      platformFeeRate: await this.resolveMentorPlatformFeeRate(),
+      settlementStatus: PaymentSettlementStatus.PENDING,
+    };
+  }
+
+  private getMentorSettlementBaseAmount(payment: PaymentDocument): number {
+    const explicitBase = Number(payment.settlementBaseAmount);
+    if (Number.isFinite(explicitBase) && explicitBase > 0) return this.roundCurrency(explicitBase);
+    return this.roundCurrency(this.getPaymentTotalAmount(payment));
+  }
+
+  private async resolveMentorPlatformFeeRate(storedRate?: number): Promise<number> {
+    if (typeof storedRate === 'number' && Number.isFinite(storedRate) && storedRate >= 0) {
+      return Math.min(storedRate > 1 ? storedRate / 100 : storedRate, 1);
+    }
+
+    const configuredSetting = await this.paymentSettingModel
+      .findOne({ key: MENTOR_FEE_SETTING_KEY })
+      .exec();
+    const storedSettingRate = Number(configuredSetting?.mentorPlatformFeeRate);
+    if (Number.isFinite(storedSettingRate) && storedSettingRate >= 0) {
+      return Math.min(storedSettingRate > 1 ? storedSettingRate / 100 : storedSettingRate, 1);
+    }
+
+    const configured = this.configService.get<string | number>('MENTOR_PLATFORM_FEE_RATE', '0.15');
+    const rawRate = typeof configured === 'number' ? configured : Number(configured);
+    if (!Number.isFinite(rawRate) || rawRate < 0) return DEFAULT_MENTOR_PLATFORM_FEE_RATE;
+    return Math.min(rawRate > 1 ? rawRate / 100 : rawRate, 1);
+  }
+
+  private roundCurrency(value: number): number {
+    return Number(value.toFixed(2));
   }
 
   private getMentorBookingRefundDecision(
@@ -1475,12 +2167,28 @@ export class PaymentService {
   }
 
   private resolveCheckoutFrontendBaseUrl(payment?: PaymentReturnUrlSource): string {
-    return (
-      this.getReturnUrlOrigin(payment) ||
+    return this.normalizeCheckoutFrontendBaseUrl(
       this.configService.get<string>('PAYMENT_CHECKOUT_BASE_URL') ||
       this.configService.get<string>('CLIENT_APP_BASE_URL') ||
-      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000')
+      this.configService.get<string>('CLIENT_APP_URL') ||
+      this.configService.get<string>('NEXT_PUBLIC_APP_URL') ||
+      this.getReturnUrlOrigin(payment) ||
+      this.configService.get<string>('app.corsOrigin', 'http://localhost:3000'),
     );
+  }
+
+  private normalizeCheckoutFrontendBaseUrl(baseUrl: string): string {
+    try {
+      const url = new URL(baseUrl);
+      if (url.pathname.includes('/payments/sepay/checkout') || url.pathname.includes('/api/v1')) {
+        url.pathname = '';
+        url.search = '';
+        url.hash = '';
+      }
+      return url.toString();
+    } catch {
+      return baseUrl;
+    }
   }
 
   private getReturnUrlOrigin(payment?: PaymentReturnUrlSource): string | undefined {
@@ -1519,7 +2227,7 @@ export class PaymentService {
 
   private async buildMentorBookingCheckoutSummary(
     payment: PaymentDocument,
-  ): Promise<SepayCheckoutSession['booking'] | undefined> {
+  ): Promise<PaymentCheckoutSession['booking'] | undefined> {
     if (payment.purpose !== PaymentPurpose.MENTOR_BOOKING) return undefined;
     if (!payment.bookingSessionId) {
       throw new ConflictException('Payment is missing a linked mentor booking');
@@ -1537,6 +2245,16 @@ export class PaymentService {
       duration: booking.schedulingDetails.duration,
       topicsToDiscuss: booking.bookingRequest?.topicsToDiscuss || [],
     };
+  }
+
+  private async resolveCheckoutBookingStatus(
+    payment: PaymentDocument,
+  ): Promise<BookingStatus | undefined> {
+    if (!payment.bookingSessionId) return undefined;
+    const booking = await this.bookingSessionModel
+      .findById(payment.bookingSessionId)
+      .exec();
+    return booking?.status;
   }
 
   private async findPendingPaymentByCheckoutToken(
@@ -1904,7 +2622,7 @@ export class PaymentService {
   }
 
   private generateCheckoutReference(): string {
-    return `CHK-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    return `${this.getSepayBankTransferCodePrefix()}${randomBytes(6).toString('hex').toUpperCase()}`;
   }
 
   private async notifyMentorBookingPending(booking: BookingSessionDocument): Promise<void> {

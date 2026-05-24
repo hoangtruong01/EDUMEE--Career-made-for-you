@@ -33,7 +33,7 @@ const menuItems = [
   { href: '/admin/careers', label: 'Nghề nghiệp', icon: Briefcase },
   { href: '/admin/content', label: 'Ngân hàng đề', icon: FileText },
   { href: '/admin/plans', label: 'Gói dịch vụ', icon: CreditCard },
-  { href: '/admin/finance', label: 'Tài chính', icon: DollarSign },
+  { href: '/admin/finance', label: 'Giao dịch', icon: DollarSign },
   { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 },
   { href: '/admin/audit-logs', label: 'Nhật ký', icon: History },
   { href: '/admin/settings', label: 'Cài đặt', icon: Settings },

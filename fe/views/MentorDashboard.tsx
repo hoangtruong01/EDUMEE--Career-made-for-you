@@ -39,6 +39,7 @@ import {
   SessionReview,
   TutorProfile,
 } from '@/lib/mentor.service';
+import { paymentService, type MentorIncomeEntry, type MentorIncomeResponse } from '@/lib/payment.service';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
@@ -50,10 +51,13 @@ import {
   ChevronRight,
   ChevronsUpDown,
   Clock,
+  HandCoins,
   Loader2,
   MessageSquare,
+  Percent,
   Plus,
   Repeat,
+  ReceiptText,
   Star,
   Trash2,
   UserCheck,
@@ -64,7 +68,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const statusLabel: Record<string, string> = {
   awaiting_payment: 'Chờ thanh toán',
@@ -100,6 +104,8 @@ const EMPTY_MENTOR_BOOKINGS: BookingSession[] = [];
 const EMPTY_MENTOR_SLOTS: MentorAvailabilitySlot[] = [];
 const EMPTY_MENTOR_REVIEWS: SessionReview[] = [];
 
+const mentorIncomeQueryKey = (accessToken: string) => ['mentorIncome', accessToken] as const;
+
 function formatMoney(amount?: number, currency = 'VND') {
   if (!amount) return 'Miễn phí';
   return new Intl.NumberFormat('vi-VN', {
@@ -115,6 +121,16 @@ function getMentorName(profile?: TutorProfile | null) {
 
 function getPrimaryRate(profile?: TutorProfile | null) {
   return profile?.pricing?.sessionRates?.[0];
+}
+
+function useMentorIncome(enabled: boolean) {
+  const { accessToken, isAuthenticated, isHydrated } = useAuth();
+
+  return useQuery({
+    queryKey: mentorIncomeQueryKey(accessToken),
+    queryFn: () => paymentService.getMentorIncome(accessToken, { range: 'year', limit: 50 }),
+    enabled: enabled && isHydrated && isAuthenticated && Boolean(accessToken),
+  });
 }
 
 function splitList(value: string) {
@@ -3046,7 +3062,172 @@ function MentorReviewsPanel({ reviews }: { reviews: SessionReview[] }) {
   );
 }
 
-export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings' | 'reviews';
+const EMPTY_MENTOR_INCOME_ENTRIES: MentorIncomeEntry[] = [];
+
+function formatIncomeMoney(amount?: number, currency = 'VND') {
+  const numericAmount = Number(amount || 0);
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(numericAmount);
+}
+
+function formatIncomeDate(value?: string) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatIncomePercent(value?: number) {
+  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(Number(value || 0) * 100)}%`;
+}
+
+function settlementLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: 'Đang chờ',
+    ready: 'Sẵn sàng nhận',
+    withheld: 'Tạm giữ',
+    refunded: 'Đã hoàn tiền',
+  };
+  return labels[status] || status;
+}
+
+function settlementTone(status: string) {
+  const tones: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+    ready: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    withheld: 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+    refunded: 'bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+  };
+  return tones[status] || tones.pending;
+}
+
+function MentorIncomePanel({ income }: { income?: MentorIncomeResponse }) {
+  const summary = income?.summary;
+  const entries = income?.entries ?? EMPTY_MENTOR_INCOME_ENTRIES;
+  const currency = summary?.currency || 'VND';
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="Doanh thu booking"
+          value={formatIncomeMoney(summary?.grossRevenue, currency)}
+          icon={ReceiptText}
+          tone="bg-sky-600"
+        />
+        <StatCard
+          title="Thu nhập của tôi"
+          value={formatIncomeMoney(summary?.mentorPayoutAmount, currency)}
+          icon={HandCoins}
+          tone="bg-emerald-600"
+        />
+        <StatCard
+          title="Sẵn sàng nhận"
+          value={formatIncomeMoney(summary?.readyPayoutAmount, currency)}
+          icon={WalletCards}
+          tone="bg-violet-600"
+        />
+        <StatCard
+          title="Phí nền tảng"
+          value={formatIncomeMoney(summary?.platformFeeAmount, currency)}
+          icon={Percent}
+          tone="bg-amber-500"
+        />
+      </div>
+
+      <PortalPanel
+        title="Chi tiết thu nhập"
+        description="Thu nhập được ghi nhận từ booking mentor đã thanh toán và settlement sau khi phiên hoàn thành."
+      >
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Đang chờ</p>
+            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">
+              {formatIncomeMoney(summary?.pendingPayoutAmount, currency)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Phiên hoàn thành</p>
+            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">
+              {summary?.completedSessionCount || 0}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bản ghi thu nhập</p>
+            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">{income?.total || 0}</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-3 text-left">Booking</th>
+                <th className="px-4 py-3 text-left">Học viên</th>
+                <th className="px-4 py-3 text-left">Giá phiên</th>
+                <th className="px-4 py-3 text-left">Phí nền tảng</th>
+                <th className="px-4 py-3 text-left">Tôi nhận</th>
+                <th className="px-4 py-3 text-left">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {entries.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                    Chưa có thu nhập mentor trong kỳ này.
+                  </td>
+                </tr>
+              ) : (
+                entries.map((entry) => (
+                  <tr key={entry.paymentId} className="hover:bg-slate-50/70 dark:hover:bg-slate-950">
+                    <td className="px-4 py-4">
+                      <p className="font-mono text-xs font-bold text-slate-500">
+                        {entry.checkoutReference || entry.bookingSessionId || entry.paymentId}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">{formatIncomeDate(entry.paidAt)}</p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-semibold text-slate-900 dark:text-slate-50">{entry.menteeName}</p>
+                      <p className="text-xs text-slate-500">{entry.sessionType.replace(/_/g, ' ')}</p>
+                    </td>
+                    <td className="px-4 py-4 font-bold text-slate-950 dark:text-slate-50">
+                      {formatIncomeMoney(entry.settlementBaseAmount, entry.currency)}
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-bold text-amber-600">
+                        {formatIncomeMoney(entry.platformFeeAmount, entry.currency)}
+                      </p>
+                      <p className="text-xs text-slate-500">{formatIncomePercent(entry.platformFeeRate)}</p>
+                    </td>
+                    <td className="px-4 py-4 font-bold text-emerald-600">
+                      {formatIncomeMoney(entry.mentorPayoutAmount, entry.currency)}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={cn('rounded-full px-3 py-1 text-xs font-bold', settlementTone(entry.settlementStatus))}>
+                        {settlementLabel(entry.settlementStatus)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PortalPanel>
+    </div>
+  );
+}
+
+export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings' | 'income' | 'reviews';
 
 export default function MentorDashboard({ view = 'overview' }: { view?: MentorDashboardView }) {
   const { accessToken } = useAuth();
@@ -3058,18 +3239,24 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
   const myProfile = portalData?.profile ?? null;
   const mentorUserId = myProfile?.userId || '';
   const mentorReviewsQuery = useMentorPortalReviews(view === 'reviews' && Boolean(myProfile));
+  const mentorIncomeQuery = useMentorIncome(view === 'income' && Boolean(myProfile));
   const mySlots = useMemo(() => portalData?.slots ?? EMPTY_MENTOR_SLOTS, [portalData?.slots]);
   const bookings = useMemo(() => portalData?.bookings ?? EMPTY_MENTOR_BOOKINGS, [portalData?.bookings]);
   const reviews = useMemo(
     () => mentorReviewsQuery.data ?? EMPTY_MENTOR_REVIEWS,
     [mentorReviewsQuery.data],
   );
+  const income = mentorIncomeQuery.data;
   const queryError =
     mentorPortalQuery.error instanceof Error ? mentorPortalQuery.error.message : '';
   const reviewsError =
     view === 'reviews' && mentorReviewsQuery.error instanceof Error ? mentorReviewsQuery.error.message : '';
+  const incomeError =
+    view === 'income' && mentorIncomeQuery.error instanceof Error ? mentorIncomeQuery.error.message : '';
   const isLoading =
-    mentorPortalQuery.isLoading || (view === 'reviews' && mentorReviewsQuery.isLoading);
+    mentorPortalQuery.isLoading ||
+    (view === 'reviews' && mentorReviewsQuery.isLoading) ||
+    (view === 'income' && mentorIncomeQuery.isLoading);
 
   const refreshMentorPortalData = useCallback(async () => {
     if (!accessToken) {
@@ -3084,6 +3271,12 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     if (view === 'reviews') {
       void queryClient.invalidateQueries({
         queryKey: mentorPortalReviewsQueryKey(accessToken),
+        exact: true,
+      });
+    }
+    if (view === 'income') {
+      void queryClient.invalidateQueries({
+        queryKey: mentorIncomeQueryKey(accessToken),
         exact: true,
       });
     }
@@ -3131,6 +3324,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     profile: 'Hồ sơ mentor',
     availability: 'Lịch làm việc',
     bookings: 'Booking cần xử lý',
+    income: 'Thu nhập của tôi',
     reviews: 'Đánh giá của tôi',
   };
   const pageDescription: Record<MentorDashboardView, string> = {
@@ -3138,6 +3332,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     profile: 'Kiểm tra hồ sơ mentor và thông tin làm việc trong cổng mentor.',
     availability: 'Quản lý khung giờ trống bằng thời khóa biểu theo từng ngày và từng giờ.',
     bookings: 'Theo dõi và xử lý các buổi tư vấn học viên đã đặt với bạn.',
+    income: 'Theo dõi doanh thu, phí nền tảng và khoản mentor được nhận.',
     reviews: 'Theo dõi phản hồi học viên gửi sau các buổi tư vấn.',
   };
 
@@ -3158,9 +3353,9 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
         </div>
       </section>
 
-      {(queryError || reviewsError) && (
+      {(queryError || reviewsError || incomeError) && (
         <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          {queryError || reviewsError}
+          {queryError || reviewsError || incomeError}
         </p>
       )}
 
@@ -3225,6 +3420,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
                   onOpenChat={openBookingChat}
                 />
               )}
+              {view === 'income' && <MentorIncomePanel income={income} />}
               {view === 'reviews' && <MentorReviewsPanel reviews={reviews} />}
             </>
           )}

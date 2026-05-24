@@ -8,6 +8,7 @@ import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.d
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { UpdateMentorPlatformFeeConfigDto } from '../payment/dto';
 import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
@@ -51,6 +52,47 @@ export class AdminController {
       plan,
       search,
     });
+  }
+
+  @ApiOperation({ summary: 'Lấy tổng quan phí mentor' })
+  @Get('finance/fees/summary')
+  async getFinanceFeesSummary(@Query('range') range?: string) {
+    return this.adminService.getFinanceFeesSummary(range);
+  }
+
+  @ApiOperation({ summary: 'Lấy danh sách settlement phí mentor' })
+  @Get('finance/fees/settlements')
+  async getFinanceFeeSettlements(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.getFinanceFeeSettlements({
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      status,
+      search,
+    });
+  }
+
+  @ApiOperation({ summary: 'Cập nhật tỷ lệ phí nền tảng cho booking mentor' })
+  @Patch('finance/fees/config')
+  async updateFinanceFeeConfig(
+    @Body() dto: UpdateMentorPlatformFeeConfigDto,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'finance.fees.update_config',
+        resource: 'payment_setting',
+        metadata: { mentorPlatformFeePercent: dto.mentorPlatformFeePercent },
+      },
+      () => this.adminService.updateMentorPlatformFeeConfig(dto.mentorPlatformFeePercent),
+    );
   }
 
   @ApiOperation({ summary: 'Lấy dữ liệu phân tích admin' })

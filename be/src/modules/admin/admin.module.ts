@@ -10,6 +10,7 @@ import { AssessmentSession, AssessmentSessionSchema } from '../assessment/schema
 import { BookingSession, BookingSessionSchema } from '../mentoring/schemas/booking-session.schema';
 import { AIService } from '../../common/services/ai.service';
 import { Payment, PaymentSchema } from '../payment/schema/payment.schema';
+import { PaymentSetting, PaymentSettingSchema } from '../payment/schema/payment-setting.schema';
 import { AiPlan, AiPlanSchema } from '../ai/schema/ai-plan.schema';
 import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-subscriptions';
 import { AuditModule } from '../audit/audit.module';
@@ -29,6 +30,7 @@ import { CareersModule } from '../careers/careers.module';
       { name: AssessmentSession.name, schema: AssessmentSessionSchema },
       { name: BookingSession.name, schema: BookingSessionSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: PaymentSetting.name, schema: PaymentSettingSchema },
       { name: AiPlan.name, schema: AiPlanSchema },
       { name: UserSubscription.name, schema: UserSubscriptionSchema },
     ]),

@@ -4,11 +4,13 @@ import { AiModule } from '../ai/ai.module';
 import {
   PaymentController,
   PaymentPublicController,
+  SepayBankWebhookController,
 } from './controllers';
 import {
   PaymentTransaction,
   PaymentTransactionSchema,
 } from './schema/payment-transaction.schema';
+import { PaymentSetting, PaymentSettingSchema } from './schema/payment-setting.schema';
 import { Payment, PaymentSchema } from './schema/payment.schema';
 import { PaymentService } from './services';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -29,11 +31,12 @@ import { WalletModule } from '../wallet/wallet.module';
     MongooseModule.forFeature([
       { name: Payment.name, schema: PaymentSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
+      { name: PaymentSetting.name, schema: PaymentSettingSchema },
       { name: BookingSession.name, schema: BookingSessionSchema },
       { name: MentorAvailabilitySlot.name, schema: MentorAvailabilitySlotSchema },
     ]),
   ],
-  controllers: [PaymentController, PaymentPublicController],
+  controllers: [PaymentController, PaymentPublicController, SepayBankWebhookController],
   providers: [PaymentService],
   exports: [PaymentService],
 })

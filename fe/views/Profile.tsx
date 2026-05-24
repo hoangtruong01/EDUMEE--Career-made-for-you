@@ -23,6 +23,7 @@ import {
   type PaymentRecord,
   type PaymentStatus,
 } from '@/lib/ai-billing.service';
+import { normalizePaymentCheckoutRedirectUrl } from '@/lib/payment-redirect';
 import { adminService, type AuditLogRecord, type DashboardStats } from '@/lib/admin.service';
 import type { WalletAccount } from '@/lib/wallet.service';
 import {
@@ -594,7 +595,7 @@ const Profile = () => {
         returnUrls: buildProfileReturnUrls(),
         useEdumeeCredit,
       });
-      window.location.href = purchase.redirectUrl;
+      window.location.href = normalizePaymentCheckoutRedirectUrl(purchase.redirectUrl);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Không thể tạo phiên thanh toán.'));
     } finally {
@@ -1685,7 +1686,7 @@ const Profile = () => {
                   <>
                     <QuickActionButton icon={Users} label="Quản lý người dùng" onClick={() => router.push('/admin/users')} />
                     <QuickActionButton icon={GraduationCap} label="Mentor & Booking" onClick={() => router.push('/admin/mentors')} />
-                    <QuickActionButton icon={CreditCard} label="Tài chính" onClick={() => router.push('/admin/finance')} />
+                    <QuickActionButton icon={CreditCard} label="Giao dịch" onClick={() => router.push('/admin/finance')} />
                   </>
                 ) : null}
                 <QuickActionButton icon={Palette} label="Giao diện" onClick={() => openModal('Giao diện')} />
@@ -2052,7 +2053,7 @@ function AdminRoleSection({
               <div className="mt-3 grid gap-2">
                 <QuickActionButton icon={Users} label="Người dùng" onClick={() => onNavigate('/admin/users')} />
                 <QuickActionButton icon={GraduationCap} label="Mentor & Booking" onClick={() => onNavigate('/admin/mentors')} />
-                <QuickActionButton icon={CreditCard} label="Tài chính" onClick={() => onNavigate('/admin/finance')} />
+                <QuickActionButton icon={CreditCard} label="Giao dịch" onClick={() => onNavigate('/admin/finance')} />
                 <QuickActionButton icon={Settings} label="Cài đặt hệ thống" onClick={() => onNavigate('/admin/settings')} />
               </div>
             </div>

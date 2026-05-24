@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import {
   CalendarDays,
   GraduationCap,
+  HandCoins,
   LayoutDashboard,
   LogOut,
   Star,
@@ -27,6 +28,7 @@ const portalItems = [
   { href: '/mentor-dashboard', activePath: '/mentor-dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { href: '/mentor-dashboard/availability', activePath: '/mentor-dashboard/availability', label: 'Lịch trống', icon: CalendarDays },
   { href: '/mentor-dashboard/bookings', activePath: '/mentor-dashboard/bookings', label: 'Booking', icon: UsersRound },
+  { href: '/mentor-dashboard/income', activePath: '/mentor-dashboard/income', label: 'Thu nhập', icon: HandCoins },
   { href: '/mentor-dashboard/reviews', activePath: '/mentor-dashboard/reviews', label: 'Đánh giá của tôi', icon: Star },
 ];
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 
@@ -11,7 +11,19 @@ import { CareerInsight, CareerInsightDocument } from '../careers/schemas/career-
 import { Career, CareerCategory, CareerDocument } from '../careers/schemas/career.schema';
 import { CareerSkillTagInput, SkillTagService } from '../careers/services/skill-tag.service';
 import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/booking-session.schema';
-import { Payment, PaymentDocument, PaymentPurpose, PaymentStatus } from '../payment/schema/payment.schema';
+import {
+  Payment,
+  PaymentDocument,
+  PaymentPurpose,
+  PaymentSettlementStatus,
+  PaymentStatus,
+} from '../payment/schema/payment.schema';
+import {
+  DEFAULT_MENTOR_PLATFORM_FEE_RATE,
+  MENTOR_FEE_SETTING_KEY,
+  PaymentSetting,
+  PaymentSettingDocument,
+} from '../payment/schema/payment-setting.schema';
 import { AiPlan, AiPlanDocument } from '../ai/schema/ai-plan.schema';
 import { SubscriptionStatus, UserSubscription, UserSubscriptionDocument } from '../users/schemas/user-subscriptions';
 import { User, UserDocument } from '../users/schemas/user.schema';
@@ -34,6 +46,13 @@ type AdminFinancePaymentParams = {
   search?: string;
 };
 
+type AdminFinanceFeeSettlementParams = {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+};
+
 type AdminFinanceRange = 'month' | 'quarter' | 'year';
 type AdminAnalyticsRange = '6m' | '12m';
 
@@ -50,6 +69,25 @@ type FinancePaymentUser = {
 
 type FinancePaymentPlan = {
   name?: string;
+};
+
+type FinancePaymentUserSummary = {
+  name?: string;
+  email?: string;
+};
+
+type FinancePaymentBooking = {
+  id?: unknown;
+  _id?: unknown;
+  sessionType?: string;
+  status?: string;
+  menteeUser?: FinancePaymentUserSummary;
+  mentorUser?: FinancePaymentUserSummary;
+  schedulingDetails?: {
+    requestedDateTime?: Date;
+    confirmedDateTime?: Date;
+    duration?: number;
+  };
 };
 
 type FinancePaymentRow = {
@@ -71,6 +109,12 @@ type FinancePaymentRow = {
   refundedAmount?: number;
   refundedAt?: Date;
   refundReason?: string;
+  settlementBaseAmount?: number;
+  platformFeeRate?: number;
+  platformFeeAmount?: number;
+  mentorPayoutAmount?: number;
+  settlementStatus?: PaymentSettlementStatus;
+  settledAt?: Date;
 };
 
 type PaymentAmountAggregateRow = {
@@ -95,6 +139,7 @@ export class AdminService {
     @InjectModel(AssessmentSession.name) private assessmentSessionModel: Model<AssessmentSessionDocument>,
     @InjectModel(BookingSession.name) private bookingSessionModel: Model<BookingSessionDocument>,
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
+    @InjectModel(PaymentSetting.name) private paymentSettingModel: Model<PaymentSettingDocument>,
     @InjectModel(AiPlan.name) private aiPlanModel: Model<AiPlanDocument>,
     @InjectModel(UserSubscription.name) private userSubscriptionModel: Model<UserSubscriptionDocument>,
     private readonly aiService: AIService,
@@ -665,6 +710,117 @@ export class AdminService {
     };
   }
 
+  async getFinanceFeesSummary(rangeValue?: string) {
+    const range = this.normalizeFinanceRange(rangeValue);
+    const current = this.getDateRange(range);
+    const config = await this.getMentorPlatformFeeConfig();
+    const payments = await this.paymentModel
+      .find({
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        status: PaymentStatus.PAID,
+        paidAt: { $gte: current.from, $lt: current.to },
+      })
+      .exec();
+
+    const totals = payments.reduce(
+      (acc, payment) => {
+        const amounts = this.resolveMentorSettlementAmounts(payment, config.mentorPlatformFeeRate);
+        acc.grossRevenue += amounts.settlementBaseAmount;
+        acc.platformFeeAmount += amounts.platformFeeAmount;
+        acc.mentorPayoutAmount += amounts.mentorPayoutAmount;
+        if (payment.settlementStatus === PaymentSettlementStatus.READY) {
+          acc.readyPayoutAmount += amounts.mentorPayoutAmount;
+          acc.readyCount += 1;
+        } else if (payment.settlementStatus === PaymentSettlementStatus.WITHHELD) {
+          acc.withheldCount += 1;
+        } else {
+          acc.pendingPayoutAmount += amounts.mentorPayoutAmount;
+          acc.pendingCount += 1;
+        }
+        return acc;
+      },
+      {
+        grossRevenue: 0,
+        platformFeeAmount: 0,
+        mentorPayoutAmount: 0,
+        readyPayoutAmount: 0,
+        pendingPayoutAmount: 0,
+        pendingCount: 0,
+        readyCount: 0,
+        withheldCount: 0,
+      },
+    );
+
+    return {
+      range,
+      currency: 'VND',
+      config,
+      grossRevenue: this.roundCurrency(totals.grossRevenue),
+      platformFeeAmount: this.roundCurrency(totals.platformFeeAmount),
+      mentorPayoutAmount: this.roundCurrency(totals.mentorPayoutAmount),
+      readyPayoutAmount: this.roundCurrency(totals.readyPayoutAmount),
+      pendingPayoutAmount: this.roundCurrency(totals.pendingPayoutAmount),
+      settlementCount: payments.length,
+      pendingCount: totals.pendingCount,
+      readyCount: totals.readyCount,
+      withheldCount: totals.withheldCount,
+    };
+  }
+
+  async getFinanceFeeSettlements(params: AdminFinanceFeeSettlementParams = {}) {
+    const page = this.toPositiveInteger(params.page, 1);
+    const limit = Math.min(this.toPositiveInteger(params.limit, 10), 100);
+    const filter: Record<string, unknown> = {
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      status: PaymentStatus.PAID,
+    };
+    if (params.status && params.status !== 'all') {
+      filter.settlementStatus = params.status;
+    }
+
+    const payments = await this.paymentModel
+      .find(filter)
+      .sort({ paidAt: -1, createdAt: -1 })
+      .populate('userId', 'name email')
+      .populate({
+        path: 'bookingSessionId',
+        populate: [
+          { path: 'mentorUser', select: 'name email avatar' },
+          { path: 'menteeUser', select: 'name email avatar' },
+        ],
+      })
+      .exec();
+    const config = await this.getMentorPlatformFeeConfig();
+    const rows = payments.map((payment) => this.serializeFinanceFeeSettlement(payment, config.mentorPlatformFeeRate));
+    const filteredRows = this.filterFeeSettlementRows(rows, params.search);
+    const total = filteredRows.length;
+
+    return {
+      settlements: filteredRows.slice((page - 1) * limit, page * limit),
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async updateMentorPlatformFeeConfig(mentorPlatformFeePercent: number) {
+    const percent = Number(mentorPlatformFeePercent);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw new BadRequestException('mentorPlatformFeePercent must be between 0 and 100');
+    }
+
+    const rate = Number((percent / 100).toFixed(4));
+    const setting = await this.paymentSettingModel
+      .findOneAndUpdate(
+        { key: MENTOR_FEE_SETTING_KEY },
+        { $set: { mentorPlatformFeeRate: rate } },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      )
+      .exec();
+    return this.serializeMentorPlatformFeeConfig(setting?.mentorPlatformFeeRate);
+  }
+
   async getAnalytics(rangeValue?: string) {
     const range = this.normalizeAnalyticsRange(rangeValue);
     const months = range === '6m' ? 6 : 12;
@@ -865,8 +1021,156 @@ export class AdminService {
       refundedAmount: row.refundedAmount,
       refundedAt: row.refundedAt,
       refundReason: row.refundReason,
+      settlementBaseAmount: row.settlementBaseAmount,
+      platformFeeRate: row.platformFeeRate,
+      platformFeeAmount: row.platformFeeAmount,
+      mentorPayoutAmount: row.mentorPayoutAmount,
+      settlementStatus: row.settlementStatus,
+      settledAt: row.settledAt,
       eventDate,
     };
+  }
+
+  private async getMentorPlatformFeeConfig() {
+    const setting = await this.paymentSettingModel
+      .findOne({ key: MENTOR_FEE_SETTING_KEY })
+      .exec();
+    return this.serializeMentorPlatformFeeConfig(setting?.mentorPlatformFeeRate);
+  }
+
+  private serializeMentorPlatformFeeConfig(rateValue?: number) {
+    const mentorPlatformFeeRate = this.normalizeMentorPlatformFeeRate(rateValue, DEFAULT_MENTOR_PLATFORM_FEE_RATE);
+    const mentorPayoutRate = Math.max(1 - mentorPlatformFeeRate, 0);
+    return {
+      mentorPlatformFeeRate,
+      mentorPlatformFeePercent: Number((mentorPlatformFeeRate * 100).toFixed(2)),
+      mentorPayoutRate: Number(mentorPayoutRate.toFixed(4)),
+      mentorPayoutPercent: Number((mentorPayoutRate * 100).toFixed(2)),
+    };
+  }
+
+  private serializeFinanceFeeSettlement(payment: PaymentDocument, defaultRate: number) {
+    const row = payment.toJSON() as FinancePaymentRow & {
+      bookingSessionId?: unknown;
+      userId?: unknown;
+    };
+    const booking = this.toPlainRecord(row.bookingSessionId);
+    const mentor = this.toPlainRecord(booking.mentorUser);
+    const mentee = this.toPlainRecord(booking.menteeUser);
+    const payer = this.toPlainRecord(row.userId);
+    const schedulingDetails = this.toPlainRecord(booking.schedulingDetails);
+    const amounts = this.resolveMentorSettlementAmounts(payment, defaultRate);
+    const settlementStatus = row.settlementStatus || PaymentSettlementStatus.PENDING;
+
+    return {
+      paymentId: row.id,
+      bookingSessionId: this.readId(booking.id || booking._id || row.bookingSessionId),
+      checkoutReference: row.checkoutReference,
+      providerPaymentId: row.providerPaymentId,
+      mentorName: this.readString(mentor.name) || 'Mentor',
+      mentorEmail: this.readString(mentor.email) || '',
+      menteeName: this.readString(mentee.name) || this.readString(payer.name) || 'Học viên',
+      menteeEmail: this.readString(mentee.email) || this.readString(payer.email) || '',
+      sessionType: this.readString(booking.sessionType) || '',
+      bookingStatus: this.readString(booking.status) || '',
+      settlementBaseAmount: amounts.settlementBaseAmount,
+      platformFeeRate: amounts.platformFeeRate,
+      platformFeeAmount: amounts.platformFeeAmount,
+      mentorPayoutAmount: amounts.mentorPayoutAmount,
+      settlementStatus,
+      currency: row.currency || 'VND',
+      paidAt: row.paidAt,
+      settledAt: row.settledAt,
+      sessionDate: schedulingDetails.confirmedDateTime || schedulingDetails.requestedDateTime,
+    };
+  }
+
+  private filterFeeSettlementRows<T extends Record<string, unknown>>(rows: T[], search?: string): T[] {
+    const normalized = search?.trim().toLowerCase();
+    if (!normalized) return rows;
+
+    return rows.filter((row) =>
+      [
+        row.paymentId,
+        row.bookingSessionId,
+        row.checkoutReference,
+        row.providerPaymentId,
+        row.mentorName,
+        row.mentorEmail,
+        row.menteeName,
+        row.menteeEmail,
+      ]
+        .map((value) => String(value || '').toLowerCase())
+        .some((value) => value.includes(normalized)),
+    );
+  }
+
+  private resolveMentorSettlementAmounts(payment: PaymentDocument, defaultRate: number) {
+    const base = this.getMentorSettlementBaseAmount(payment);
+    const platformFeeRate = this.normalizeMentorPlatformFeeRate(payment.platformFeeRate, defaultRate);
+    const platformFeeAmount = this.resolveCurrencyAmount(payment.platformFeeAmount, this.roundCurrency(base * platformFeeRate));
+    const mentorPayoutAmount = this.resolveCurrencyAmount(
+      payment.mentorPayoutAmount,
+      this.roundCurrency(Math.max(base - platformFeeAmount, 0)),
+    );
+
+    return {
+      settlementBaseAmount: base,
+      platformFeeRate,
+      platformFeeAmount,
+      mentorPayoutAmount,
+    };
+  }
+
+  private getMentorSettlementBaseAmount(payment: PaymentDocument): number {
+    const explicitBase = Number(payment.settlementBaseAmount);
+    if (Number.isFinite(explicitBase) && explicitBase > 0) return this.roundCurrency(explicitBase);
+    return this.roundCurrency(this.getPaymentTotalAmount(payment));
+  }
+
+  private getPaymentTotalAmount(payment: PaymentDocument): number {
+    const subtotal = Number(payment.subtotalAmount);
+    if (Number.isFinite(subtotal) && subtotal > 0) return this.roundCurrency(subtotal);
+    return this.roundCurrency(Number(payment.amount || 0) + Number(payment.creditAppliedAmount || 0));
+  }
+
+  private normalizeMentorPlatformFeeRate(value: unknown, fallback: number): number {
+    const rawRate = Number(value);
+    if (Number.isFinite(rawRate) && rawRate >= 0) {
+      return Math.min(rawRate > 1 ? rawRate / 100 : rawRate, 1);
+    }
+    return Math.min(Math.max(fallback, 0), 1);
+  }
+
+  private resolveCurrencyAmount(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? this.roundCurrency(parsed) : fallback;
+  }
+
+  private roundCurrency(value: number): number {
+    return Number(value.toFixed(2));
+  }
+
+  private toPlainRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const maybeDocument = value as { toJSON?: () => Record<string, unknown> };
+    if (typeof maybeDocument.toJSON === 'function') {
+      const json = maybeDocument.toJSON();
+      return json && typeof json === 'object' && !Array.isArray(json) ? json : {};
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private readString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private readId(value: unknown): string | undefined {
+    if (!value) return undefined;
+    if (typeof value === 'string') return value;
+    if (value instanceof Types.ObjectId) return value.toString();
+    if (typeof value === 'object' && 'toString' in value) return value.toString();
+    return undefined;
   }
 
   private async sumPaymentAmount(filter: Record<string, unknown>): Promise<number> {

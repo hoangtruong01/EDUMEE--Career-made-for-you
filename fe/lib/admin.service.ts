@@ -126,11 +126,69 @@ export interface AdminFinancePayment {
   refundedAmount?: number;
   refundedAt?: string;
   refundReason?: string;
+  settlementBaseAmount?: number;
+  platformFeeRate?: number;
+  platformFeeAmount?: number;
+  mentorPayoutAmount?: number;
+  settlementStatus?: 'pending' | 'ready' | 'withheld' | 'refunded' | string;
+  settledAt?: string;
   eventDate?: string;
 }
 
 export interface AdminFinancePaymentsResponse {
   payments: AdminFinancePayment[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface AdminFinanceFeeConfig {
+  mentorPlatformFeeRate: number;
+  mentorPlatformFeePercent: number;
+  mentorPayoutRate: number;
+  mentorPayoutPercent: number;
+}
+
+export interface AdminFinanceFeesSummary {
+  range: 'month' | 'quarter' | 'year';
+  currency: string;
+  config: AdminFinanceFeeConfig;
+  grossRevenue: number;
+  platformFeeAmount: number;
+  mentorPayoutAmount: number;
+  readyPayoutAmount: number;
+  pendingPayoutAmount: number;
+  settlementCount: number;
+  pendingCount: number;
+  readyCount: number;
+  withheldCount: number;
+}
+
+export interface AdminFinanceFeeSettlement {
+  paymentId: string;
+  bookingSessionId?: string;
+  checkoutReference?: string;
+  providerPaymentId?: string;
+  mentorName: string;
+  mentorEmail?: string;
+  menteeName: string;
+  menteeEmail?: string;
+  sessionType: string;
+  bookingStatus: string;
+  settlementBaseAmount: number;
+  platformFeeRate: number;
+  platformFeeAmount: number;
+  mentorPayoutAmount: number;
+  settlementStatus: 'pending' | 'ready' | 'withheld' | 'refunded' | string;
+  currency: string;
+  paidAt?: string;
+  settledAt?: string;
+  sessionDate?: string;
+}
+
+export interface AdminFinanceFeeSettlementsResponse {
+  settlements: AdminFinanceFeeSettlement[];
   total: number;
   page: number;
   limit: number;
@@ -332,6 +390,36 @@ export const adminService = {
   ) {
     return apiClient.get<AdminFinancePaymentsResponse>(
       `/admin/finance/payments${queryString(params)}`,
+      token,
+    );
+  },
+
+  getFinanceFeesSummary(token: string, range: 'month' | 'quarter' | 'year' = 'month') {
+    return apiClient.get<AdminFinanceFeesSummary>(
+      `/admin/finance/fees/summary${queryString({ range })}`,
+      token,
+    );
+  },
+
+  getFinanceFeeSettlements(
+    token: string,
+    params: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+    } = {},
+  ) {
+    return apiClient.get<AdminFinanceFeeSettlementsResponse>(
+      `/admin/finance/fees/settlements${queryString(params)}`,
+      token,
+    );
+  },
+
+  updateMentorPlatformFeeConfig(token: string, mentorPlatformFeePercent: number) {
+    return apiClient.patch<AdminFinanceFeeConfig>(
+      '/admin/finance/fees/config',
+      { mentorPlatformFeePercent },
       token,
     );
   },
