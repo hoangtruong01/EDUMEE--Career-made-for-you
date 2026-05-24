@@ -231,7 +231,7 @@ export default function WelcomeScreen() {
 
   // Typing effect logic
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: any;
     const fullWord = TYPING_WORDS[wordIndex];
     
     const type = () => {
@@ -1010,7 +1010,6 @@ const styles = StyleSheet.create({
   dot: {
     height: 6,
     borderRadius: 3,
-    transition: 'width 0.25s ease',
   },
   footerSpace: {
     height: 40,

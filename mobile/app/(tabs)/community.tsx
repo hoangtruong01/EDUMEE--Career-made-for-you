@@ -7,11 +7,13 @@ import {
   TouchableOpacity, 
   Image, 
   TextInput,
-  Modal
+  Modal,
+  Platform,
+  Alert
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../../src/theme';
 import { GlassView } from '../../src/components/GlassView';
-import { Heart, MessageSquare, Star, Calendar, MessageCircle, ArrowRight, UserCheck, Send, Sparkles } from 'lucide-react-native';
+import { Heart, MessageSquare, Send, Sparkles, Plus, Image as ImageIcon, X } from 'lucide-react-native';
 
 const MOCK_POSTS = [
   {
@@ -40,39 +42,13 @@ const MOCK_POSTS = [
   }
 ];
 
-const MOCK_MENTORS = [
-  {
-    id: '1',
-    name: 'Dr. Lê Hoài Nam',
-    title: 'AI Architect tại VinAI',
-    skills: ['Machine Learning', 'Deep Learning', 'Computer Vision'],
-    rating: 4.9,
-    reviews: 24,
-    price: '200k / phiên',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150',
-    bio: 'Hơn 10 năm nghiên cứu và triển khai các hệ thống AI quy mô lớn. Cựu kỹ sư Google.'
-  },
-  {
-    id: '2',
-    name: 'Ms. Hoàng Thu Thủy',
-    title: 'Senior Product Designer tại Grab',
-    skills: ['Product Design', 'User Research', 'Design System'],
-    rating: 4.8,
-    reviews: 18,
-    price: '150k / phiên',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150',
-    bio: 'Đam mê xây dựng trải nghiệm tối giản và hiệu quả. Đã dẫn dắt hơn 50 bạn trẻ vào nghề.'
-  }
-];
-
 export default function CommunityScreen() {
-  const [activeTab, setActiveTab] = useState<'feed' | 'mentors'>('feed');
+  const [posts, setPosts] = useState(MOCK_POSTS);
   const [likedPosts, setLikedPosts] = useState<string[]>([]);
-  const [bookingModalVisible, setBookingModalVisible] = useState(false);
-  const [selectedMentor, setSelectedMentor] = useState<any>(null);
-  const [bookingStep, setBookingStep] = useState(1);
-  const [bookingReason, setBookingReason] = useState('');
-  const [bookingDate, setBookingDate] = useState('Ngày mai, 14:00 - 15:00');
+  const [newPostModalVisible, setNewPostModalVisible] = useState(false);
+  const [newPostTitle, setNewPostTitle] = useState('');
+  const [newPostContent, setNewPostContent] = useState('');
+  const [newPostCategory, setNewPostCategory] = useState('Định hướng');
 
   const toggleLike = (postId: string) => {
     if (likedPosts.includes(postId)) {
@@ -82,207 +58,164 @@ export default function CommunityScreen() {
     }
   };
 
-  const handleOpenBooking = (mentor: any) => {
-    setSelectedMentor(mentor);
-    setBookingStep(1);
-    setBookingModalVisible(true);
-  };
+  const handleCreatePost = () => {
+    if (!newPostTitle.trim() || !newPostContent.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ tiêu đề và nội dung.');
+      return;
+    }
 
-  const handleBookingSubmit = () => {
-    setBookingStep(2); // Success step
+    const newPost = {
+      id: String(posts.length + 1),
+      author: 'Học viên EDUMEE',
+      title: newPostTitle,
+      content: newPostContent,
+      category: newPostCategory,
+      hashtags: ['#edumee', '#newbie'],
+      likes: 0,
+      comments: 0,
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150',
+      time: 'Vừa xong'
+    };
+
+    setPosts([newPost, ...posts]);
+    setNewPostTitle('');
+    setNewPostContent('');
+    setNewPostModalVisible(false);
+    Alert.alert('Thành công', 'Bài viết của bạn đã được đăng lên bảng tin!');
   };
 
   return (
     <View style={styles.container}>
-      {/* Header with Custom Tabs */}
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Cộng đồng</Text>
-        <View style={styles.tabContainer}>
+        <View style={styles.flexRowBetween}>
+          <View>
+            <Text style={styles.title}>Cộng đồng</Text>
+            <Text style={styles.subtitle}>Kết nối và chia sẻ kinh nghiệm cùng học viên khác</Text>
+          </View>
           <TouchableOpacity 
-            onPress={() => setActiveTab('feed')}
-            style={[styles.tabBtn, activeTab === 'feed' && styles.tabBtnActive]}
+            onPress={() => setNewPostModalVisible(true)}
+            style={styles.addPostBtn}
           >
-            <Text style={[styles.tabText, activeTab === 'feed' && styles.tabTextActive]}>Bảng tin</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => setActiveTab('mentors')}
-            style={[styles.tabBtn, activeTab === 'mentors' && styles.tabBtnActive]}
-          >
-            <Text style={[styles.tabText, activeTab === 'mentors' && styles.tabTextActive]}>Mentors</Text>
+            <Plus size={20} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {activeTab === 'feed' ? (
-          /* Bảng tin Feed */
-          <View style={styles.feedContainer}>
-            {MOCK_POSTS.map((post) => {
-              const isLiked = likedPosts.includes(post.id);
-              return (
-                <GlassView key={post.id} style={styles.postCard}>
-                  <View style={styles.postAuthor}>
-                    <Image source={{ uri: post.avatar }} style={styles.authorAvatar} />
-                    <View style={styles.authorInfo}>
-                      <Text style={styles.authorName}>{post.author}</Text>
-                      <Text style={styles.postTime}>{post.time} • <Text style={styles.categoryText}>{post.category}</Text></Text>
-                    </View>
-                  </View>
+        {/* Quick Share Banner */}
+        <GlassView style={styles.shareBanner}>
+          <Sparkles size={16} color={COLORS.secondary} />
+          <Text style={styles.shareText}>
+            Bạn vừa học thêm kỹ năng mới? Hãy chia sẻ cùng mọi người ngay nhé!
+          </Text>
+        </GlassView>
 
-                  <Text style={styles.postTitle}>{post.title}</Text>
-                  <Text style={styles.postContent}>{post.content}</Text>
-
-                  <View style={styles.hashtagsContainer}>
-                    {post.hashtags.map((tag, idx) => (
-                      <Text key={idx} style={styles.hashtag}>{tag}</Text>
-                    ))}
-                  </View>
-
-                  <View style={styles.postActions}>
-                    <TouchableOpacity onPress={() => toggleLike(post.id)} style={styles.actionBtn}>
-                      <Heart size={18} color={isLiked ? '#EF4444' : COLORS.muted} fill={isLiked ? '#EF4444' : 'transparent'} />
-                      <Text style={[styles.actionText, isLiked && { color: '#EF4444' }]}>
-                        {post.likes + (isLiked ? 1 : 0)}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.actionBtn}>
-                      <MessageSquare size={18} color={COLORS.muted} />
-                      <Text style={styles.actionText}>{post.comments}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </GlassView>
-              );
-            })}
-          </View>
-        ) : (
-          /* Danh sách Mentors */
-          <View style={styles.mentorsContainer}>
-            <GlassView style={styles.mentorNotice}>
-              <Sparkles size={16} color={COLORS.primary} />
-              <Text style={styles.noticeText}>
-                Tất cả Mentors của EDUMEE đều đã qua thẩm định chuyên môn bởi chuyên gia tuyển dụng.
-              </Text>
-            </GlassView>
-
-            {MOCK_MENTORS.map((mentor) => (
-              <GlassView key={mentor.id} style={styles.mentorCard}>
-                <View style={styles.mentorHeader}>
-                  <Image source={{ uri: mentor.avatar }} style={styles.mentorAvatar} />
-                  <View style={styles.mentorInfo}>
-                    <Text style={styles.mentorName}>{mentor.name}</Text>
-                    <Text style={styles.mentorTitle}>{mentor.title}</Text>
-                    
-                    <View style={styles.ratingContainer}>
-                      <Star size={14} color="#F59E0B" fill="#F59E0B" />
-                      <Text style={styles.ratingText}>{mentor.rating} ({mentor.reviews} reviews)</Text>
-                    </View>
+        {/* Bảng tin Feed */}
+        <View style={styles.feedContainer}>
+          {posts.map((post) => {
+            const isLiked = likedPosts.includes(post.id);
+            return (
+              <GlassView key={post.id} style={styles.postCard}>
+                <View style={styles.postAuthor}>
+                  <Image source={{ uri: post.avatar }} style={styles.authorAvatar} />
+                  <View style={styles.authorInfo}>
+                    <Text style={styles.authorName}>{post.author}</Text>
+                    <Text style={styles.postTime}>{post.time} • <Text style={styles.categoryText}>{post.category}</Text></Text>
                   </View>
                 </View>
 
-                <Text style={styles.mentorBio}>{mentor.bio}</Text>
+                <Text style={styles.postTitle}>{post.title}</Text>
+                <Text style={styles.postContent}>{post.content}</Text>
 
-                <View style={styles.skillsTagContainer}>
-                  {mentor.skills.map((skill, idx) => (
-                    <View key={idx} style={styles.skillTag}>
-                      <Text style={styles.skillTagText}>{skill}</Text>
-                    </View>
+                <View style={styles.hashtagsContainer}>
+                  {post.hashtags.map((tag, idx) => (
+                    <Text key={idx} style={styles.hashtag}>{tag}</Text>
                   ))}
                 </View>
 
-                <View style={styles.mentorFooter}>
-                  <View>
-                    <Text style={styles.priceLabel}>Phí tư vấn</Text>
-                    <Text style={styles.priceValue}>{mentor.price}</Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    onPress={() => handleOpenBooking(mentor)}
-                    style={styles.bookingBtn}
-                  >
-                    <Calendar size={15} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.bookingBtnText}>Đặt lịch</Text>
+                <View style={styles.postActions}>
+                  <TouchableOpacity onPress={() => toggleLike(post.id)} style={styles.actionBtn}>
+                    <Heart size={18} color={isLiked ? '#EF4444' : COLORS.muted} fill={isLiked ? '#EF4444' : 'transparent'} />
+                    <Text style={[styles.actionText, isLiked && { color: '#EF4444' }]}>
+                      {post.likes + (isLiked ? 1 : 0)}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionBtn}>
+                    <MessageSquare size={18} color={COLORS.muted} />
+                    <Text style={styles.actionText}>{post.comments}</Text>
                   </TouchableOpacity>
                 </View>
               </GlassView>
-            ))}
-          </View>
-        )}
+            );
+          })}
+        </View>
 
         <View style={styles.footerSpace} />
       </ScrollView>
 
-      {/* Booking Modal */}
+      {/* New Post Modal */}
       <Modal
-        visible={bookingModalVisible}
+        visible={newPostModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setBookingModalVisible(false)}
+        onRequestClose={() => setNewPostModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <GlassView style={styles.modalContent}>
-            {bookingStep === 1 ? (
-              <View>
-                <Text style={styles.modalTitle}>Đặt lịch với Mentor</Text>
-                {selectedMentor && (
-                  <View style={styles.modalMentorHeader}>
-                    <Image source={{ uri: selectedMentor.avatar }} style={styles.modalMentorAvatar} />
-                    <View>
-                      <Text style={styles.modalMentorName}>{selectedMentor.name}</Text>
-                      <Text style={styles.modalMentorTitle}>{selectedMentor.title}</Text>
-                    </View>
-                  </View>
-                )}
+            <View style={styles.flexRowBetween}>
+              <Text style={styles.modalTitle}>📝 Đăng bài thảo luận</Text>
+              <TouchableOpacity onPress={() => setNewPostModalVisible(false)}>
+                <X size={20} color={COLORS.muted} />
+              </TouchableOpacity>
+            </View>
 
-                <Text style={styles.inputLabel}>Chọn thời gian tư vấn</Text>
-                <View style={styles.timeSelector}>
-                  <Calendar size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
-                  <Text style={styles.timeText}>{bookingDate}</Text>
-                </View>
+            <Text style={styles.inputLabel}>Tiêu đề bài đăng</Text>
+            <TextInput
+              placeholder="Nhập tiêu đề thu hút sự chú ý..."
+              placeholderTextColor={COLORS.muted}
+              style={styles.textInput}
+              value={newPostTitle}
+              onChangeText={setNewPostTitle}
+            />
 
-                <Text style={styles.inputLabel}>Nội dung bạn muốn trao đổi</Text>
-                <TextInput
-                  placeholder="Ví dụ: Lộ trình học AI, sửa CV, chuẩn bị phỏng vấn..."
-                  placeholderTextColor={COLORS.muted}
-                  style={styles.textArea}
-                  multiline={true}
-                  numberOfLines={4}
-                  value={bookingReason}
-                  onChangeText={setBookingReason}
-                />
+            <Text style={styles.inputLabel}>Nội dung thảo luận</Text>
+            <TextInput
+              placeholder="Chia sẻ câu hỏi hoặc kiến thức của bạn tại đây..."
+              placeholderTextColor={COLORS.muted}
+              style={styles.textArea}
+              multiline={true}
+              numberOfLines={6}
+              value={newPostContent}
+              onChangeText={setNewPostContent}
+            />
 
-                <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    onPress={() => setBookingModalVisible(false)}
-                    style={styles.cancelBtn}
+            <Text style={styles.inputLabel}>Chuyên mục</Text>
+            <View style={styles.categorySelectRow}>
+              {['Định hướng', 'Kinh nghiệm', 'Học tập'].map((cat) => {
+                const isSelected = newPostCategory === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => setNewPostCategory(cat)}
+                    style={[styles.catPill, isSelected && styles.catPillActive]}
                   >
-                    <Text style={styles.cancelText}>Hủy</Text>
+                    <Text style={[styles.catPillText, isSelected && styles.catPillTextActive]}>{cat}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={handleBookingSubmit}
-                    style={styles.submitBtn}
-                  >
-                    <Text style={styles.submitText}>Đặt lịch & Thanh toán</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.successContainer}>
-                <View style={styles.successIconWrapper}>
-                  <UserCheck size={40} color={COLORS.primary} />
-                </View>
-                <Text style={styles.successTitle}>Đặt lịch thành công!</Text>
-                <Text style={styles.successDesc}>
-                  Yêu cầu đặt lịch đã được gửi đến Mentor **{selectedMentor?.name}**. Bạn sẽ nhận được thông báo khi Mentor đồng ý xác nhận.
-                </Text>
-                <TouchableOpacity 
-                  onPress={() => setBookingModalVisible(false)}
-                  style={styles.closeSuccessBtn}
-                >
-                  <Text style={styles.closeSuccessText}>Xong</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                );
+              })}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                onPress={handleCreatePost}
+                style={styles.submitBtn}
+              >
+                <Send size={15} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.submitText}>Đăng bài</Text>
+              </TouchableOpacity>
+            </View>
           </GlassView>
         </View>
       </Modal>
@@ -296,48 +229,55 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'ios' ? 60 : 45,
     paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
     backgroundColor: 'rgba(15, 23, 42, 0.4)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   title: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800',
     color: COLORS.foreground,
-    marginBottom: SPACING.md,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  tabBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabBtnActive: {
-    borderBottomColor: COLORS.primary,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
+  subtitle: {
+    fontSize: 12,
     color: COLORS.muted,
+    marginTop: 2,
   },
-  tabTextActive: {
-    color: COLORS.primary,
+  addPostBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollContent: {
     padding: SPACING.lg,
+  },
+  shareBanner: {
+    flexDirection: 'row',
+    padding: SPACING.md,
+    backgroundColor: 'rgba(139, 92, 246, 0.03)',
+    borderColor: 'rgba(139, 92, 246, 0.12)',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  shareText: {
+    flex: 1,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    lineHeight: 18,
   },
   feedContainer: {
     gap: SPACING.md,
   },
   postCard: {
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
   postAuthor: {
     flexDirection: 'row',
@@ -345,37 +285,39 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   authorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     marginRight: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   authorInfo: {
     flex: 1,
   },
   authorName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: COLORS.foreground,
   },
   postTime: {
     fontSize: 11,
     color: COLORS.muted,
-    marginTop: 2,
+    marginTop: 1,
   },
   categoryText: {
     color: COLORS.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   postTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: COLORS.foreground,
-    marginBottom: SPACING.xs,
+    marginBottom: 4,
   },
   postContent: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.85)',
     lineHeight: 18,
     marginBottom: SPACING.md,
   },
@@ -386,7 +328,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   hashtag: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.secondary,
     fontWeight: '600',
   },
@@ -395,7 +337,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    paddingTop: SPACING.md,
+    paddingTop: SPACING.sm,
   },
   actionBtn: {
     flexDirection: 'row',
@@ -403,119 +345,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionText: {
-    fontSize: 13,
-    color: COLORS.muted,
-    fontWeight: '600',
-  },
-  mentorsContainer: {
-    gap: SPACING.md,
-  },
-  mentorNotice: {
-    flexDirection: 'row',
-    padding: SPACING.md,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
-    borderColor: 'rgba(59, 130, 246, 0.15)',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  noticeText: {
-    flex: 1,
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 16,
-  },
-  mentorCard: {
-    padding: SPACING.md,
-  },
-  mentorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  mentorAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  mentorInfo: {
-    flex: 1,
-  },
-  mentorName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.foreground,
-  },
-  mentorTitle: {
-    fontSize: 13,
     color: COLORS.muted,
-    marginTop: 2,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  ratingText: {
-    fontSize: 11,
-    color: COLORS.muted,
-    fontWeight: '600',
-  },
-  mentorBio: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 18,
-    marginBottom: SPACING.md,
-  },
-  skillsTagContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: SPACING.md,
-  },
-  skillTag: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.md,
-  },
-  skillTagText: {
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  mentorFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    paddingTop: SPACING.sm,
-  },
-  priceLabel: {
-    fontSize: 11,
-    color: COLORS.muted,
-  },
-  priceValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  bookingBtn: {
-    backgroundColor: COLORS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: RADIUS.md,
-  },
-  bookingBtnText: {
-    color: '#fff',
-    fontSize: 13,
     fontWeight: '700',
   },
   footerSpace: {
@@ -525,140 +356,90 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: SPACING.lg,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modalContent: {
-    padding: SPACING.xl,
+    padding: SPACING.lg,
     borderRadius: RADIUS.xl,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: COLORS.foreground,
-    marginBottom: SPACING.md,
-  },
-  modalMentorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-  },
-  modalMentorAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  modalMentorName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.foreground,
-  },
-  modalMentorTitle: {
-    fontSize: 12,
-    color: COLORS.muted,
   },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: COLORS.foreground,
     marginBottom: 6,
     marginTop: SPACING.md,
   },
-  timeSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: SPACING.md,
+  textInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  timeText: {
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: SPACING.md,
+    height: 44,
     color: COLORS.foreground,
-    fontSize: 14,
+    fontSize: 13,
   },
   textArea: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     padding: SPACING.md,
     color: COLORS.foreground,
-    fontSize: 14,
-    height: 80,
+    fontSize: 13,
+    height: 100,
     textAlignVertical: 'top',
   },
-  modalActions: {
+  categorySelectRow: {
     flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.xl,
+    gap: SPACING.sm,
   },
-  cancelBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  catPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
-  cancelText: {
+  catPillActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  catPillText: {
     color: COLORS.muted,
-    fontWeight: '600',
-    fontSize: 14,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  catPillTextActive: {
+    color: '#fff',
+  },
+  modalActions: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
   },
   submitBtn: {
-    flex: 2,
-    height: 48,
+    height: 46,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   submitText: {
-    color: COLORS.foreground,
+    color: '#fff',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 13,
   },
-  successContainer: {
+  flexRowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-  },
-  successIconWrapper: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  successTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.foreground,
-    marginBottom: SPACING.sm,
-  },
-  successDesc: {
-    fontSize: 14,
-    color: COLORS.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: SPACING.xl,
-  },
-  closeSuccessBtn: {
-    backgroundColor: COLORS.primary,
-    height: 46,
-    width: 140,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeSuccessText: {
-    color: COLORS.foreground,
-    fontWeight: '700',
-    fontSize: 14,
   },
 });
