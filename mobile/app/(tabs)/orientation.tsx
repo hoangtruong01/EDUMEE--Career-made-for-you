@@ -28,7 +28,8 @@ import {
   TrendingUp, 
   Target, 
   AlertTriangle,
-  Lightbulb
+  Lightbulb,
+  Trophy
 } from 'lucide-react-native';
 import { api } from '../../src/services/api';
 
@@ -226,6 +227,7 @@ export default function OrientationScreen() {
       milestones: phase.milestones?.map((m: any) => ({
         title: m.title,
         desc: m.description,
+        done: m.done || false,
         tasks: m.tasks?.map((t: any) => t.taskTitle) || [],
       })) || [],
       skills: phase.milestones?.flatMap((m: any) => m.skills?.map((s: any) => s.skillName) || [])?.slice(0, 3) || [],
@@ -317,66 +319,137 @@ export default function OrientationScreen() {
                 {/* Vertical Timeline Steps */}
                 <Text style={styles.sectionTitle}>Các giai đoạn phát triển ({roadmapData.length})</Text>
                 
-                <View style={styles.timelineContainer}>
+                <View style={styles.webTimelineContainer}>
                   {roadmapData.map((phase: any, index: number) => {
                     const isExpanded = expandedPhase === index;
+                    const isCurrent = phase.status === 'current';
+                    const isLocked = phase.status === 'locked';
+
                     return (
-                      <View key={index} style={styles.timelineItem}>
-                        {/* Dot Indicator */}
-                        <View style={styles.timelineLeft}>
-                          <View style={[styles.timelineLine, index === roadmapData.length - 1 && { height: 0 }]} />
-                          <View style={[styles.timelineDot, phase.status === 'current' ? styles.timelineDotCurrent : styles.timelineDotLocked]}>
-                            {phase.status === 'current' ? <CheckCircle2 size={12} color="#fff" /> : <Lock size={12} color={COLORS.muted} />}
+                      <GlassView
+                        key={index}
+                        style={[
+                          styles.webPhaseCard,
+                          isLocked && { opacity: 0.6 }
+                        ]}
+                      >
+                        <TouchableOpacity 
+                          onPress={() => setExpandedPhase(isLocked ? null : (isExpanded ? null : index))}
+                          disabled={isLocked}
+                          style={styles.webPhaseHeader}
+                        >
+                          {/* Square Icon box like web */}
+                          <View
+                            style={[
+                              styles.webIconBox,
+                              isCurrent ? styles.webIconBoxCurrent : isLocked ? styles.webIconBoxLocked : styles.webIconBoxCompleted
+                            ]}
+                          >
+                            {isCurrent ? (
+                              <Clock size={20} color="#fff" />
+                            ) : isLocked ? (
+                              <Target size={20} color={COLORS.muted} />
+                            ) : (
+                              <Trophy size={20} color="#fff" />
+                            )}
                           </View>
-                        </View>
 
-                        {/* Phase Content Box */}
-                        <View style={styles.timelineRight}>
-                          <GlassView style={styles.phaseCard}>
-                            <TouchableOpacity 
-                              onPress={() => setExpandedPhase(isExpanded ? null : index)}
-                              style={styles.phaseHeader}
-                            >
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.phaseDuration}>{phase.phase}</Text>
-                                <Text style={styles.phaseTitle}>{phase.title}</Text>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.webPhaseDuration}>{phase.phase}</Text>
+                            <View style={styles.flexRow}>
+                              <Text style={styles.webPhaseTitle}>{phase.title}</Text>
+                              {isLocked && <Lock size={12} color={COLORS.muted} style={{ marginLeft: 6 }} />}
+                            </View>
+
+                            {/* Progress bar under current phase title */}
+                            {isCurrent && (
+                              <View style={styles.webProgressBarBg}>
+                                <View style={[styles.webProgressBarFill, { width: 35 }]} />
                               </View>
-                              {isExpanded ? <ChevronUp size={16} color={COLORS.muted} /> : <ChevronDown size={16} color={COLORS.muted} />}
-                            </TouchableOpacity>
+                            )}
+                          </View>
 
-                            {isExpanded && (
-                              <View style={styles.phaseContent}>
-                                <Text style={styles.phaseSectionTitle}>MỤC TIÊU KPI:</Text>
-                                <Text style={styles.kpiText}>{phase.kpi}</Text>
+                          {/* Right badges */}
+                          {isCurrent && (
+                            <View style={styles.webBadgeCurrent}>
+                              <Text style={styles.webBadgeCurrentText}>Đang học</Text>
+                            </View>
+                          )}
+                          {isLocked && (
+                            <View style={styles.webBadgeLocked}>
+                              <Lock size={10} color={COLORS.muted} style={{ marginRight: 4 }} />
+                              <Text style={styles.webBadgeLockedText}>Chưa mở</Text>
+                            </View>
+                          )}
 
-                                <View style={styles.separator} />
+                          {!isLocked && (
+                            isExpanded ? (
+                              <ChevronUp size={18} color={COLORS.muted} style={{ marginLeft: 8 }} />
+                            ) : (
+                              <ChevronDown size={18} color={COLORS.muted} style={{ marginLeft: 8 }} />
+                            )
+                          )}
+                        </TouchableOpacity>
 
-                                <Text style={styles.phaseSectionTitle}>KỸ NĂNG CẦN ĐẠT:</Text>
-                                <View style={styles.skillsTagRow}>
-                                  {phase.skills.map((s: string, idx: number) => (
-                                    <View key={idx} style={styles.skillTag}>
-                                      <Text style={styles.skillTagText}>{s}</Text>
+                        {isExpanded && !isLocked && (
+                          <View style={styles.webPhaseContent}>
+                            {/* Checklist Milestones */}
+                            <View style={styles.webMilestonesList}>
+                              {phase.milestones.map((m: any, mIdx: number) => {
+                                const isMilestoneDone = m.done || (isCurrent && mIdx === 0);
+                                return (
+                                  <View key={mIdx} style={styles.webMilestoneItem}>
+                                    <CheckCircle2 
+                                      size={18} 
+                                      color={isMilestoneDone ? '#10B981' : COLORS.muted} 
+                                      style={{ marginRight: 10, marginTop: 2 }} 
+                                    />
+                                    <View style={{ flex: 1 }}>
+                                      <Text 
+                                        style={[
+                                          styles.webMilestoneTitle,
+                                          isMilestoneDone && styles.webMilestoneTitleDone
+                                        ]}
+                                      >
+                                        {m.title}
+                                      </Text>
+                                      <Text style={styles.webMilestoneDesc}>{m.desc}</Text>
+
+                                      {m.tasks && m.tasks.length > 0 && (
+                                        <View style={styles.webTaskList}>
+                                          {m.tasks.map((t: string, tIdx: number) => (
+                                            <Text key={tIdx} style={styles.webTaskItem}>• {t}</Text>
+                                          ))}
+                                        </View>
+                                      )}
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+
+                            {/* Skills block */}
+                            {phase.skills && phase.skills.length > 0 && (
+                              <View style={styles.webSectionBlock}>
+                                <Text style={styles.webBlockTitle}>Kỹ năng cần đạt:</Text>
+                                <View style={styles.webSkillsRow}>
+                                  {phase.skills.map((s: string, sIdx: number) => (
+                                    <View key={sIdx} style={styles.webSkillBadge}>
+                                      <Text style={styles.webSkillBadgeText}>{s}</Text>
                                     </View>
                                   ))}
                                 </View>
-
-                                <View style={styles.separator} />
-
-                                <Text style={styles.phaseSectionTitle}>CHI TIẾT NHIỆM VỤ:</Text>
-                                {phase.milestones.map((m: any, mIdx: number) => (
-                                  <View key={mIdx} style={styles.milestoneBox}>
-                                    <Text style={styles.milestoneTitle}>📍 {m.title}</Text>
-                                    <Text style={styles.milestoneDesc}>{m.desc}</Text>
-                                    {m.tasks?.map((t: string, tIdx: number) => (
-                                      <Text key={tIdx} style={styles.taskText}>• {t}</Text>
-                                    ))}
-                                  </View>
-                                ))}
                               </View>
                             )}
-                          </GlassView>
-                        </View>
-                      </View>
+
+                            {/* KPI Block */}
+                            <View style={styles.webKpiBlock}>
+                              <Text style={styles.webKpiBlockTitle}>🎯 KPI giai đoạn</Text>
+                              <Text style={styles.webKpiBlockValue}>{phase.kpi}</Text>
+                            </View>
+                          </View>
+                        )}
+                      </GlassView>
                     );
                   })}
                 </View>
@@ -962,5 +1035,174 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  webTimelineContainer: {
+    gap: SPACING.md,
+  },
+  webPhaseCard: {
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    overflow: 'hidden',
+  },
+  webPhaseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  webIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  webIconBoxCurrent: {
+    backgroundColor: COLORS.primary,
+  },
+  webIconBoxLocked: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  webIconBoxCompleted: {
+    backgroundColor: '#10B981',
+  },
+  webPhaseDuration: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.primary,
+    textTransform: 'uppercase',
+  },
+  webPhaseTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.foreground,
+    marginTop: 2,
+  },
+  webProgressBarBg: {
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 2,
+    marginTop: 6,
+    maxWidth: 150,
+  },
+  webProgressBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+  },
+  webBadgeCurrent: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  webBadgeCurrentText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  webBadgeLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  webBadgeLockedText: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  webPhaseContent: {
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+  },
+  webMilestonesList: {
+    gap: SPACING.sm,
+  },
+  webMilestoneItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  webMilestoneTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.foreground,
+  },
+  webMilestoneTitleDone: {
+    color: COLORS.muted,
+    textDecorationLine: 'line-through',
+  },
+  webMilestoneDesc: {
+    fontSize: 12,
+    color: COLORS.muted,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  webTaskList: {
+    marginTop: 8,
+    paddingLeft: 4,
+  },
+  webTaskItem: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.7)',
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  webSectionBlock: {
+    marginTop: SPACING.md,
+  },
+  webBlockTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.foreground,
+    marginBottom: 6,
+  },
+  webSkillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  webSkillBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  webSkillBadgeText: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+  webKpiBlock: {
+    marginTop: SPACING.md,
+    backgroundColor: 'rgba(59, 130, 246, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.1)',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+  },
+  webKpiBlockTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  webKpiBlockValue: {
+    fontSize: 13,
+    color: COLORS.foreground,
+    lineHeight: 18,
   },
 });
