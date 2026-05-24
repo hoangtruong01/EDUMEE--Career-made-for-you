@@ -540,38 +540,75 @@ export default function ProfileScreen() {
               <View>
                 {/* Profile RIASEC Result Card from Assessment Screen */}
                 <Text style={styles.sectionTitle}>3 Nghề nghiệp phù hợp nhất</Text>
-                {recommendedCareers.map((item: any, idx: number) => {
-                  const fitColor = idx === 0 ? COLORS.secondary : idx === 1 ? COLORS.primary : '#10B981';
-                  return (
-                    <GlassView key={item._id || item.id || idx} style={[styles.profileSummaryCard, { marginBottom: SPACING.md }]}>
-                      <View style={styles.profileRow}>
-                        <Award size={24} color={fitColor} />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.profileLabel}>PHÙ HỢP HẠNG {idx + 1}</Text>
-                          <Text style={styles.profileTitle}>{item.careerTitle}</Text>
+                
+                {recommendedCareers.length > 0 && (
+                  <View style={styles.careersGridContainer}>
+                    {/* Featured Top 1 Card - Full Width */}
+                    {recommendedCareers[0] && (
+                      <GlassView style={styles.featuredCareerCard}>
+                        <View style={styles.featuredCardHeader}>
+                          <View style={styles.featuredRankBadge}>
+                            <Award size={14} color="#F59E0B" />
+                            <Text style={styles.featuredRankText}>PHÙ HỢP HẠNG 1</Text>
+                          </View>
+                          <View style={[styles.fitBadge, { borderColor: COLORS.secondary, backgroundColor: COLORS.secondary + '15' }]}>
+                            <Text style={[styles.fitText, { color: COLORS.secondary }]}>
+                              {Math.round(recommendedCareers[0].overallFitScore || 0)}% Match
+                            </Text>
+                          </View>
                         </View>
-                        <View style={[styles.fitBadge, { borderColor: fitColor, backgroundColor: fitColor + '15' }]}>
-                          <Text style={[styles.fitText, { color: fitColor }]}>{Math.round(item.overallFitScore || 0)}% Match</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.aiExplanationText} numberOfLines={idx > 0 ? 3 : undefined}>
-                        {idx === 0 
-                          ? (item.aiExplanation || 'AI đã phân tích và đối chiếu năng lực cốt lõi của bạn.') 
-                          : (item.strengths?.join('. ') || 'AI đánh giá tố chất của bạn hoàn hảo với công việc này.')}
-                      </Text>
-
-                      <View style={styles.cardBtns}>
+                        
+                        <Text style={styles.featuredCareerTitle}>{recommendedCareers[0].careerTitle}</Text>
+                        
+                        <Text style={styles.featuredCareerDesc}>
+                          {recommendedCareers[0].aiExplanation || 'AI đã phân tích và đối chiếu năng lực cốt lõi của bạn.'}
+                        </Text>
+                        
                         <TouchableOpacity 
-                          onPress={() => fetchCareerDetail(item.careerTitle)} 
-                          style={styles.primaryReportBtn}
+                          onPress={() => fetchCareerDetail(recommendedCareers[0].careerTitle)} 
+                          style={styles.featuredCtaBtn}
                         >
-                          <Text style={styles.primaryReportBtnText}>Xem chi tiết</Text>
-                          <ChevronRight size={16} color="#fff" />
+                          <Text style={styles.featuredCtaBtnText}>Xem chi tiết</Text>
+                          <ChevronRight size={14} color="#fff" />
                         </TouchableOpacity>
-                      </View>
-                    </GlassView>
-                  );
-                })}
+                      </GlassView>
+                    )}
+
+                    {/* Sub Careers - Two Column Grid */}
+                    <View style={styles.subCareersRow}>
+                      {recommendedCareers.slice(1, 3).map((item, idx) => {
+                        const rankNum = idx + 2;
+                        const fitColor = rankNum === 2 ? COLORS.primary : '#10B981';
+                        return (
+                          <GlassView key={item._id || item.id || idx} style={styles.subCareerCard}>
+                            <View style={styles.subCardHeader}>
+                              <View style={[styles.subRankBadge, { backgroundColor: fitColor + '15' }]}>
+                                <Text style={[styles.subRankText, { color: fitColor }]}>HẠNG {rankNum}</Text>
+                              </View>
+                              <Text style={[styles.subFitText, { color: fitColor }]}>
+                                {Math.round(item.overallFitScore || 0)}% Match
+                              </Text>
+                            </View>
+
+                            <Text style={styles.subCareerTitle} numberOfLines={2}>{item.careerTitle}</Text>
+                            
+                            <Text style={styles.subCareerDesc} numberOfLines={3}>
+                              {item.strengths?.join('. ') || 'AI đánh giá tố chất của bạn hoàn hảo với công việc này.'}
+                            </Text>
+
+                            <TouchableOpacity 
+                              onPress={() => fetchCareerDetail(item.careerTitle)} 
+                              style={[styles.subCtaBtn, { borderColor: fitColor }]}
+                            >
+                              <Text style={[styles.subCtaBtnText, { color: fitColor }]}>Xem chi tiết</Text>
+                              <ChevronRight size={12} color={fitColor} />
+                            </TouchableOpacity>
+                          </GlassView>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
 
                 {/* Radar Chart */}
                 <GlassView style={styles.sectionCard}>
@@ -1870,6 +1907,120 @@ const styles = StyleSheet.create({
   modalErrorBtnText: {
     color: COLORS.foreground,
     fontWeight: '700',
+  },
+  careersGridContainer: {
+    marginBottom: SPACING.md,
+  },
+  featuredCareerCard: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.md,
+  },
+  featuredCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  featuredRankBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  featuredRankText: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginLeft: 4,
+  },
+  featuredCareerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.secondary,
+    marginBottom: SPACING.xs,
+  },
+  featuredCareerDesc: {
+    fontSize: 13,
+    color: COLORS.muted,
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  featuredCtaBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: RADIUS.lg,
+  },
+  featuredCtaBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginRight: 4,
+  },
+  subCareersRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  subCareerCard: {
+    width: '48%',
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    justifyContent: 'space-between',
+  },
+  subCardHeader: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  subRankBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    marginBottom: 4,
+  },
+  subRankText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  subFitText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  subCareerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.foreground,
+    minHeight: 38,
+    marginBottom: SPACING.xs,
+  },
+  subCareerDesc: {
+    fontSize: 11,
+    color: COLORS.muted,
+    lineHeight: 16,
+    marginBottom: SPACING.md,
+    minHeight: 48,
+  },
+  subCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+  },
+  subCtaBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginRight: 2,
   },
   toast: {
     position: 'absolute',
