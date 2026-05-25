@@ -5,6 +5,7 @@ import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
 import { profileService } from '@/lib/profile.service';
 import { userService } from '@/lib/user.service';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Phone, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -12,6 +13,7 @@ import { useEffect, useState } from 'react';
 
 export default function CompleteProfileView() {
   const { accessToken, onboardingCompleted, isAuthenticated, isHydrated, setOnboardingCompleted } = useAuth();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
@@ -98,7 +100,7 @@ export default function CompleteProfileView() {
         throw new Error('Bạn cần đăng nhập để tiếp tục');
       }
 
-      await Promise.all([
+      const [updatedUser, updatedProfile] = await Promise.all([
         userService.updateMe(accessToken, {
           name,
           phone_number: phone,
@@ -108,6 +110,14 @@ export default function CompleteProfileView() {
         profileService.updateMyProfile(accessToken, {
           educationLevel,
         }),
+      ]);
+
+      queryClient.setQueryData(['me', accessToken], updatedUser);
+      queryClient.setQueryData(['myProfile', accessToken], updatedProfile);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['me', accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ['myProfile', accessToken] }),
       ]);
 
       setOnboardingCompleted(true);

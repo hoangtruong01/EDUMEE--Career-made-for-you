@@ -11,12 +11,57 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Switch
 } from 'react-native';
 import { COLORS, SPACING, RADIUS } from '../../src/theme';
 import { GlassView } from '../../src/components/GlassView';
-import { Heart, MessageSquare, Send, Sparkles, Plus, Image as ImageIcon, X } from 'lucide-react-native';
+import { 
+  Heart, 
+  MessageSquare, 
+  Send, 
+  Sparkles, 
+  Plus, 
+  X, 
+  Trash2, 
+  AlertTriangle, 
+  Search,
+  EyeOff,
+  Eye,
+  MoreVertical
+} from 'lucide-react-native';
 import { api } from '../../src/services/api';
+
+const CATEGORIES = ['Tất cả', 'Review ngành', 'Hỏi đáp', 'Chia sẻ kinh nghiệm', 'Tài nguyên', 'Tuyển dụng'];
+const POST_CATEGORIES = ['Review ngành', 'Hỏi đáp', 'Chia sẻ kinh nghiệm', 'Tài nguyên', 'Tuyển dụng'];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'Review ngành': '#3B82F6', // Blue
+  'Hỏi đáp': '#F59E0B', // Warning Yellow
+  'Chia sẻ kinh nghiệm': '#10B981', // Success Green
+  'Tài nguyên': '#8B5CF6', // Purple
+  'Tuyển dụng': '#EC4899', // Pink
+};
+
+const unpackResponseData = (res: any): any => {
+  if (!res || !res.data) return null;
+  
+  // If wrapped by TransformInterceptor: { success: true, data: ..., timestamp: ... }
+  if (res.data.hasOwnProperty('success') && res.data.hasOwnProperty('data')) {
+    const innerData = res.data.data;
+    // If double wrapped (e.g. paginated result: { data: [...], total: ... })
+    if (innerData && typeof innerData === 'object' && innerData.hasOwnProperty('data')) {
+      return innerData.data;
+    }
+    return innerData;
+  }
+  
+  // If not wrapped, or direct Axios response payload
+  if (res.data.hasOwnProperty('data')) {
+    return res.data.data;
+  }
+  return res.data;
+};
 
 export default function CommunityScreen() {
   const [posts, setPosts] = useState<any[]>([]);
@@ -24,11 +69,16 @@ export default function CommunityScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userData, setUserData] = useState<any>(null);
 
+  // Filter & Search states
+  const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [searchQuery, setSearchQuery] = useState('');
+
   // New Post form states
   const [newPostModalVisible, setNewPostModalVisible] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
-  const [newPostCategory, setNewPostCategory] = useState('Định hướng');
+  const [newPostCategory, setNewPostCategory] = useState('Review ngành');
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Comments states
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
@@ -36,16 +86,42 @@ export default function CommunityScreen() {
   const [comments, setComments] = useState<any[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
+  const [isCommentAnonymous, setIsCommentAnonymous] = useState(false);
+
+  // Report Modal states
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ id: string; type: 'post' | 'comment' } | null>(null);
+  const [reportReason, setReportReason] = useState('Spam');
+  const [reportDetails, setReportDetails] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
+  const reportReasons = [
+    'Spam',
+    'Nội dung nhạy cảm',
+    'Ngôn từ thù ghét',
+    'Lừa đảo/Độc hại',
+    'Thông tin sai lệch',
+    'Khác',
+  ];
+
+  // Fetch posts when category or search changes (with debounced search check)
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      fetchPosts(activeCategory, searchQuery);
+    }, 350);
+    return () => clearTimeout(delayDebounce);
+  }, [activeCategory, searchQuery]);
 
   useEffect(() => {
-    fetchPosts();
     fetchProfile();
   }, []);
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (cat = activeCategory, q = searchQuery) => {
     try {
-      const res = await api.get('/community-posts?limit=100');
-      const postsData = res.data?.data || res.data || [];
+      const categoryParam = cat && cat !== 'Tất cả' ? `&category=${encodeURIComponent(cat)}` : '';
+      const searchParam = q.trim() ? `&q=${encodeURIComponent(q.trim())}` : '';
+      const res = await api.get(`/community-posts?limit=100${categoryParam}${searchParam}`);
+      const postsData = unpackResponseData(res);
       setPosts(Array.isArray(postsData) ? postsData : []);
     } catch (e) {
       console.error('Fetch community posts error:', e);
@@ -57,8 +133,9 @@ export default function CommunityScreen() {
 
   const fetchProfile = async () => {
     try {
-      const res = await api.get('/users/profile');
-      setUserData(res.data?.data || res.data);
+      const res = await api.get('/users/me');
+      const profileData = unpackResponseData(res);
+      setUserData(profileData);
     } catch (e) {
       console.error('Fetch profile in community error:', e);
     }
@@ -66,11 +143,15 @@ export default function CommunityScreen() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchPosts();
+    fetchPosts(activeCategory, searchQuery);
+    fetchProfile();
   };
 
   const handleLike = async (postId: string) => {
-    if (!userData) return;
+    if (!userData) {
+      Alert.alert('Yêu cầu đăng nhập', 'Vui lòng đăng nhập để tương tác bài viết.');
+      return;
+    }
     const currentUserId = userData.id || userData._id;
     try {
       // Toggle locally first (optimistic update)
@@ -95,7 +176,7 @@ export default function CommunityScreen() {
     } catch (e) {
       console.error('Toggle like error:', e);
       // Revert if API fails
-      fetchPosts();
+      fetchPosts(activeCategory, searchQuery);
     }
   };
 
@@ -105,9 +186,11 @@ export default function CommunityScreen() {
     setCommentsModalVisible(true);
     setIsLoadingComments(true);
     setComments([]);
+    setIsCommentAnonymous(false);
     try {
       const res = await api.get(`/community-posts/${postId}/comments`);
-      setComments(res.data || []);
+      const commentsList = unpackResponseData(res);
+      setComments(Array.isArray(commentsList) ? commentsList : []);
     } catch (e) {
       console.error('Fetch comments error:', e);
     } finally {
@@ -119,26 +202,31 @@ export default function CommunityScreen() {
     if (!newCommentText.trim() || !selectedPost) return;
     const postId = selectedPost.id || selectedPost._id;
     try {
+      const displayName = isCommentAnonymous ? 'Ẩn danh' : (userData?.fullName || userData?.name || 'Học viên EDUMEE');
+      const authorTitle = isCommentAnonymous ? undefined : (userData?.title || 'Thành viên');
+      const authorAvatar = isCommentAnonymous ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150' : (userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150');
+
       const payload = {
         content: newCommentText.trim(),
-        authorName: userData?.fullName || userData?.name || 'Học viên EDUMEE',
-        authorTitle: userData?.title || 'Thành viên',
-        authorAvatar: userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150',
+        authorName: displayName,
+        authorTitle,
+        authorAvatar,
       };
       
       const res = await api.post(`/community-posts/${postId}/comments`, payload);
       
       // Update local comment list
-      const updatedPost = res.data?.data || res.data;
+      const updatedPost = unpackResponseData(res);
       if (updatedPost?.comments) {
         setComments(updatedPost.comments);
       } else {
-        // Fallback refresh comments
         const commentsRes = await api.get(`/community-posts/${postId}/comments`);
-        setComments(commentsRes.data || []);
+        const commentsList = unpackResponseData(commentsRes);
+        setComments(Array.isArray(commentsList) ? commentsList : []);
       }
       
       setNewCommentText('');
+      setIsCommentAnonymous(false);
       
       // Increment comment count locally on the main post
       setPosts(prev => prev.map(p => {
@@ -161,28 +249,182 @@ export default function CommunityScreen() {
     }
 
     try {
+      const displayName = isAnonymous ? 'Ẩn danh' : (userData?.fullName || userData?.name || 'Học viên EDUMEE');
+      const authorTitle = isAnonymous ? undefined : (userData?.title || 'Thành viên');
+      const authorAvatar = isAnonymous ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150' : (userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150');
+
       const payload = {
         title: newPostTitle.trim(),
         content: newPostContent.trim(),
         category: newPostCategory,
-        authorName: userData?.fullName || userData?.name || 'Học viên EDUMEE',
-        authorTitle: userData?.title || 'Thành viên',
-        authorAvatar: userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150',
+        authorName: displayName,
+        authorTitle,
+        authorAvatar,
         hashtags: ['#edumee', '#sharing']
       };
 
       await api.post('/community-posts', payload);
       setNewPostTitle('');
       setNewPostContent('');
+      setIsAnonymous(false);
       setNewPostModalVisible(false);
       Alert.alert('Thành công', 'Bài viết của bạn đã được đăng lên bảng tin!');
       
       // Reload posts
-      fetchPosts();
+      fetchPosts(activeCategory, searchQuery);
     } catch (e: any) {
       console.error('Create post error:', e);
       Alert.alert('Lỗi', e.response?.data?.message || 'Không thể đăng bài. Vui lòng thử lại sau.');
     }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    Alert.alert(
+      'Xóa bài viết',
+      'Bạn có chắc chắn muốn xóa bài viết này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete(`/community-posts/${postId}`);
+              setPosts(prev => prev.filter(p => (p.id || p._id) !== postId));
+              Alert.alert('Thành công', 'Bài viết đã được xóa.');
+            } catch (e) {
+              console.error('Delete post error:', e);
+              Alert.alert('Lỗi', 'Không thể xóa bài viết này.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    Alert.alert(
+      'Xóa bình luận',
+      'Bạn có chắc chắn muốn xóa bình luận này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const postId = selectedPost.id || selectedPost._id;
+              await api.delete(`/community-posts/${postId}/comments/${commentId}`);
+              
+              // Update local comments list
+              setComments(prev => prev.filter(c => (c.id || c._id) !== commentId));
+              
+              // Decrement comment count on main feed
+              setPosts(prev => prev.map(p => {
+                const id = p.id || p._id;
+                if (id === postId) {
+                  return { ...p, commentCount: Math.max(0, (p.commentCount || 0) - 1) };
+                }
+                return p;
+              }));
+            } catch (e) {
+              console.error('Delete comment error:', e);
+              Alert.alert('Lỗi', 'Không thể xóa bình luận này.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleOpenReport = (targetId: string, type: 'post' | 'comment') => {
+    setReportTarget({ id: targetId, type });
+    setReportReason('Spam');
+    setReportDetails('');
+    setReportModalVisible(true);
+  };
+
+  const handleSubmitReport = async () => {
+    if (!reportTarget) return;
+    setIsSubmittingReport(true);
+    try {
+      const postId = reportTarget.type === 'comment' ? (selectedPost?.id || selectedPost?._id) : reportTarget.id;
+      const payload = {
+        targetId: reportTarget.id,
+        targetType: reportTarget.type,
+        reason: reportReason,
+        details: reportDetails.trim(),
+        postId
+      };
+      
+      await api.post('/community/reports', payload);
+      setReportModalVisible(false);
+      Alert.alert('Thành công', 'Cảm ơn bạn đã báo cáo. Chúng tôi sẽ sớm xem xét nội dung này.');
+    } catch (e) {
+      console.error('Report content error:', e);
+      Alert.alert('Lỗi', 'Không thể gửi báo cáo lúc này.');
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  const showPostOptions = (post: any) => {
+    const postId = post.id || post._id;
+    const currentUserId = userData?.id || userData?._id;
+    const isOwner = post.authorId && String(post.authorId) === String(currentUserId);
+    const isAdmin = userData?.role === 'admin';
+
+    const options = ['Báo cáo vi phạm'];
+    if (isOwner || isAdmin) {
+      options.push('Xóa bài viết');
+    }
+    options.push('Hủy');
+
+    Alert.alert(
+      'Tùy chọn bài viết',
+      'Chọn hành động của bạn:',
+      options.map(opt => ({
+        text: opt,
+        style: opt === 'Xóa bài viết' ? 'destructive' : (opt === 'Hủy' ? 'cancel' : 'default'),
+        onPress: () => {
+          if (opt === 'Xóa bài viết') {
+            handleDeletePost(postId);
+          } else if (opt === 'Báo cáo vi phạm') {
+            handleOpenReport(postId, 'post');
+          }
+        }
+      }))
+    );
+  };
+
+  const showCommentOptions = (comment: any) => {
+    const commentId = comment.id || comment._id;
+    const currentUserId = userData?.id || userData?._id;
+    const isCommentOwner = comment.authorId && String(comment.authorId) === String(currentUserId);
+    const isPostOwner = selectedPost?.authorId && String(selectedPost.authorId) === String(currentUserId);
+    const isAdmin = userData?.role === 'admin';
+
+    const options = ['Báo cáo bình luận'];
+    if (isCommentOwner || isPostOwner || isAdmin) {
+      options.push('Xóa bình luận');
+    }
+    options.push('Hủy');
+
+    Alert.alert(
+      'Tùy chọn bình luận',
+      'Chọn hành động của bạn:',
+      options.map(opt => ({
+        text: opt,
+        style: opt === 'Xóa bình luận' ? 'destructive' : (opt === 'Hủy' ? 'cancel' : 'default'),
+        onPress: () => {
+          if (opt === 'Xóa bình luận') {
+            handleDeleteComment(commentId);
+          } else if (opt === 'Báo cáo bình luận') {
+            handleOpenReport(commentId, 'comment');
+          }
+        }
+      }))
+    );
   };
 
   const formatTime = (dateStr?: string) => {
@@ -205,7 +447,7 @@ export default function CommunityScreen() {
         <View style={styles.flexRowBetween}>
           <View>
             <Text style={styles.title}>Cộng đồng</Text>
-            <Text style={styles.subtitle}>Kết nối và chia sẻ kinh nghiệm cùng học viên khác</Text>
+            <Text style={styles.subtitle}>Chia sẻ và định hướng cùng học viên EDUMEE</Text>
           </View>
           <TouchableOpacity 
             onPress={() => setNewPostModalVisible(true)}
@@ -216,10 +458,59 @@ export default function CommunityScreen() {
         </View>
       </View>
 
+      {/* Dynamic Search Bar & Category Filters */}
+      <View style={styles.searchAndFilterContainer}>
+        {/* Search Input */}
+        <View style={styles.searchBar}>
+          <Search size={16} color={COLORS.muted} style={{ marginRight: 8 }} />
+          <TextInput
+            placeholder="Tìm kiếm bài viết..."
+            placeholderTextColor={COLORS.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.searchInput}
+          />
+          {searchQuery.trim() !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X size={16} color={COLORS.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Horizontal Category scroll */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.categoryScroll}
+        >
+          {CATEGORIES.map(cat => {
+            const isSelected = activeCategory === cat;
+            const customColor = CATEGORY_COLORS[cat] || COLORS.primary;
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => {
+                  setIsLoading(true);
+                  setActiveCategory(cat);
+                }}
+                style={[
+                  styles.categoryFilterBadge, 
+                  isSelected && { backgroundColor: customColor, borderColor: customColor }
+                ]}
+              >
+                <Text style={[styles.categoryFilterText, isSelected && { color: '#fff', fontWeight: '800' }]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {isLoading ? (
         <View style={styles.centerLoading}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Đang tải bảng tin từ EDUMEE...</Text>
+          <Text style={styles.loadingText}>Đang tải bảng tin...</Text>
         </View>
       ) : (
         <ScrollView 
@@ -238,7 +529,7 @@ export default function CommunityScreen() {
           <GlassView style={styles.shareBanner}>
             <Sparkles size={16} color={COLORS.secondary} />
             <Text style={styles.shareText}>
-              Bạn vừa học thêm kỹ năng mới? Hãy chia sẻ cùng mọi người ngay nhé!
+              Bạn có thắc mắc về lựa chọn ngành nghề? Đăng bài để nhận giải đáp nhé!
             </Text>
           </GlassView>
 
@@ -247,15 +538,17 @@ export default function CommunityScreen() {
             {posts.length === 0 ? (
               <View style={styles.emptyFeed}>
                 <Sparkles size={36} color={COLORS.muted} style={{ marginBottom: SPACING.md }} />
-                <Text style={styles.emptyFeedText}>Chưa có bài đăng nào trên cộng đồng.</Text>
+                <Text style={styles.emptyFeedText}>Không tìm thấy bài viết nào phù hợp.</Text>
                 <TouchableOpacity style={styles.emptyFeedBtn} onPress={() => setNewPostModalVisible(true)}>
-                  <Text style={styles.emptyFeedBtnText}>Đăng bài viết đầu tiên</Text>
+                  <Text style={styles.emptyFeedBtnText}>Đăng bài viết mới</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               posts.map((post) => {
                 const postId = post.id || post._id;
                 const isLiked = post.likedUserIds?.includes(userData?.id || userData?._id);
+                const categoryColor = CATEGORY_COLORS[post.category] || COLORS.primary;
+
                 return (
                   <GlassView key={postId} style={styles.postCard}>
                     <View style={styles.postAuthor}>
@@ -266,9 +559,17 @@ export default function CommunityScreen() {
                       <View style={styles.authorInfo}>
                         <Text style={styles.authorName}>{post.authorName || 'Học viên EDUMEE'}</Text>
                         <Text style={styles.postTime}>
-                          {formatTime(post.createdAt)} • <Text style={styles.categoryText}>{post.category}</Text>
+                          {formatTime(post.createdAt)} • <Text style={{ color: categoryColor, fontWeight: '800' }}>{post.category}</Text>
                         </Text>
                       </View>
+                      
+                      {/* Action Menu Ellipsis Button */}
+                      <TouchableOpacity 
+                        onPress={() => showPostOptions(post)} 
+                        style={styles.ellipsisBtn}
+                      >
+                        <MoreVertical size={18} color={COLORS.muted} />
+                      </TouchableOpacity>
                     </View>
 
                     <Text style={styles.postTitle}>{post.title}</Text>
@@ -318,7 +619,7 @@ export default function CommunityScreen() {
       >
         <View style={styles.modalOverlay}>
           <GlassView style={styles.modalContent}>
-            <View style={styles.flexRowBetween}>
+            <View style={[styles.flexRowBetween, { marginBottom: SPACING.md }]}>
               <Text style={styles.modalTitle}>📝 Đăng bài thảo luận</Text>
               <TouchableOpacity onPress={() => setNewPostModalVisible(false)}>
                 <X size={20} color={COLORS.muted} />
@@ -336,7 +637,7 @@ export default function CommunityScreen() {
 
             <Text style={styles.inputLabel}>Nội dung thảo luận</Text>
             <TextInput
-              placeholder="Chia sẻ câu hỏi hoặc kiến thức của bạn tại đây..."
+              placeholder="Chia sẻ câu hỏi hoặc kiến thức của bạn..."
               placeholderTextColor={COLORS.muted}
               style={styles.textArea}
               multiline={true}
@@ -346,8 +647,8 @@ export default function CommunityScreen() {
             />
 
             <Text style={styles.inputLabel}>Chuyên mục</Text>
-            <View style={styles.categorySelectRow}>
-              {['Định hướng', 'Kinh nghiệm', 'Học tập'].map((cat) => {
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categorySelectRow}>
+              {POST_CATEGORIES.map((cat) => {
                 const isSelected = newPostCategory === cat;
                 return (
                   <TouchableOpacity
@@ -359,6 +660,20 @@ export default function CommunityScreen() {
                   </TouchableOpacity>
                 );
               })}
+            </ScrollView>
+
+            {/* Anonymous Toggle Switch */}
+            <View style={styles.anonymousToggleRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                <EyeOff size={16} color={COLORS.muted} />
+                <Text style={styles.anonymousToggleText}>Đăng bài ẩn danh</Text>
+              </View>
+              <Switch
+                value={isAnonymous}
+                onValueChange={setIsAnonymous}
+                trackColor={{ false: 'rgba(255,255,255,0.08)', true: COLORS.primary }}
+                thumbColor={isAnonymous ? '#fff' : '#f4f3f4'}
+              />
             </View>
 
             <View style={styles.modalActions}>
@@ -374,7 +689,7 @@ export default function CommunityScreen() {
         </View>
       </Modal>
 
-      {/* Premium Comments Modal */}
+      {/* Comments Modal */}
       <Modal
         visible={commentsModalVisible}
         transparent={true}
@@ -385,9 +700,9 @@ export default function CommunityScreen() {
           <GlassView style={styles.commentsModalContent}>
             <View style={[styles.flexRowBetween, { marginBottom: SPACING.md }]}>
               <View>
-                <Text style={styles.modalTitle}>💬 Bình luận ({selectedPost?.commentCount || 0})</Text>
+                <Text style={styles.modalTitle}>💬 Thảo luận ({selectedPost?.commentCount || 0})</Text>
                 <Text style={[styles.subtitle, { maxWidth: 220 }]} numberOfLines={1}>
-                  Bài đăng: {selectedPost?.title}
+                  {selectedPost?.title}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setCommentsModalVisible(false)}>
@@ -405,7 +720,7 @@ export default function CommunityScreen() {
                 {comments.length === 0 ? (
                   <View style={styles.emptyCommentsContainer}>
                     <MessageSquare size={32} color={COLORS.muted} style={{ marginBottom: 8 }} />
-                    <Text style={styles.emptyCommentsText}>Chưa có bình luận nào. Hãy là người đầu tiên!</Text>
+                    <Text style={styles.emptyCommentsText}>Chưa có bình luận nào. Hãy bắt đầu cuộc thảo luận!</Text>
                   </View>
                 ) : (
                   comments.map((comment, index) => (
@@ -417,9 +732,16 @@ export default function CommunityScreen() {
                       <View style={styles.commentDetails}>
                         <View style={styles.flexRowBetween}>
                           <Text style={styles.commentAuthorName}>{comment.authorName}</Text>
-                          <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
+                          
+                          {/* Ellipsis menu button for comments */}
+                          <TouchableOpacity onPress={() => showCommentOptions(comment)}>
+                            <MoreVertical size={14} color={COLORS.muted} />
+                          </TouchableOpacity>
                         </View>
-                        <Text style={styles.commentAuthorTitle}>{comment.authorTitle || 'Thành viên'}</Text>
+                        <View style={styles.commentMetaRow}>
+                          <Text style={styles.commentAuthorTitle}>{comment.authorTitle || 'Thành viên'}</Text>
+                          <Text style={styles.commentTime}> • {formatTime(comment.createdAt)}</Text>
+                        </View>
                         <Text style={styles.commentTextContent}>{comment.content}</Text>
                       </View>
                     </View>
@@ -429,23 +751,111 @@ export default function CommunityScreen() {
             )}
 
             {/* Comment Input Bar */}
-            <View style={styles.commentInputRow}>
-              <TextInput
-                placeholder="Viết phản hồi của bạn..."
-                placeholderTextColor={COLORS.muted}
-                value={newCommentText}
-                onChangeText={setNewCommentText}
-                style={styles.commentTextInput}
-              />
+            <View style={styles.commentInputSection}>
+              {/* Anonymous Comment Toggle */}
+              <View style={styles.commentAnonymousBar}>
+                <Text style={styles.commentAnonymousLabel}>Bình luận ẩn danh</Text>
+                <Switch
+                  value={isCommentAnonymous}
+                  onValueChange={setIsCommentAnonymous}
+                  trackColor={{ false: 'rgba(255,255,255,0.08)', true: COLORS.primary }}
+                  thumbColor={isCommentAnonymous ? '#fff' : '#f4f3f4'}
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </View>
+
+              <View style={styles.commentInputRow}>
+                <TextInput
+                  placeholder="Viết câu trả lời của bạn..."
+                  placeholderTextColor={COLORS.muted}
+                  value={newCommentText}
+                  onChangeText={setNewCommentText}
+                  style={styles.commentTextInput}
+                />
+                <TouchableOpacity 
+                  style={[
+                    styles.commentSendBtn, 
+                    !newCommentText.trim() && { opacity: 0.5 }
+                  ]} 
+                  onPress={handleAddComment}
+                  disabled={!newCommentText.trim()}
+                >
+                  <Send size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </GlassView>
+        </View>
+      </Modal>
+
+      {/* Report Modal */}
+      <Modal
+        visible={reportModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <View style={styles.reportModalOverlay}>
+          <GlassView style={styles.reportModalContent}>
+            <View style={[styles.flexRowBetween, { marginBottom: SPACING.md }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <AlertTriangle size={18} color="#EF4444" />
+                <Text style={styles.reportTitle}>Báo cáo vi phạm</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReportModalVisible(false)}>
+                <X size={20} color={COLORS.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.reportSub}>Lý do báo cáo:</Text>
+            <View style={styles.reasonsGrid}>
+              {reportReasons.map(r => {
+                const isSelected = reportReason === r;
+                return (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => setReportReason(r)}
+                    style={[
+                      styles.reasonCard,
+                      isSelected && { borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)' }
+                    ]}
+                  >
+                    <Text style={[styles.reasonText, isSelected && { color: '#EF4444', fontWeight: '800' }]}>
+                      {r}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.reportSub}>Chi tiết bổ sung (tùy chọn):</Text>
+            <TextInput
+              placeholder="Cung cấp thêm chi tiết giúp ban quản trị xử lý tốt hơn..."
+              placeholderTextColor={COLORS.muted}
+              multiline
+              numberOfLines={3}
+              value={reportDetails}
+              onChangeText={setReportDetails}
+              style={styles.reportDetailsInput}
+            />
+
+            <View style={styles.reportActionsRow}>
               <TouchableOpacity 
-                style={[
-                  styles.commentSendBtn, 
-                  !newCommentText.trim() && { opacity: 0.5 }
-                ]} 
-                onPress={handleAddComment}
-                disabled={!newCommentText.trim()}
+                onPress={() => setReportModalVisible(false)}
+                style={styles.reportCancelBtn}
               >
-                <Send size={16} color="#fff" />
+                <Text style={styles.reportCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={handleSubmitReport}
+                disabled={isSubmittingReport}
+                style={styles.reportSubmitBtn}
+              >
+                {isSubmittingReport ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.reportSubmitText}>Gửi báo cáo</Text>
+                )}
               </TouchableOpacity>
             </View>
           </GlassView>
@@ -485,6 +895,47 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  searchAndFilterContainer: {
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.foreground,
+    fontSize: 13,
+  },
+  categoryScroll: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    paddingVertical: 4,
+  },
+  categoryFilterBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+  },
+  categoryFilterText: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: '600',
   },
   scrollContent: {
     padding: SPACING.lg,
@@ -537,9 +988,8 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: 1,
   },
-  categoryText: {
-    color: COLORS.primary,
-    fontWeight: '700',
+  ellipsisBtn: {
+    padding: 8,
   },
   postTitle: {
     fontSize: 15,
@@ -630,6 +1080,7 @@ const styles = StyleSheet.create({
   categorySelectRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
+    paddingVertical: 4,
   },
   catPill: {
     paddingHorizontal: 12,
@@ -638,6 +1089,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginRight: 8,
   },
   catPillActive: {
     backgroundColor: COLORS.primary,
@@ -650,6 +1102,22 @@ const styles = StyleSheet.create({
   },
   catPillTextActive: {
     color: '#fff',
+  },
+  anonymousToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.04)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  anonymousToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.foreground,
   },
   modalActions: {
     marginTop: SPACING.xl,
@@ -712,7 +1180,7 @@ const styles = StyleSheet.create({
   commentsModalContent: {
     padding: SPACING.lg,
     borderRadius: RADIUS.xl,
-    height: '75%',
+    height: '80%',
     justifyContent: 'space-between',
   },
   commentsLoadingContainer: {
@@ -764,28 +1232,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  commentTime: {
-    color: COLORS.muted,
-    fontSize: 10,
+  commentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    marginBottom: 4,
   },
   commentAuthorTitle: {
     color: COLORS.primary,
     fontSize: 10,
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  commentTime: {
+    color: COLORS.muted,
+    fontSize: 10,
   },
   commentTextContent: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     lineHeight: 17,
   },
+  commentInputSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: SPACING.sm,
+  },
+  commentAnonymousBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: 6,
+    gap: 4,
+  },
+  commentAnonymousLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.muted,
+  },
   commentInputRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-    paddingTop: SPACING.md,
   },
   commentTextInput: {
     flex: 1,
@@ -805,5 +1292,87 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reportModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  reportModalContent: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+  },
+  reportTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  reportSub: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.foreground,
+    marginTop: SPACING.md,
+    marginBottom: 6,
+  },
+  reasonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: SPACING.md,
+  },
+  reasonCard: {
+    width: '48%',
+    padding: 10,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  reasonText: {
+    fontSize: 12,
+    color: COLORS.foreground,
+    fontWeight: '600',
+  },
+  reportDetailsInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    padding: SPACING.sm,
+    color: COLORS.foreground,
+    fontSize: 12,
+    height: 60,
+    textAlignVertical: 'top',
+    marginBottom: SPACING.lg,
+  },
+  reportActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.md,
+  },
+  reportCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: RADIUS.md,
+  },
+  reportCancelText: {
+    color: COLORS.muted,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  reportSubmitBtn: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 100,
+  },
+  reportSubmitText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });
