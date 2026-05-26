@@ -13,13 +13,12 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: 'login',
+  initialRouteName: 'index',
 };
 
 SplashScreen.preventAutoHideAsync();
 
 import { useRouter } from 'expo-router';
-import { getAuthToken } from '../src/services/api';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -55,22 +54,10 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const router = useRouter();
 
-  useEffect(() => {
-    const checkToken = async () => {
-      try {
-        const token = await getAuthToken();
-        if (token) {
-          router.replace('/(tabs)');
-        }
-      } catch (err) {
-        console.error('Auto-login check error:', err);
-      }
-    };
-    checkToken();
-  }, []);
 
   return (
-    <Stack initialRouteName="login">
+    <Stack initialRouteName="index">
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="admin-login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
