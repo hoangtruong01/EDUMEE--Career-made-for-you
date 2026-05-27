@@ -15,7 +15,12 @@ import { useRouter } from 'expo-router';
 import { COLORS, SPACING, RADIUS } from '../src/theme';
 import { GlassView } from '../src/components/GlassView';
 import { Mail, Lock, ArrowRight } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import Svg, { Path } from 'react-native-svg';
 import { api, setAuthToken } from '../src/services/api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -61,6 +66,61 @@ export default function LoginScreen() {
       Platform.OS === 'web' ? alert(message) : Alert.alert('Lỗi', message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Tạo deep link redirect cho app của chúng ta
+      const redirectUrl = Linking.createURL('oauth-success');
+      console.log('Mobile Deep Link Callback:', redirectUrl);
+
+      // 2. Điểm nối API Backend Edumee khởi tạo Google Auth
+      const backendAuthUrl = `${api.defaults.baseURL}/auth/google?state=${encodeURIComponent(redirectUrl)}`;
+      console.log('Opening Backend Google Auth URL:', backendAuthUrl);
+
+      // 3. Phân nhánh nền tảng để tối ưu hóa tính ổn định
+      if ((Platform.OS as string) === 'web') {
+        // Trên Web-preview, chuyển hướng toàn trang trực tiếp để tránh lỗi Chrome popup blocker/dismiss
+        window.location.href = backendAuthUrl;
+        return;
+      }
+
+      // Trên Mobile Native (iOS/Android), mở trình duyệt in-app
+      const authResult = await WebBrowser.openAuthSessionAsync(backendAuthUrl, redirectUrl);
+
+      if (authResult.type === 'success' && authResult.url) {
+        // 4. Trình duyệt đóng và redirect trả link về ứng dụng khách
+        const parsedUrl = Linking.parse(authResult.url);
+        const { access_token, refresh_token } = parsedUrl.queryParams as {
+          access_token?: string;
+          refresh_token?: string;
+        };
+
+        if (access_token) {
+          // Lưu token vào SecureStore / HTTP client state
+          await setAuthToken(access_token);
+          
+          // Điều hướng người dùng vào Dashboard chính
+          router.replace('/(tabs)');
+          const successMsg = 'Đăng nhập Google thành công!';
+          (Platform.OS as string) === 'web' ? alert(successMsg) : Alert.alert('Thành công', successMsg);
+        } else {
+          throw new Error('Không lấy được token từ Google.');
+        }
+      } else {
+        console.log('User cancelled or browser closed. Result status:', authResult.type);
+      }
+    } catch (error: any) {
+      console.error('Google Login Error:', error);
+      const msg = error.message || 'Có lỗi xảy ra trong quá trình đăng nhập bằng Google';
+      (Platform.OS as string) === 'web' ? alert(msg) : Alert.alert('Lỗi', msg);
+    } finally {
+      // Chỉ tắt loading trên native vì trên web đã chuyển hướng sang trang Google
+      if ((Platform.OS as string) !== 'web') {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -125,6 +185,50 @@ export default function LoginScreen() {
                   <Text style={styles.loginButtonText}>Đăng nhập</Text>
                   <ArrowRight size={20} color={COLORS.foreground} style={{ marginLeft: 8 }} />
                 </>
+              )}
+            </Pressable>
+
+            {/* Ngăn cách tinh tế */}
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>Hoặc đăng nhập bằng</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Nút đăng nhập Google Glassmorphism Premium */}
+            <Pressable 
+              onPress={handleGoogleLogin}
+              disabled={isLoading}
+              style={({ pressed }) => [
+                styles.googleButton,
+                { backgroundColor: pressed ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.07)' }
+              ]}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={COLORS.foreground} />
+              ) : (
+                <View style={styles.googleButtonContent}>
+                  {/* Vẽ Icon Google SVG màu chuẩn */}
+                  <Svg width="20" height="20" viewBox="0 0 24 24" style={{ marginRight: 12 }}>
+                    <Path
+                      fill="#EA4335"
+                      d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.79 5.79 0 0 1 8.2 12.725a5.79 5.79 0 0 1 5.79-5.79 5.71 5.71 0 0 1 3.93 1.547l3.1-3.1A9.94 9.94 0 0 0 13.99 2.14c-5.5 0-9.96 4.46-9.96 9.96s4.46 9.96 9.96 9.96c5.77 0 9.8-4.06 9.8-9.96 0-.67-.06-1.3-.17-1.815H12.24Z"
+                    />
+                    <Path
+                      fill="#4285F4"
+                      d="M23.62 12.285c0-.67-.06-1.3-.17-1.815H12.24V14.4h6.887c-.28 1.05-.9 1.94-1.75 2.51v3.29h2.72a9.92 9.92 0 0 0 3.52-7.915Z"
+                    />
+                    <Path
+                      fill="#34A853"
+                      d="M13.99 22.06c2.7 0 4.96-.89 6.62-2.42l-3.22-2.51c-.9.6-2.06.96-3.4.96-2.617 0-4.828-1.764-5.617-4.135l-3.32 2.57A9.95 9.95 0 0 0 13.99 22.06Z"
+                    />
+                    <Path
+                      fill="#FBBC05"
+                      d="M8.373 13.955a5.9 5.9 0 0 1-.307-1.83c0-.64.11-1.26.307-1.83l-3.32-2.57a9.93 9.93 0 0 0 0 8.8l3.32-2.57Z"
+                    />
+                  </Svg>
+                  <Text style={styles.googleButtonText}>Tiếp tục với Google</Text>
+                </View>
               )}
             </Pressable>
 
@@ -242,5 +346,40 @@ const styles = StyleSheet.create({
   signUpLink: {
     color: COLORS.secondary,
     fontWeight: '700',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SPACING.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  dividerText: {
+    color: COLORS.muted,
+    paddingHorizontal: SPACING.md,
+    fontSize: 13,
+  },
+  googleButton: {
+    height: 56,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
+    color: COLORS.foreground,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

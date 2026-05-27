@@ -158,8 +158,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Khởi tạo đăng nhập Google OAuth' })
   @Get('google')
   @Redirect()
-  googleAuth() {
-    return { url: this.authService.getGoogleAuthorizationUrl() };
+  googleAuth(@Query('state') state?: string) {
+    return { url: this.authService.getGoogleAuthorizationUrl(state) };
   }
 
   // =======================================================================
@@ -170,22 +170,47 @@ export class AuthController {
   })
   @Get('google/callback')
   @Redirect()
-  async googleAuthCallback(@Query('code') code: string) {
+  async googleAuthCallback(
+    @Query('code') code: string,
+    @Query('state') state?: string,
+  ) {
+    // Kiểm tra xem state có phải là URL redirect động hợp lệ không
+    const isDynamicRedirect =
+      state &&
+      (state.startsWith('http://') ||
+        state.startsWith('https://') ||
+        state.startsWith('edumee://') ||
+        state.startsWith('exp://'));
+
     if (!code) {
-      const frontendUrl =
+      const defaultWebUrl =
         this.configService.get<string>('CLIENT_REDIRECT_CALLBACK') ||
         'http://localhost:3000/oauth-success';
-      return { url: `${frontendUrl}?error=missing_code` };
+      
+      let redirectErrorUrl = `${defaultWebUrl}?error=missing_code`;
+      if (isDynamicRedirect) {
+        const separator = state.includes('?') ? '&' : '?';
+        redirectErrorUrl = `${state}${separator}error=missing_code`;
+      }
+      return { url: redirectErrorUrl };
     }
 
     const result = await this.authService.googleLogin(code);
 
-    const frontendUrl =
-      this.configService.get<string>('CLIENT_REDIRECT_CALLBACK') ||
-      'http://localhost:3000/oauth-success';
+    let targetRedirectUrl: string;
 
-    const redirectUrl = `${frontendUrl}?access_token=${encodeURIComponent(result.access_token)}&refresh_token=${encodeURIComponent(result.refresh_token)}&role=${encodeURIComponent(result.role)}&new_user=${result.new_user}`;
+    if (isDynamicRedirect) {
+      // Redirect về chính xác URL mà Mobile/Web Client yêu cầu
+      const separator = state.includes('?') ? '&' : '?';
+      targetRedirectUrl = `${state}${separator}access_token=${encodeURIComponent(result.access_token)}&refresh_token=${encodeURIComponent(result.refresh_token)}&role=${encodeURIComponent(result.role)}&new_user=${result.new_user}`;
+    } else {
+      // Nếu là luồng Web truyền thống mặc định
+      const frontendWebUrl =
+        this.configService.get<string>('CLIENT_REDIRECT_CALLBACK') ||
+        'http://localhost:3000/oauth-success';
+      targetRedirectUrl = `${frontendWebUrl}?access_token=${encodeURIComponent(result.access_token)}&refresh_token=${encodeURIComponent(result.refresh_token)}&role=${encodeURIComponent(result.role)}&new_user=${result.new_user}`;
+    }
 
-    return { url: redirectUrl };
+    return { url: targetRedirectUrl };
   }
 }
