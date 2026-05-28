@@ -1098,8 +1098,12 @@ export class CareerFitResultService {
 
   private stringifyId(value: unknown): unknown {
     if (value instanceof Types.ObjectId) return value.toHexString();
-    if (typeof value === 'object' && value !== null && 'toString' in value) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       return String(value);
+    }
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return this.stringifyId(record.id) || this.stringifyId(record._id) || value;
     }
     return value;
   }

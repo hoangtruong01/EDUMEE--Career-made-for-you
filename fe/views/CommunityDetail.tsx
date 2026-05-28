@@ -319,9 +319,12 @@ const CommunityDetail = () => {
             <div className="border-border/50 mb-8 flex items-start justify-between gap-6 border-b border-dashed pb-6">
               <div className="flex items-center gap-4">
                 {post.authorAvatar ? (
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full shadow-lg">
-                    <img src={post.authorAvatar} alt={authorName} className="h-full w-full object-cover" />
-                  </div>
+                  <div
+                    aria-label={authorName}
+                    className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-cover bg-center shadow-lg"
+                    role="img"
+                    style={{ backgroundImage: `url(${post.authorAvatar})` }}
+                  />
                 ) : (
                   <div
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-black text-white shadow-lg ${avatarBg}`}
@@ -469,9 +472,12 @@ const CommunityDetail = () => {
                       <div className="mb-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           {comment.authorAvatar ? (
-                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full shadow-sm">
-                              <img src={comment.authorAvatar} alt={cName} className="h-full w-full object-cover" />
-                            </div>
+                            <div
+                              aria-label={cName}
+                              className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-cover bg-center shadow-sm"
+                              role="img"
+                              style={{ backgroundImage: `url(${comment.authorAvatar})` }}
+                            />
                           ) : (
                             <div
                               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm ${cAvatarBg}`}

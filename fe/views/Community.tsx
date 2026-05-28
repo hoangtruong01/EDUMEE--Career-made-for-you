@@ -157,9 +157,12 @@ const PostCard = ({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-y-2">
         <div className="flex items-center gap-3">
           {post.authorAvatar ? (
-            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full shadow-sm">
-              <img src={post.authorAvatar} alt={authorName} className="h-full w-full object-cover" />
-            </div>
+            <div
+              aria-label={authorName}
+              className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-cover bg-center shadow-sm"
+              role="img"
+              style={{ backgroundImage: `url(${post.authorAvatar})` }}
+            />
           ) : (
             <div
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ${avatarBg}`}
@@ -989,9 +992,12 @@ const Community = () => {
                     return (
                       <div key={c.authorName} className="flex items-center gap-4">
                         {c.authorAvatar ? (
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-md">
-                            <img src={c.authorAvatar} alt={c.authorName} className="h-full w-full object-cover" />
-                          </div>
+                          <div
+                            aria-label={c.authorName}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-cover bg-center shadow-md"
+                            role="img"
+                            style={{ backgroundImage: `url(${c.authorAvatar})` }}
+                          />
                         ) : (
                           <div
                             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-black text-white shadow-md ${bg}`}

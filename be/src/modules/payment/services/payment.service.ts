@@ -368,7 +368,7 @@ export class PaymentService {
 
     const checkoutReference = this.generateCheckoutReference();
     const checkoutToken = this.generateCheckoutToken();
-    const settlementFields = await this.buildPendingMentorSettlementFields(price);
+    const settlementFields = await this.buildPendingMentorSettlementFields();
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       bookingSessionId: booking._id,
@@ -493,7 +493,7 @@ export class PaymentService {
     const remainingAmount = Math.max(price - creditToApply, 0);
     const checkoutReference = this.generateCheckoutReference();
     const checkoutToken = remainingAmount > 0 ? this.generateCheckoutToken() : undefined;
-    const settlementFields = await this.buildPendingMentorSettlementFields(price);
+    const settlementFields = await this.buildPendingMentorSettlementFields();
     const payment = new this.paymentModel({
       userId: new Types.ObjectId(userId),
       bookingSessionId: booking._id,
@@ -1112,7 +1112,7 @@ export class PaymentService {
     summary.mentorPayoutAmount = this.roundCurrency(summary.mentorPayoutAmount);
     summary.readyPayoutAmount = this.roundCurrency(summary.readyPayoutAmount);
     summary.pendingPayoutAmount = this.roundCurrency(summary.pendingPayoutAmount);
-    summary.completedSessionCount = rows.filter((row) => row.bookingStatus === BookingStatus.COMPLETED).length;
+    summary.completedSessionCount = rows.filter((row) => row.bookingStatus === String(BookingStatus.COMPLETED)).length;
 
     const total = rows.length;
     const entries = rows.slice((page - 1) * limit, page * limit);
@@ -2223,7 +2223,7 @@ export class PaymentService {
     return { cashRefundAmount, creditRefundAmount };
   }
 
-  private async buildPendingMentorSettlementFields(_baseAmount: number): Promise<Partial<Payment>> {
+  private async buildPendingMentorSettlementFields(): Promise<Partial<Payment>> {
     return {
       platformFeeRate: await this.resolveMentorPlatformFeeRate(),
       settlementStatus: PaymentSettlementStatus.PENDING,

@@ -623,7 +623,7 @@ export class CareerComparisonService {
         : {};
     const fitResultId = this.extractId(result.id) || this.extractId(result._id);
     const careerId = this.extractId(careerValue);
-    const title = String(result.careerTitle || careerRecord.title || '').trim();
+    const title = this.firstString(result.careerTitle, careerRecord.title);
 
     if (!fitResultId || !title) {
       return null;
@@ -646,8 +646,8 @@ export class CareerComparisonService {
       careerId,
       careerInsightId,
       title,
-      description: String(careerRecord.description || analysis.overview || result.aiExplanation || ''),
-      category: String(careerRecord.category || insight?.category || 'other'),
+      description: this.firstString(careerRecord.description, analysis.overview, result.aiExplanation),
+      category: this.firstString(careerRecord.category, insight?.category, 'other'),
       match: this.toOptionalNumber(result.overallFitScore),
       rank: this.toOptionalNumber(result.rank || result.recommendationRank),
       skills,
@@ -697,12 +697,12 @@ export class CareerComparisonService {
     const id = this.extractId(insight._id) || new Types.ObjectId().toHexString();
     return {
       _id: new Types.ObjectId(id),
-      title: String(insight.careerTitle || ''),
-      category: String(insight.category || 'other'),
-      description: String(analysis.overview || ''),
+      title: this.firstString(insight.careerTitle),
+      category: this.firstString(insight.category, 'other'),
+      description: this.firstString(analysis.overview),
       requiredSkills: this.toStringArray(analysis.keySkills) || [],
       marketInfo: {
-        demandLevel: String(analysis.demandLevel || 'medium'),
+        demandLevel: this.firstString(analysis.demandLevel, 'medium'),
       },
       discoveryData: {
         pros: this.toStringArray(analysis.pros) || [],
@@ -837,7 +837,7 @@ export class CareerComparisonService {
     insights: Record<string, any>[],
   ): Record<string, any> | undefined {
     const normalizedTitle = title.trim().toLowerCase();
-    return insights.find((insight) => String(insight.careerTitle || '').trim().toLowerCase() === normalizedTitle);
+    return insights.find((insight) => this.firstString(insight.careerTitle).toLowerCase() === normalizedTitle);
   }
 
   private extractId(value: unknown): string | undefined {
@@ -849,9 +849,9 @@ export class CareerComparisonService {
       const id = record.id || record._id;
       if (id instanceof Types.ObjectId) return id.toHexString();
       if (typeof id === 'string' && Types.ObjectId.isValid(id)) return id;
-      if (id && typeof id === 'object' && 'toString' in id) {
-        const stringId = String(id);
-        return Types.ObjectId.isValid(stringId) ? stringId : undefined;
+      if (id) {
+        const stringId = this.toStringValue(id);
+        return stringId && Types.ObjectId.isValid(stringId) ? stringId : undefined;
       }
     }
     return undefined;
@@ -859,7 +859,22 @@ export class CareerComparisonService {
 
   private toStringArray(value: unknown): string[] | undefined {
     if (!Array.isArray(value)) return undefined;
-    return value.map((item) => String(item || '').trim()).filter(Boolean);
+    return value.map((item) => this.firstString(item)).filter(Boolean);
+  }
+
+  private firstString(...values: unknown[]): string {
+    for (const value of values) {
+      const stringValue = this.toStringValue(value)?.trim();
+      if (stringValue) return stringValue;
+    }
+    return '';
+  }
+
+  private toStringValue(value: unknown): string | undefined {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Types.ObjectId) return value.toHexString();
+    return undefined;
   }
 
   private toOptionalNumber(value: unknown): number | undefined {

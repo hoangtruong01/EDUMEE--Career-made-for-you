@@ -14,7 +14,6 @@ import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/boo
 import {
   Payment,
   PaymentDocument,
-  PaymentProvider,
   PaymentPurpose,
   PaymentSettlementStatus,
   PaymentStatus,
@@ -83,25 +82,6 @@ type FinancePaymentUser = {
 
 type FinancePaymentPlan = {
   name?: string;
-};
-
-type FinancePaymentUserSummary = {
-  name?: string;
-  email?: string;
-};
-
-type FinancePaymentBooking = {
-  id?: unknown;
-  _id?: unknown;
-  sessionType?: string;
-  status?: string;
-  menteeUser?: FinancePaymentUserSummary;
-  mentorUser?: FinancePaymentUserSummary;
-  schedulingDetails?: {
-    requestedDateTime?: Date;
-    confirmedDateTime?: Date;
-    duration?: number;
-  };
 };
 
 type FinancePaymentRow = {
@@ -712,7 +692,7 @@ export class AdminService {
       filter.status = params.status;
     }
     if (params.provider && params.provider !== 'all') {
-      filter.provider = params.provider === PaymentProvider.SEPAY ? PaymentProvider.SEPAY : params.provider;
+      filter.provider = params.provider;
     }
     if (params.purpose && params.purpose !== 'all') {
       filter.purpose = params.purpose;
@@ -1148,7 +1128,7 @@ export class AdminService {
         row.menteeName,
         row.menteeEmail,
       ]
-        .map((value) => String(value || '').toLowerCase())
+        .map((value) => this.readSearchText(value).toLowerCase())
         .some((value) => value.includes(normalized)),
     );
   }
@@ -1222,11 +1202,21 @@ export class AdminService {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
 
+  private readSearchText(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return this.readId(value) ?? '';
+  }
+
   private readId(value: unknown): string | undefined {
     if (!value) return undefined;
     if (typeof value === 'string') return value;
-    if (value instanceof Types.ObjectId) return value.toString();
-    if (typeof value === 'object' && 'toString' in value) return value.toString();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Types.ObjectId) return value.toHexString();
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      return this.readId(record.id) ?? this.readId(record._id);
+    }
     return undefined;
   }
 

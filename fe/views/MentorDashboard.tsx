@@ -1041,7 +1041,7 @@ function getScheduleEntryTitle(entry: ScheduleEntry) {
   return entry.slot?.status || 'Khung giờ';
 }
 
-function MentorScheduleTimetable({
+export function MentorScheduleTimetable({
   profile,
   slots,
   bookings,
@@ -1588,7 +1588,7 @@ function MentorScheduleTimetable({
   );
 }
 
-function MentorAvailabilityManager({
+export function MentorAvailabilityManager({
   profile,
   slots,
   onChanged,
@@ -2062,7 +2062,7 @@ function MentorSchedulingWorkspace({
       );
     }
     setProposalReason('');
-  }, [selectedBooking?.id]);
+  }, [selectedBooking]);
   const selectedAvailabilitySlot = selectedAvailabilitySlotId
     ? slots.find((slot) => slot.id === selectedAvailabilitySlotId) || null
     : null;
@@ -3345,7 +3345,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     }>(mentorPortalQueryKey(accessToken))?.slots ?? [];
   }, [accessToken, queryClient, view]);
 
-  const refreshSlotsOnly = useCallback(async (_silent = true) => {
+  const refreshSlotsOnly = useCallback(async () => {
     if (!accessToken || !myProfile?.id) {
       return [];
     }

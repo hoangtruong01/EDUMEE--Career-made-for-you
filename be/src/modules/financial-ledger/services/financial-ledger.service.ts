@@ -106,18 +106,6 @@ export type FinanceTransactionListParams = {
   to?: Date;
 };
 
-const REVENUE_ACCOUNTS = [
-  FinancialAccountCode.AI_PLAN_REVENUE,
-  FinancialAccountCode.PLATFORM_FEE_REVENUE,
-] as const;
-
-const LIABILITY_ACCOUNTS = [
-  FinancialAccountCode.MENTOR_BOOKING_ESCROW,
-  FinancialAccountCode.MENTOR_EARNINGS_LIABILITY,
-  FinancialAccountCode.CASH_REFUND_LIABILITY,
-  FinancialAccountCode.EDUMEE_CREDIT_LIABILITY,
-] as const;
-
 @Injectable()
 export class FinancialLedgerService {
   constructor(
@@ -514,10 +502,8 @@ export class FinancialLedgerService {
         if (
           entry.eventType === FinancialEventType.PAYMENT_REFUNDED &&
           line.direction === FinancialJournalDirection.CREDIT &&
-          [
-            FinancialAccountCode.CASH_REFUND_LIABILITY,
-            FinancialAccountCode.EDUMEE_CREDIT_LIABILITY,
-          ].includes(line.accountCode as FinancialAccountCode)
+          (line.accountCode === FinancialAccountCode.CASH_REFUND_LIABILITY ||
+            line.accountCode === FinancialAccountCode.EDUMEE_CREDIT_LIABILITY)
         ) {
           totals.refunds += amount;
         }
@@ -538,7 +524,7 @@ export class FinancialLedgerService {
     const balances = new Map<FinancialAccountCode, number>();
     for (const entry of entries) {
       for (const line of entry.lines || []) {
-        const accountCode = line.accountCode as FinancialAccountCode;
+        const accountCode = line.accountCode;
         const amount = Number(line.amount || 0);
         const normalBalance = this.getNormalBalance(accountCode);
         const signedAmount = line.direction === normalBalance ? amount : -amount;

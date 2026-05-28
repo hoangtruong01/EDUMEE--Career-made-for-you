@@ -75,7 +75,6 @@ import {
   Sparkles,
   Star,
   Target,
-  Upload,
   User,
   Users,
   WalletCards,
@@ -245,7 +244,6 @@ const Profile = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [userMe, setUserMe] = useState<UserMe | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState('');
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [aiPlans, setAiPlans] = useState<AiPlanCatalogItem[]>([]);
@@ -625,7 +623,6 @@ const Profile = () => {
     setTheme(newTheme);
   };
   const resetAvatarDraft = () => {
-    setSelectedAvatarFile(null);
     setAvatarPreviewUrl('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -670,10 +667,6 @@ const Profile = () => {
       setIsUploadingAvatar(false);
       resetAvatarDraft();
     }
-  };
-
-  const handleAvatarDraftUpload = async () => {
-    // Deprecated: Avatar is now uploaded immediately upon selection
   };
 
   const handleUpdateProfile = async () => {
@@ -2822,11 +2815,6 @@ function getInitials(name?: string): string {
     .map((part) => part[0])
     .join('')
     .toUpperCase();
-}
-
-function formatFileSize(size: number): string {
-  if (size < 1024 * 1024) return `${Math.max(size / 1024, 1).toFixed(0)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function normalizePlanCode(planName?: string): string {

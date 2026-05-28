@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function CompleteProfileView() {
-  const { accessToken, onboardingCompleted, isAuthenticated, isHydrated, setOnboardingCompleted } = useAuth();
+  const { accessToken, isAuthenticated, isHydrated, setOnboardingCompleted } = useAuth();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
