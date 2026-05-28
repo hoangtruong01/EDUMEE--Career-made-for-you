@@ -87,7 +87,7 @@ export default function AdminAnalyticsPage() {
         subtitle="Theo dõi truy cập, tăng trưởng người dùng, bài test và booking mentor từ dữ liệu thật."
         right={
           <div className="flex items-center gap-2">
-            <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+            <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
               {(['6m', '12m'] as AnalyticsRange[]).map((item) => (
                 <button
                   key={item}
@@ -95,7 +95,7 @@ export default function AdminAnalyticsPage() {
                   onClick={() => setRange(item)}
                   className={cn(
                     'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
-                    range === item ? 'bg-violet-500 text-white' : 'text-slate-600',
+                    range === item ? 'bg-violet-500 text-white' : 'text-slate-600 dark:text-slate-400',
                   )}
                 >
                   {item === '6m' ? '6 tháng' : '12 tháng'}
@@ -105,7 +105,7 @@ export default function AdminAnalyticsPage() {
 
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700"
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 text-sm font-semibold text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
               <Download className="h-4 w-4" />
               Xuất báo cáo
@@ -134,15 +134,15 @@ export default function AdminAnalyticsPage() {
         <AdminPanel title="Tăng trưởng người dùng" className="px-5 py-4">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-slate-500">Người dùng mới theo tháng</p>
-            <div className="flex rounded-lg border border-slate-200 bg-white p-1">
+            <div className="flex rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
               {(['line', 'column'] as const).map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => setChartMode(item)}
                   className={cn(
-                    'rounded-md px-2.5 py-1 text-xs font-semibold',
-                    chartMode === item ? 'bg-slate-900 text-white' : 'text-slate-500',
+                    'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+                    chartMode === item ? 'bg-slate-900 dark:bg-slate-800 text-white' : 'text-slate-500 dark:text-slate-400',
                   )}
                 >
                   {item === 'line' ? 'Line' : 'Column'}
@@ -150,7 +150,7 @@ export default function AdminAnalyticsPage() {
               ))}
             </div>
           </div>
-          <div className="h-64 rounded-xl border border-slate-100 bg-slate-50 p-4">
+          <div className="h-64 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4">
             {userGrowth.length === 0 ? (
               <EmptyChart />
             ) : chartMode === 'line' ? (
@@ -191,20 +191,20 @@ export default function AdminAnalyticsPage() {
 
         <AdminPanel title="Phân bố nghề nghiệp" className="px-5 py-4">
           <p className="mb-4 text-sm text-slate-500">Top ngành từ kết quả assessment</p>
-          <div className="relative mx-auto mb-6 h-40 w-40 rounded-full bg-slate-100" style={donutStyle}>
-            <div className="absolute inset-5 rounded-full bg-white" />
+          <div className="relative mx-auto mb-6 h-40 w-40 rounded-full bg-slate-100 dark:bg-slate-850" style={donutStyle}>
+            <div className="absolute inset-5 rounded-full bg-white dark:bg-slate-900" />
           </div>
           <div className="space-y-2">
             {careerDistribution.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-500">Chưa có dữ liệu phân bố.</p>
+              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Chưa có dữ liệu phân bố.</p>
             ) : (
               careerDistribution.map((sector, index) => (
                 <div key={sector.name} className="flex items-center justify-between text-sm">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${sectorColors[index % sectorColors.length]}`} />
-                    <span className="truncate text-slate-600">{sector.name}</span>
+                    <span className="truncate text-slate-600 dark:text-slate-400">{sector.name}</span>
                   </div>
-                  <span className="font-semibold text-slate-800">{sector.value}%</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{sector.value}%</span>
                 </div>
               ))
             )}
@@ -214,7 +214,7 @@ export default function AdminAnalyticsPage() {
 
       <AdminPanel title="Hoàn thành bài test" className="mt-4 px-5 py-4">
         <p className="mb-4 text-sm text-slate-500">6 tuần gần nhất</p>
-        <div className="flex h-64 items-end justify-between gap-4 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-6">
+        <div className="flex h-64 items-end justify-between gap-4 overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-6">
           {assessmentCompletions.length === 0 ? (
             <EmptyChart />
           ) : (

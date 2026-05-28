@@ -84,8 +84,8 @@ export default function AdminAuditLogsPage() {
               className={cn(
                 'rounded-xl px-4 py-2 text-xs font-bold transition',
                 category === key
-                  ? 'bg-violet-600 text-white shadow-lg shadow-violet-200'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                  ? 'bg-violet-600 text-white shadow-lg shadow-violet-200 dark:shadow-none'
+                  : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
               )}
             >
               {label}
@@ -104,7 +104,7 @@ export default function AdminAuditLogsPage() {
                 setPage(1);
               }
             }}
-            className="h-10 w-full rounded-xl border border-slate-200 pl-10 text-sm outline-none focus:border-violet-400"
+            className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:border-violet-400 dark:text-white"
             placeholder="Tìm kiếm nhật ký, đường dẫn, visitor..."
           />
         </div>
@@ -126,31 +126,31 @@ export default function AdminAuditLogsPage() {
             logs.map((log) => {
               const Icon = iconForLog(log);
               return (
-                <div key={`${log.source}-${log.id}`} className="flex items-center gap-4 p-4 transition hover:bg-slate-50/50">
+                <div key={`${log.source}-${log.id}`} className="flex items-center gap-4 p-4 transition hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                   <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', colorForLog(log))}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-bold text-slate-900">{actionLabel(log.action)}</p>
-                      <span className="shrink-0 text-[10px] font-bold text-slate-400">{formatDate(log.createdAt)}</span>
+                      <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{actionLabel(log.action)}</p>
+                      <span className="shrink-0 text-[10px] font-bold text-slate-400 dark:text-slate-500">{formatDate(log.createdAt)}</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-medium text-slate-500">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                         {log.source === 'tracking' ? 'Visitor' : 'Bởi'}:{' '}
-                        <span className="font-bold text-slate-700">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
                           {log.source === 'tracking'
                             ? formatVisitor(log)
                             : log.actorName || log.actorEmail || 'System'}
                         </span>
                       </span>
-                      <span className="h-1 w-1 rounded-full bg-slate-300" />
-                      <span className="text-xs font-medium text-slate-500">
+                      <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                         {log.source === 'tracking' ? 'Đường dẫn' : 'Khu vực'}:{' '}
-                        <span className="font-bold text-violet-600">{log.resource}</span>
+                        <span className="font-bold text-violet-600 dark:text-violet-400">{log.resource}</span>
                       </span>
                       {log.status === 'failed' && (
-                        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">
+                        <span className="rounded-full bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-400 border border-rose-100/50 dark:border-rose-900/30">
                           Thất bại
                         </span>
                       )}
@@ -162,14 +162,14 @@ export default function AdminAuditLogsPage() {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-4 py-3 text-xs text-slate-500">
+        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
           <span>Trang {page} / {totalPages}</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={page === 1}
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-350 px-3 py-1.5 font-semibold disabled:opacity-50 transition"
             >
               Trước
             </button>
@@ -177,7 +177,7 @@ export default function AdminAuditLogsPage() {
               type="button"
               disabled={page === totalPages}
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-350 px-3 py-1.5 font-semibold disabled:opacity-50 transition"
             >
               Sau
             </button>
@@ -199,11 +199,11 @@ function iconForLog(log: ActivityLogRecord) {
 }
 
 function colorForLog(log: ActivityLogRecord) {
-  if (log.source === 'tracking') return 'bg-sky-50 text-sky-600';
-  if (log.status === 'failed') return 'bg-rose-50 text-rose-600';
-  if (log.category === 'security') return 'bg-rose-50 text-rose-600';
-  if (log.category === 'system') return 'bg-emerald-50 text-emerald-600';
-  return 'bg-violet-50 text-violet-600';
+  if (log.source === 'tracking') return 'bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400';
+  if (log.status === 'failed') return 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-450';
+  if (log.category === 'security') return 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-450';
+  if (log.category === 'system') return 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-450';
+  return 'bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400';
 }
 
 function actionLabel(action: string) {

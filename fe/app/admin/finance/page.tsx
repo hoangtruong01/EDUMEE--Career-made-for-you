@@ -105,7 +105,7 @@ export default function AdminFinancePage() {
         title="Quản lý Tài chính"
         subtitle="Theo dõi doanh thu gói AI, booking mentor và trạng thái thanh toán."
         right={
-          <button className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+          <button className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 text-sm font-bold text-slate-700 dark:text-slate-350 transition hover:bg-slate-50 dark:hover:bg-slate-800">
             <Download className="h-4 w-4" /> Xuất báo cáo
           </button>
         }
@@ -124,7 +124,7 @@ export default function AdminFinancePage() {
               'rounded-xl border px-4 py-2 text-xs font-bold transition',
               range === item
                 ? 'border-violet-500 bg-violet-500 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
             )}
           >
             {rangeLabels[item]}
@@ -146,7 +146,7 @@ export default function AdminFinancePage() {
 
       <AdminPanel className="overflow-hidden p-0">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
-          <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+          <div className="flex rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1">
             {['all', 'Plus', 'Business'].map((item) => (
               <button
                 key={item}
@@ -156,7 +156,7 @@ export default function AdminFinancePage() {
                 }}
                 className={cn(
                   'rounded-lg px-4 py-1.5 text-xs font-bold transition',
-                  plan === item ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                  plan === item ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
                 )}
               >
                 {item === 'all' ? 'Tất cả' : item}
@@ -171,14 +171,14 @@ export default function AdminFinancePage() {
                 setStatus(event.target.value);
                 setPage(1);
               }}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+              className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-300 outline-none"
             >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="paid">Đã thanh toán</option>
-              <option value="pending">Đang chờ</option>
-              <option value="failed">Thất bại</option>
-              <option value="cancelled">Đã hủy</option>
-              <option value="refunded">Hoàn tiền</option>
+              <option value="all" className="dark:bg-slate-900">Tất cả trạng thái</option>
+              <option value="paid" className="dark:bg-slate-900">Đã thanh toán</option>
+              <option value="pending" className="dark:bg-slate-900">Đang chờ</option>
+              <option value="failed" className="dark:bg-slate-900">Thất bại</option>
+              <option value="cancelled" className="dark:bg-slate-900">Đã hủy</option>
+              <option value="refunded" className="dark:bg-slate-900">Hoàn tiền</option>
             </select>
             <div className="relative">
               <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -191,7 +191,7 @@ export default function AdminFinancePage() {
                     setPage(1);
                   }
                 }}
-                className="h-10 w-64 rounded-xl border border-slate-200 pl-10 text-sm outline-none focus:border-violet-400"
+                className="h-10 w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-10 text-sm outline-none focus:border-violet-400 dark:text-white"
                 placeholder="Tìm mã giao dịch, email..."
               />
             </div>
@@ -201,16 +201,16 @@ export default function AdminFinancePage() {
                 setSearch(searchDraft);
                 setPage(1);
               }}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
             >
-              <Filter className="h-4 w-4 text-slate-500" />
+              <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
             </button>
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
               <tr>
                 <th className="px-6 py-4 text-left">Mã giao dịch</th>
                 <th className="px-6 py-4 text-left">Người dùng</th>
@@ -220,7 +220,7 @@ export default function AdminFinancePage() {
                 <th className="px-6 py-4 text-left">Trạng thái</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
@@ -235,20 +235,20 @@ export default function AdminFinancePage() {
                 </tr>
               ) : (
                 payments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-slate-50/50">
-                    <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">
+                  <tr key={payment.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
                       {payment.checkoutReference || payment.id}
                     </td>
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-800">{payment.userName}</p>
-                      <p className="text-xs text-slate-500">{payment.userEmail}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-200">{payment.userName}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{payment.userEmail}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-800">{payment.planName}</p>
-                      <p className="text-xs text-slate-500">{purposeLabel(payment.purpose)}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-200">{payment.planName}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{purposeLabel(payment.purpose)}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900">
+                      <p className="font-bold text-slate-900 dark:text-white">
                         {formatMoney(payment.totalAmount ?? payment.amount, payment.currency)}
                       </p>
                       {Number(payment.creditAppliedAmount || 0) > 0 ? (
@@ -277,14 +277,14 @@ export default function AdminFinancePage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-xs text-slate-500">
+        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3 text-xs text-slate-500 dark:text-slate-400">
           <span>Trang {page} / {totalPages}</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={page === 1}
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-350 px-3 py-1.5 font-semibold disabled:opacity-50 transition"
             >
               Trước
             </button>
@@ -292,7 +292,7 @@ export default function AdminFinancePage() {
               type="button"
               disabled={page === totalPages}
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 dark:text-slate-350 px-3 py-1.5 font-semibold disabled:opacity-50 transition"
             >
               Sau
             </button>
@@ -328,7 +328,7 @@ function FinanceStatCard({
           <div
             className={cn(
               'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold',
-              trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600',
+              trend === 'up' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400',
             )}
           >
             {trend === 'up' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -336,8 +336,8 @@ function FinanceStatCard({
           </div>
         )}
       </div>
-      <p className="mb-1 text-xs font-bold text-slate-500">{label}</p>
-      <h3 className="text-2xl font-black tracking-tight text-slate-900">{value}</h3>
+      <p className="mb-1 text-xs font-bold text-slate-500 dark:text-slate-400">{label}</p>
+      <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{value}</h3>
     </AdminPanel>
   );
 }

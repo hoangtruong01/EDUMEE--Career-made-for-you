@@ -222,7 +222,7 @@ const Profile = () => {
   const router = useRouter();
   const { logout, accessToken, role } = useAuth();
   const { realtimeAlertsEnabled, setRealtimeAlertsEnabled } = useNotifications();
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const {
     meQuery,
@@ -276,7 +276,7 @@ const Profile = () => {
     bio: '',
   });
 
-  const [currentTheme, setCurrentTheme] = useState<string>('system');
+  const currentTheme = theme || 'system';
   const reportRef = useRef<HTMLDivElement>(null);
 
   const applyAiBillingData = useCallback((data: AiBillingData | undefined) => {
@@ -385,8 +385,6 @@ const Profile = () => {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('theme') || 'system';
-    setCurrentTheme(savedTheme);
   }, []);
 
   useEffect(() => {
@@ -613,26 +611,7 @@ const Profile = () => {
   };
 
   const handleThemeChange = (newTheme: string) => {
-    setCurrentTheme(newTheme);
-    if (setTheme) setTheme(newTheme);
-
-    if (typeof window !== 'undefined') {
-      const root = window.document.documentElement;
-      if (newTheme === 'dark') {
-        root.classList.add('dark');
-        localStorage.setItem('theme', 'dark');
-      } else if (newTheme === 'light') {
-        root.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
-      } else {
-        localStorage.removeItem('theme');
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          root.classList.add('dark');
-        } else {
-          root.classList.remove('dark');
-        }
-      }
-    }
+    setTheme(newTheme);
   };
   const resetAvatarDraft = () => {
     setSelectedAvatarFile(null);
