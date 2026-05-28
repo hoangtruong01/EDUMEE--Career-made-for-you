@@ -22,6 +22,7 @@ export class AiPlanLimitsDto {
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) careerRecommendationRunsPerMonth?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) maxCareerRecommendationsPerRun?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) visibleCareerRecommendationsPerRun?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) careerComparisonsPerMonth?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) maxCareersPerComparison?: number;

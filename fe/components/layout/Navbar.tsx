@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useAssessment } from '@/context/assessment-context';
 import { useAuth } from '@/context/auth-context';
 import { userService, type UserMe } from '@/lib/user.service';
-import { walletService, type WalletAccount } from '@/lib/wallet.service';
+import { walletService, type WalletSummary } from '@/lib/wallet.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
@@ -79,7 +79,7 @@ function HeaderUserMenu({
   profileHref,
 }: {
   user: UserMe | null;
-  wallet: WalletAccount | null;
+  wallet: WalletSummary | null;
   profileHref: string;
 }) {
   return (
@@ -128,7 +128,7 @@ const Navbar = () => {
   const { hasAssessmentResult } = useAssessment();
   const { accessToken, role } = useAuth();
   const [userMe, setUserMe] = useState<UserMe | null>(null);
-  const [wallet, setWallet] = useState<WalletAccount | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
 
   useEffect(() => {
     if (!accessToken) {

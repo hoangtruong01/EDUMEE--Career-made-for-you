@@ -47,6 +47,60 @@ export interface DetailedAnalysis {
   };
 }
 
+export interface ComparisonInsights {
+  criteriaGuide: { key: string; label: string; description: string }[];
+  perCareer: {
+    careerId: string;
+    careerTitle: string;
+    personFit: {
+      workEnvironment: string;
+      workRhythm: string;
+      autonomyLevel: string;
+      communicationLoad: string;
+      stressProfile: string;
+    };
+    personalityFit: {
+      bestTraits: string[];
+      potentialFriction: string[];
+      teamStyle: string;
+      decisionStyle: string;
+    };
+    compensation: {
+      entryRange: string;
+      midRange: string;
+      seniorRange: string;
+      growthCeiling: string;
+      stability: string;
+    };
+    market: {
+      demand: string;
+      growthTrend: string;
+      competition: string;
+      remoteAvailability: string;
+      aiAutomationRisk: string;
+    };
+    skillsAndPath: {
+      mustHaveSkills: string[];
+      skillGaps: string[];
+      rampUpTime: string;
+      portfolioSignals: string[];
+    };
+    longTerm: {
+      advancementPotential: string;
+      workLifeBalance: string;
+      burnoutRisk: string;
+      transferability: string;
+    };
+  }[];
+  tradeOffSummary: {
+    bestPersonalityFit: string;
+    bestSalaryUpside: string;
+    bestMarketOutlook: string;
+    safestLongTermChoice: string;
+    notes: string[];
+  };
+}
+
 export interface CareerComparisonResponse {
   careers: Career[];
   quantitativeComparison: unknown;
@@ -68,10 +122,31 @@ export interface CareerComparisonResponse {
       growthPotential: number;
     };
   }[];
+  comparisonInsights?: ComparisonInsights;
   comparisonId: string;
 }
 
+export interface AllowedCareerComparisonItem {
+  id: string;
+  source: 'career' | 'career_insight' | 'career_fit_result';
+  careerFitResultId: string;
+  careerId?: string;
+  careerInsightId?: string;
+  title: string;
+  description?: string;
+  category?: string;
+  match?: number;
+  rank?: number;
+  skills: string[];
+  salaryRange?: string;
+  demandLevel?: string;
+}
+
 export const careerComparisonService = {
+  getAllowedCareers: async (token?: string): Promise<AllowedCareerComparisonItem[]> => {
+    return apiClient.get<AllowedCareerComparisonItem[]>('/career-comparisons/allowed-careers', token);
+  },
+
   compareCareers: async (careerIds: string[], token?: string): Promise<CareerComparisonResponse> => {
     return apiClient.post<CareerComparisonResponse>('/career-comparisons/compare-careers', { careerIds }, token);
   },

@@ -2,7 +2,10 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
-import { assessmentService } from '@/lib/assessment.service';
+import {
+  assessmentService,
+  type CareerFitResultHistoryItem,
+} from '@/lib/assessment.service';
 import { roadmapService, CareerDetailedAnalysis } from '@/lib/roadmap.service';
 import { motion } from 'framer-motion';
 import { 
@@ -15,11 +18,16 @@ import {
   DollarSign,
   Calendar,
   Zap,
-  Info
+  Info,
+  Lock,
+  History,
+  Eye,
+  RotateCcw,
+  AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -39,6 +47,29 @@ const getIsDark = () =>
   (localStorage.getItem('theme') === 'dark' ||
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches));
 
+const formatHistoryDate = (value?: string) => {
+  if (!value) return 'Chưa có thời gian';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+};
+
+const getHistoryLabel = (item?: CareerFitResultHistoryItem) => {
+  if (!item) return 'Mới nhất';
+  if (item.isLatest) return 'Mới nhất';
+  return `Lượt #${item.attemptNumber || 'cũ'}`;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
 
 interface MappedCareer {
   title: string;
@@ -49,31 +80,48 @@ interface MappedCareer {
   demandLabel: string;
   skills: string[];
   gradient: string;
+  rank: number;
+  isLocked: boolean;
 }
+
+type DetailLoadResult =
+  | { status: 'success'; title: string; detail: CareerDetailedAnalysis }
+  | { status: 'error'; title: string; error: string };
 
 /* ─── Career Card ─── */
 const CareerCard = ({
   career,
   index,
   details,
-  onNavigate
+  detailError,
+  onNavigate,
+  onUpgrade,
+  onRetryDetails
 }: {
   career: MappedCareer;
   index: number;
   details?: CareerDetailedAnalysis;
+  detailError?: string;
   onNavigate: (title: string) => void;
+  onUpgrade: () => void;
+  onRetryDetails: (title: string) => void;
 }) => {
+  const isLocked = career.isLocked;
+  const showDetailError = !isLocked && Boolean(detailError);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="glass-card flex flex-col overflow-hidden rounded-3xl border-border/50 shadow-soft hover:shadow-elevated transition-all duration-300 h-full"
+      className={`glass-card relative flex h-full flex-col overflow-hidden rounded-3xl border-border/50 shadow-soft transition-all duration-300 ${
+        isLocked ? 'border-primary/20' : 'hover:shadow-elevated'
+      }`}
     >
       {/* Gradient top strip */}
-      <div className={`h-1.5 w-full bg-linear-to-r ${career.gradient}`} />
+      <div className={`h-1.5 w-full bg-linear-to-r ${isLocked ? 'from-slate-400 to-zinc-500' : career.gradient}`} />
 
-      <div className="flex flex-1 flex-col p-5">
+      <div className={`flex flex-1 flex-col p-5 ${isLocked ? 'pointer-events-none select-none blur-[4px] opacity-60' : ''}`}>
         {/* Header row */}
         <div className="mb-4 flex items-start justify-between gap-2">
           <div className="flex items-start gap-3">
@@ -119,7 +167,7 @@ const CareerCard = ({
               <span className="text-[9px] font-bold uppercase tracking-wider">Lương</span>
             </div>
             <p className="text-foreground font-bold text-xs truncate">
-              {details?.salaryRange || 'Đang phân tích...'}
+              {showDetailError ? 'Không tải được' : details?.salaryRange || 'Đang phân tích...'}
             </p>
           </div>
           <div className="bg-emerald-500/5 rounded-xl p-2.5 border border-emerald-500/10">
@@ -128,53 +176,79 @@ const CareerCard = ({
               <span className="text-[9px] font-bold uppercase tracking-wider">Nhu cầu</span>
             </div>
             <p className="text-foreground font-bold text-xs truncate">
-              {details?.demandLevel || career.demandLabel}
+              {showDetailError ? 'Không tải được' : details?.demandLevel || career.demandLabel}
             </p>
           </div>
         </div>
 
         {/* Concise AI Details */}
         <div className="flex-1 space-y-4">
-          {/* Summary */}
-          <div className="min-h-[60px]">
-            <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
-              <Info className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Tóm tắt ngành</span>
-            </div>
-            <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-3">
-              {details?.overview || 'Đang chờ AI cập nhật thông tin tổng quan về ngành nghề này...'}
-            </p>
-          </div>
-
-          {/* 5-Year Outlook & Skills in a small grid */}
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Tầm nhìn 5 năm</span>
+          {showDetailError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold">Không tải được phân tích chi tiết</p>
+                  <p className="mt-1 text-[11px] leading-relaxed">{detailError}</p>
+                </div>
               </div>
-              <div className="bg-muted/30 rounded-xl p-2 border border-border/40">
-                <p className="text-[10px] text-foreground/80 leading-snug line-clamp-2">
-                  {details?.trends?.[0]?.description || 'Xu hướng phát triển đang được AI phân tích...'}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 gap-1.5 rounded-lg text-xs"
+                onClick={() => onRetryDetails(career.title)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Thử lại
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="min-h-[60px]">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                  <Info className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Tóm tắt ngành</span>
+                </div>
+                <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-3">
+                  {details?.overview || 'Đang chờ AI cập nhật thông tin tổng quan về ngành nghề này...'}
                 </p>
               </div>
-            </div>
 
-            <div>
-              <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Kỹ năng cần học</span>
+              {/* 5-Year Outlook & Skills in a small grid */}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Tầm nhìn 5 năm</span>
+                  </div>
+                  <div className="bg-muted/30 rounded-xl p-2 border border-border/40">
+                    <p className="text-[10px] text-foreground/80 leading-snug line-clamp-2">
+                      {details?.trends?.[0]?.description || 'Xu hướng phát triển đang được AI phân tích...'}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                    <Zap className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Kỹ năng cần học</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(details?.keySkills || career.skills || []).slice(0, 3).map((skill: string, i: number) => (
+                      <span key={i} className="bg-primary/5 text-primary border border-primary/10 rounded-lg px-2 py-0.5 text-[9px] font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                    {(details?.keySkills || career.skills || []).length === 0 && (
+                      <span className="text-[10px] text-muted-foreground italic">Đang tải...</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1">
-                {(details?.keySkills || career.skills || []).slice(0, 3).map((skill: string, i: number) => (
-                  <span key={i} className="bg-primary/5 text-primary border border-primary/10 rounded-lg px-2 py-0.5 text-[9px] font-medium">
-                    {skill}
-                  </span>
-                ))}
-                {!(details?.keySkills || career.skills) && <span className="text-[10px] text-muted-foreground italic">Đang tải...</span>}
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
         {/* Buttons */}
@@ -190,6 +264,29 @@ const CareerCard = ({
           </Button>
         </div>
       </div>
+
+      {isLocked && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/35 p-5 backdrop-blur-[2px]">
+          <div className="w-full max-w-[260px] rounded-2xl border border-primary/20 bg-background/90 p-4 text-center shadow-elevated">
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Lock className="h-5 w-5" />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Nghề #{career.rank}
+            </p>
+            <p className="mt-1 text-sm font-bold text-foreground">Mở khóa để xem chi tiết</p>
+            <Button
+              variant="hero"
+              className="mt-4 w-full gap-2 rounded-xl py-4 text-xs"
+              onClick={onUpgrade}
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Nâng cấp gói AI
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };
@@ -204,6 +301,18 @@ const AssessmentResult = () => {
   const [barData, setBarData] = useState<{ name: string; score: number; color: string }[]>([]);
   const [personalityTraits, setPersonalityTraits] = useState<{ name: string; value: number; desc: string }[]>([]);
   const [isLoadingResult, setIsLoadingResult] = useState(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [history, setHistory] = useState<CareerFitResultHistoryItem[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [resultError, setResultError] = useState('');
+  const [historyError, setHistoryError] = useState('');
+  const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const resultRequestSeqRef = useRef(0);
+  const inFlightResultKeyRef = useRef<string | null>(null);
+  const loadedResultKeyRef = useRef<string | null>(null);
+  const loadedHistoryTokenRef = useRef('');
+  const inFlightHistoryTokenRef = useRef('');
+  const detailedAnalysesRef = useRef<Record<string, CareerDetailedAnalysis>>({});
 
   const isDark = useSyncExternalStore(themeSubscribe, getIsDark, () => false);
   const tickColor = isDark ? 'hsl(var(--muted-foreground))' : 'hsl(var(--muted-foreground))';
@@ -216,95 +325,250 @@ const AssessmentResult = () => {
     boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
   };
 
-  useEffect(() => {
-    const loadResults = async () => {
-      if (!accessToken) {
-        setIsLoadingResult(false);
+  const replaceDetailedAnalyses = useCallback((next: Record<string, CareerDetailedAnalysis>) => {
+    detailedAnalysesRef.current = next;
+    setDetailedAnalyses(next);
+  }, []);
+
+  const mergeDetailedAnalyses = useCallback((updates: Record<string, CareerDetailedAnalysis>) => {
+    setDetailedAnalyses((current) => {
+      const next = { ...current, ...updates };
+      detailedAnalysesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const loadCareerDetails = useCallback(async (careers: MappedCareer[], requestId: number) => {
+    if (!accessToken) {
+      return;
+    }
+
+    const targets = careers.filter(
+      (career) => !career.isLocked && !detailedAnalysesRef.current[career.title],
+    );
+    if (targets.length === 0) {
+      return;
+    }
+
+    setDetailErrors((current) => {
+      const next = { ...current };
+      targets.forEach((career) => delete next[career.title]);
+      return next;
+    });
+
+    const detailResults: DetailLoadResult[] = await Promise.all(
+      targets.map(async (career) => {
+        try {
+          const detail = await roadmapService.getDetailedAnalysis(accessToken, career.title);
+          return { status: 'success', title: career.title, detail };
+        } catch (error) {
+          return {
+            status: 'error',
+            title: career.title,
+            error: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
+          };
+        }
+      }),
+    );
+
+    if (requestId !== resultRequestSeqRef.current) {
+      return;
+    }
+
+    const updates: Record<string, CareerDetailedAnalysis> = {};
+    const errors: Record<string, string> = {};
+    detailResults.forEach((result) => {
+      if (result.status === 'error') {
+        errors[result.title] = result.error;
+      } else {
+        updates[result.title] = result.detail;
+      }
+    });
+
+    if (Object.keys(updates).length > 0) {
+      mergeDetailedAnalyses(updates);
+    }
+    if (Object.keys(errors).length > 0) {
+      setDetailErrors((current) => ({ ...current, ...errors }));
+    }
+  }, [accessToken, mergeDetailedAnalyses]);
+
+  const handleRetryDetails = useCallback(async (careerTitle: string) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setDetailErrors((current) => {
+      const next = { ...current };
+      delete next[careerTitle];
+      return next;
+    });
+
+    try {
+      const detail = await roadmapService.getDetailedAnalysis(accessToken, careerTitle);
+      mergeDetailedAnalyses({ [careerTitle]: detail });
+    } catch (error) {
+      setDetailErrors((current) => ({
+        ...current,
+        [careerTitle]: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
+      }));
+    }
+  }, [accessToken, mergeDetailedAnalyses]);
+
+  const loadHistory = useCallback(async () => {
+    if (!accessToken) {
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    if (loadedHistoryTokenRef.current === accessToken || inFlightHistoryTokenRef.current === accessToken) {
+      return;
+    }
+
+    inFlightHistoryTokenRef.current = accessToken;
+    setIsLoadingHistory(true);
+    setHistoryError('');
+    try {
+      const rows = await assessmentService.getMyHistory(accessToken);
+      setHistory(Array.isArray(rows) ? rows : []);
+      loadedHistoryTokenRef.current = accessToken;
+    } catch (error) {
+      setHistoryError(getErrorMessage(error, 'Không tải được lịch sử làm bài.'));
+    } finally {
+      inFlightHistoryTokenRef.current = '';
+      setIsLoadingHistory(false);
+    }
+  }, [accessToken]);
+
+  const loadResults = useCallback(async (sessionId?: string, force = false) => {
+    if (!accessToken) {
+      setIsLoadingResult(false);
+      return;
+    }
+
+    const requestKey = sessionId || 'latest';
+    if (!force && (inFlightResultKeyRef.current === requestKey || loadedResultKeyRef.current === requestKey)) {
+      return;
+    }
+
+    inFlightResultKeyRef.current = requestKey;
+    const requestId = resultRequestSeqRef.current + 1;
+    resultRequestSeqRef.current = requestId;
+    setIsLoadingResult(true);
+    setResultError('');
+
+    try {
+      const results = await assessmentService.getMyResults(accessToken, { sessionId });
+      if (requestId !== resultRequestSeqRef.current) {
         return;
       }
 
-      try {
-        const results = await assessmentService.getMyResults(accessToken);
-        if (!Array.isArray(results) || results.length === 0) {
-          setIsLoadingResult(false);
-          return;
-        }
+      if (!Array.isArray(results) || results.length === 0) {
+        setTopCareers([]);
+        setBarData([]);
+        replaceDetailedAnalyses({});
+        setDetailErrors({});
+        loadedResultKeyRef.current = requestKey;
+        return;
+      }
+      setSelectedSessionId(sessionId || results[0]?.assessmentSessionId || '');
 
-        const palette = [
-          { gradient: 'from-violet-600 to-indigo-600', icon: '💻' },
-          { gradient: 'from-fuchsia-600 to-purple-600', icon: '🤖' },
-          { gradient: 'from-blue-600 to-cyan-500', icon: '📊' },
-        ];
+      const palette = [
+        { gradient: 'from-violet-600 to-indigo-600', icon: '💻' },
+        { gradient: 'from-fuchsia-600 to-purple-600', icon: '🤖' },
+        { gradient: 'from-blue-600 to-cyan-500', icon: '📊' },
+        { gradient: 'from-emerald-600 to-teal-500', icon: '🧭' },
+        { gradient: 'from-amber-500 to-orange-500', icon: '🚀' },
+      ];
 
-        // Map careers
-        const mapped = results.slice(0, 3).map((item, idx) => {
-          const style = palette[idx] || palette[0];
-          return {
-            title: item.careerTitle || 'Nghề nghiệp',
-            match: Math.round(Number(item.overallFitScore || 0)),
-            icon: style.icon,
-            insight: item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
-            growth: 'Tăng trưởng mạnh',
-            demandLabel: 'Rất cao',
-            skills: (item.strengths || []).slice(0, 3),
-            gradient: style.gradient,
-          };
-        });
-        setTopCareers(mapped);
+      // Map careers
+      const mapped = results.slice(0, 5).map((item, idx) => {
+        const style = palette[idx] || palette[0];
+        const rank = Number(item.rank || item.recommendationRank || idx + 1);
+        const isLocked = item.isLocked === true;
+        return {
+          title: item.careerTitle || `Nghề #${rank}`,
+          match: Math.round(Number(item.overallFitScore || 0)),
+          icon: style.icon,
+          insight: item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
+          growth: 'Tăng trưởng mạnh',
+          demandLabel: 'Rất cao',
+          skills: (item.strengths || []).slice(0, 3),
+          gradient: style.gradient,
+          rank,
+          isLocked,
+        };
+      });
+      setTopCareers(mapped);
 
-        // Map bar data
-        setBarData(results.slice(0, 5).map(r => ({
-          name: r.careerTitle || 'Nghề nghiệp',
-          score: Math.round(Number(r.overallFitScore || 0)),
-          color: '#7c3aed'
-        })));
+      // Map bar data
+      setBarData(mapped.filter((r) => !r.isLocked).slice(0, 5).map(r => ({
+        name: r.title || 'Nghề nghiệp',
+        score: Math.round(Number(r.match || 0)),
+        color: '#7c3aed'
+      })));
 
-        // Mock radar & personality (can be replaced with real data if available in backend)
-        setRadarData([
-          { subject: 'Logic', A: 85 },
-          { subject: 'Sáng tạo', A: 70 },
-          { subject: 'Giao tiếp', A: 75 },
-          { subject: 'Kỹ thuật', A: 80 },
-          { subject: 'Lãnh đạo', A: 65 },
-        ]);
+      // Mock radar & personality (can be replaced with real data if available in backend)
+      setRadarData([
+        { subject: 'Logic', A: 85 },
+        { subject: 'Sáng tạo', A: 70 },
+        { subject: 'Giao tiếp', A: 75 },
+        { subject: 'Kỹ thuật', A: 80 },
+        { subject: 'Lãnh đạo', A: 65 },
+      ]);
 
-        setPersonalityTraits([
-          { name: 'Tư duy hệ thống', value: 85, desc: 'Khả năng nhìn nhận vấn đề tổng quát' },
-          { name: 'Thích nghi', value: 92, desc: 'Luôn sẵn sàng với những thay đổi mới' },
-          { name: 'Kỹ thuật', value: 78, desc: 'Nền tảng kiến thức công cụ tốt' },
-          { name: 'Sáng tạo', value: 65, desc: 'Cách tiếp cận vấn đề độc đáo' },
-        ]);
+      setPersonalityTraits([
+        { name: 'Tư duy hệ thống', value: 85, desc: 'Khả năng nhìn nhận vấn đề tổng quát' },
+        { name: 'Thích nghi', value: 92, desc: 'Luôn sẵn sàng với những thay đổi mới' },
+        { name: 'Kỹ thuật', value: 78, desc: 'Nền tảng kiến thức công cụ tốt' },
+        { name: 'Sáng tạo', value: 65, desc: 'Cách tiếp cận vấn đề độc đáo' },
+      ]);
 
-        // Fetch detailed analyses in parallel
-        const detailPromises = mapped.map(async (career) => {
-          try {
-            const detail = await roadmapService.getDetailedAnalysis(accessToken, career.title);
-            return { title: career.title, detail };
-          } catch (err) {
-            console.error(`Failed to fetch details for ${career.title}:`, err);
-            return null;
-          }
-        });
-
-        const detailResults = await Promise.all(detailPromises);
-        const detailMap: Record<string, CareerDetailedAnalysis> = {};
-        detailResults.forEach(res => {
-          if (res) detailMap[res.title] = res.detail;
-        });
-        setDetailedAnalyses(detailMap);
-
-      } catch (error) {
-        console.error('Failed to load results:', error);
-      } finally {
+      loadedResultKeyRef.current = requestKey;
+      setIsLoadingResult(false);
+      void loadCareerDetails(mapped, requestId);
+    } catch (error) {
+      if (requestId === resultRequestSeqRef.current) {
+        setResultError(getErrorMessage(error, 'Không tải được kết quả assessment.'));
+      }
+    } finally {
+      if (inFlightResultKeyRef.current === requestKey) {
+        inFlightResultKeyRef.current = null;
+      }
+      if (requestId === resultRequestSeqRef.current) {
         setIsLoadingResult(false);
       }
-    };
+    }
+  }, [accessToken, loadCareerDetails, replaceDetailedAnalyses]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setIsLoadingResult(false);
+      setIsLoadingHistory(false);
+      return;
+    }
 
     void loadResults();
-  }, [accessToken]);
+    void loadHistory();
+  }, [accessToken, loadHistory, loadResults]);
 
   const handleNavigate = (title: string) => {
     router.push(`/career-analysis?career=${encodeURIComponent(title)}`);
+  };
+
+  const handleUpgrade = () => {
+    router.push('/dashboard');
+  };
+
+  const activeHistoryItem = history.find((item) => item.sessionId === selectedSessionId);
+
+  const handleRetake = () => {
+    router.push('/personality-test?retake=1');
+  };
+
+  const handleViewHistory = (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    void loadResults(sessionId);
   };
 
   return (
@@ -314,15 +578,24 @@ const AssessmentResult = () => {
         <div className="absolute top-0 left-1/2 h-64 w-full -translate-x-1/2 bg-purple-500/5 blur-3xl" />
         
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 mb-4 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold">
+          <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+            <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold">
             <CheckCircle2 className="h-4 w-4" /> Phân tích AI hoàn tất
           </span>
+            <span className="bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold">
+              <History className="h-4 w-4" /> {getHistoryLabel(activeHistoryItem)}
+            </span>
+          </div>
           <h1 className="font-display text-foreground text-3xl font-extrabold sm:text-5xl">
             Kết quả của bạn đã sẵn sàng
           </h1>
           <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm sm:text-base leading-relaxed">
             Dựa trên 20 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ trình sự nghiệp tối ưu nhất dành riêng cho bạn.
           </p>
+          <Button variant="hero" className="mt-7 gap-2 rounded-2xl px-6 py-5" onClick={handleRetake}>
+            <RotateCcw className="h-4 w-4" />
+            Làm lại bài kiểm tra
+          </Button>
         </motion.div>
       </div>
 
@@ -335,6 +608,29 @@ const AssessmentResult = () => {
               Ngành nghề đề xuất
             </h2>
           </div>
+
+          {resultError && (
+            <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="font-bold">Không tải được kết quả assessment</p>
+                    <p className="mt-1 text-sm">{resultError}</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 gap-2"
+                  onClick={() => void loadResults(selectedSessionId || undefined, true)}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Thử lại
+                </Button>
+              </div>
+            </div>
+          )}
           
           {isLoadingResult ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -346,11 +642,14 @@ const AssessmentResult = () => {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {topCareers.map((career, idx) => (
                 <CareerCard 
-                  key={career.title} 
+                  key={career.isLocked ? `locked-${career.rank}` : career.title}
                   career={career} 
                   index={idx} 
                   details={detailedAnalyses[career.title]}
+                  detailError={detailErrors[career.title]}
                   onNavigate={handleNavigate} 
+                  onUpgrade={handleUpgrade}
+                  onRetryDetails={handleRetryDetails}
                 />
               ))}
             </div>
@@ -365,6 +664,100 @@ const AssessmentResult = () => {
             </div>
           )}
         </motion.section>
+
+        {(isLoadingHistory || history.length > 0 || historyError) && (
+          <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-foreground flex items-center gap-2 text-2xl font-bold">
+                  <History className="h-6 w-6 text-primary" />
+                  Lịch sử làm bài
+                </h2>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Trang đang hiển thị {getHistoryLabel(activeHistoryItem).toLowerCase()}.
+                </p>
+              </div>
+            </div>
+
+            {historyError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="inline-flex items-start gap-2">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {historyError}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-2"
+                    onClick={() => {
+                      loadedHistoryTokenRef.current = '';
+                      void loadHistory();
+                    }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Thử lại
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {(isLoadingHistory || history.length > 0) && (
+              <div className="glass-card overflow-hidden rounded-2xl border border-border/50 shadow-soft">
+                {isLoadingHistory ? (
+                  <div className="space-y-3 p-5">
+                    {[1, 2, 3].map((item) => (
+                      <div key={item} className="bg-muted h-16 animate-pulse rounded-xl" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {history.map((item) => {
+                      const isSelected = item.sessionId === selectedSessionId;
+                      return (
+                        <div
+                          key={item.sessionId}
+                          className={`flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between ${
+                            isSelected ? 'bg-primary/5' : 'bg-background/20'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <span className="text-foreground font-bold">
+                                {item.isLatest ? 'Mới nhất' : `Lượt #${item.attemptNumber || '-'}`}
+                              </span>
+                              {isSelected && (
+                                <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                                  Đang xem
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-muted-foreground text-sm">
+                              {formatHistoryDate(item.completedAt || item.generatedAt)}
+                            </p>
+                            <p className="text-muted-foreground mt-1 text-xs">
+                              Top 1: {item.topCareerTitle || 'Chưa có nghề'} · {Math.round(Number(item.topFitScore || 0))}% · {item.resultCount} gợi ý
+                            </p>
+                          </div>
+                          <Button
+                            variant={isSelected ? 'secondary' : 'outline'}
+                            className="shrink-0 gap-2"
+                            disabled={isSelected}
+                            onClick={() => handleViewHistory(item.sessionId)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            {isSelected ? 'Đang xem' : 'Xem'}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.section>
+        )}
 
         {/* Charts Section */}
         {!isLoadingResult && topCareers.length > 0 && (
@@ -425,7 +818,7 @@ const AssessmentResult = () => {
                   <h3 className="text-foreground font-bold">Phân tích độ phù hợp</h3>
                 </div>
                 <span className="text-primary text-[10px] font-extrabold uppercase tracking-widest bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
-                  Top 5
+                  Top {barData.length}
                 </span>
               </div>
               

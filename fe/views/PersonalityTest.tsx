@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAssessment } from '@/context/assessment-context';
 import { useAuth } from '@/context/auth-context';
+import { usePlanGate } from '@/context/plan-gate-context';
 import { type AssessmentQuestion, assessmentService } from '@/lib/assessment.service';
 import { userService } from '@/lib/user.service';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Sparkles, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 const Analyzing = ({ progress = 0 }: { progress?: number }) => {
   const messages = [
     'Đang phân tích tính cách của bạn...',
@@ -71,10 +72,13 @@ const PersonalityTest = () => {
   const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isPlanBlocked, setIsPlanBlocked] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzingProgress, setAnalyzingProgress] = useState(0);
+  const initializationKeyRef = useRef('');
   const router = useRouter();
   const { markHasAssessmentResult } = useAssessment();
+  const { ensureFeatureAvailable, handlePlanError } = usePlanGate();
 
   useEffect(() => {
     const initialize = async () => {
@@ -82,16 +86,35 @@ const PersonalityTest = () => {
         return;
       }
 
+      const forceNew = new URLSearchParams(window.location.search).get('retake') === '1';
+      const initializationKey = `${accessToken}:${forceNew ? 'retake' : 'resume'}`;
+      if (initializationKeyRef.current === initializationKey) {
+        return;
+      }
+      initializationKeyRef.current = initializationKey;
+
       setIsLoading(true);
       setErrorMessage('');
+      setIsPlanBlocked(false);
+      setSessionId('');
       try {
+        const isAllowed = await ensureFeatureAvailable('assessment');
+        if (!isAllowed) {
+          setIsPlanBlocked(true);
+          setQuestions([]);
+          return;
+        }
+
         const fetchedQuestions = await assessmentService.getQuestions(accessToken);
         if (!fetchedQuestions.length) {
           throw new Error('Chưa có bộ câu hỏi. Vui lòng seed dữ liệu câu hỏi trước.');
         }
         setQuestions(fetchedQuestions);
 
-        let session = await assessmentService.startSession(accessToken);
+        let session = await assessmentService.startSession(accessToken, { forceNew });
+        if (forceNew) {
+          window.history.replaceState(null, '', '/personality-test');
+        }
         if (session?.status && session.status !== 'in_progress') {
           const sessions = await assessmentService.listSessions(accessToken);
           const activeSession = sessions.find((s) => s.status === 'in_progress');
@@ -109,6 +132,12 @@ const PersonalityTest = () => {
         }
         setSessionId(resolvedSessionId);
       } catch (error) {
+        if (handlePlanError(error, 'assessment')) {
+          setIsPlanBlocked(true);
+          setQuestions([]);
+          setSessionId('');
+          return;
+        }
         setErrorMessage(error instanceof Error ? error.message : 'Không thể tải bài test.');
       } finally {
         setIsLoading(false);
@@ -116,7 +145,7 @@ const PersonalityTest = () => {
     };
 
     void initialize();
-  }, [accessToken, isAuthenticated, isHydrated]);
+  }, [accessToken, ensureFeatureAvailable, handlePlanError, isAuthenticated, isHydrated]);
 
   const progress = questions.length > 0 ? ((step + 1) / questions.length) * 100 : 0;
   const currentQ = questions[step];
@@ -154,14 +183,14 @@ const PersonalityTest = () => {
       await assessmentService.submitBulkAnswers(accessToken, payload);
 
       setAnalyzingProgress(60);
-      await assessmentService.generateMyAnalysis(accessToken);
+      await assessmentService.generateMyAnalysis(accessToken, { sessionId });
 
       setAnalyzingProgress(80);
       await assessmentService.finishSession(accessToken, sessionId);
 
       setAnalyzingProgress(95);
 
-      const results = await assessmentService.getMyResults(accessToken);
+      const results = await assessmentService.getMyResults(accessToken, { sessionId });
       if (!results.length) {
         throw new Error('AI chưa trả kết quả. Vui lòng thử lại.');
       }
@@ -186,6 +215,7 @@ const PersonalityTest = () => {
       const err = error as { message?: string };
       console.error('Submission error:', error);
       setAnalyzing(false);
+      if (handlePlanError(error, 'assessment')) return;
       setErrorMessage(err.message || 'Không thể phân tích kết quả. Vui lòng thử lại.');
     }
   };
@@ -210,11 +240,31 @@ const PersonalityTest = () => {
     );
   }
 
+  if (isPlanBlocked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-muted-foreground max-w-md text-center text-sm">
+          Bạn đã hết lượt làm bài đánh giá trong gói hiện tại.
+        </p>
+      </div>
+    );
+  }
+
   if (!questions.length) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-destructive text-sm">
           {errorMessage || 'Không có câu hỏi để hiển thị.'}
+        </p>
+      </div>
+    );
+  }
+
+  if (!sessionId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-destructive max-w-md text-center text-sm">
+          {errorMessage || 'Không tạo được phiên làm bài.'}
         </p>
       </div>
     );

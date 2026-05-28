@@ -56,15 +56,41 @@ export interface GeneratedRoadmap {
   createdAt: string;
 }
 
+const detailedAnalysisCache = new Map<string, CareerDetailedAnalysis>();
+const detailedAnalysisInFlight = new Map<string, Promise<CareerDetailedAnalysis>>();
+
+const normalizeCareerTitleKey = (careerTitle: string) => careerTitle.trim().toLowerCase();
+
 export const roadmapService = {
   async getDetailedAnalysis(
     accessToken: string,
     careerTitle: string,
   ): Promise<CareerDetailedAnalysis> {
-    return apiClient.get<CareerDetailedAnalysis>(
+    const cacheKey = normalizeCareerTitleKey(careerTitle);
+    const cached = detailedAnalysisCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const inFlight = detailedAnalysisInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = apiClient.get<CareerDetailedAnalysis>(
       `/career-fit-results/detailed-analysis?careerTitle=${encodeURIComponent(careerTitle)}`,
       accessToken,
-    );
+    )
+      .then((analysis) => {
+        detailedAnalysisCache.set(cacheKey, analysis);
+        return analysis;
+      })
+      .finally(() => {
+        detailedAnalysisInFlight.delete(cacheKey);
+      });
+
+    detailedAnalysisInFlight.set(cacheKey, request);
+    return request;
   },
 
   async getDiscoveryInsights(accessToken: string): Promise<CareerInsight[]> {

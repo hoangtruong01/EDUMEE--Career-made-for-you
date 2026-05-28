@@ -16,12 +16,16 @@ import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-
 import { AuditModule } from '../audit/audit.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { CareersModule } from '../careers/careers.module';
+import { WalletModule } from '../wallet/wallet.module';
+import { FinancialLedgerModule } from '../financial-ledger';
 
 @Module({
   imports: [
     AuditModule,
     TrackingModule,
     CareersModule,
+    WalletModule,
+    FinancialLedgerModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Career.name, schema: CareerSchema },

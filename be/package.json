@@ -17,6 +17,8 @@
     "seed:careers": "ts-node -r tsconfig-paths/register scripts/seed-careers-skill-tags.ts",
     "migrate:booking-slot-index": "ts-node -r tsconfig-paths/register scripts/migrate-booking-slot-index.ts",
     "migrate:session-review-reviewee-ids": "ts-node -r tsconfig-paths/register scripts/migrate-session-review-reviewee-ids.ts",
+    "migrate:wallet-account-types": "ts-node -r tsconfig-paths/register scripts/migrate-wallet-account-types.ts",
+    "migrate:financial-ledger": "ts-node -r tsconfig-paths/register scripts/migrate-financial-ledger.ts",
     "recalculate:mentor-ratings": "ts-node -r tsconfig-paths/register scripts/recalculate-mentor-ratings.ts",
     "lint": "npx eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",

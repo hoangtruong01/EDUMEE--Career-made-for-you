@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/context/auth-context';
+import { usePlanGate } from '@/context/plan-gate-context';
 import { roadmapService, CareerDetailedAnalysis } from '@/lib/roadmap.service';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -51,6 +52,7 @@ export default function CareerAnalysisDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accessToken } = useAuth();
+  const { ensureFeatureAvailable, handlePlanError } = usePlanGate();
 
   const careerTitle = searchParams.get('career') ?? '';
   const isFromDiscovery = searchParams.get('from') === 'discovery';
@@ -68,24 +70,32 @@ export default function CareerAnalysisDetail() {
         setIsLoading(true);
         const data = await roadmapService.getDetailedAnalysis(accessToken, careerTitle);
         setAnalysis(data);
-      } catch {
+      } catch (error) {
+        if (handlePlanError(error, 'aiChat')) return;
         setError('Không thể tải phân tích. Vui lòng thử lại sau.');
       } finally {
         setIsLoading(false);
       }
     };
     void load();
-  }, [accessToken, careerTitle]);
+  }, [accessToken, careerTitle, handlePlanError]);
 
   /* Generate roadmap and redirect */
   const handleStartRoadmap = async () => {
     if (!accessToken) return;
+    const allowed = await ensureFeatureAvailable('roadmap');
+    if (!allowed) return;
+
     try {
       setIsGenerating(true);
       const roadmap = await roadmapService.generateAIRoadmap(accessToken, careerTitle);
       const id = roadmap.id ?? (roadmap as { _id?: string })._id ?? '';
       router.push(`/learning-roadmap?id=${id}&career=${encodeURIComponent(careerTitle)}`);
-    } catch {
+    } catch (error) {
+      if (handlePlanError(error, 'roadmap')) {
+        setIsGenerating(false);
+        return;
+      }
       setError('Không thể tạo lộ trình. Vui lòng thử lại sau.');
       setIsGenerating(false);
     }

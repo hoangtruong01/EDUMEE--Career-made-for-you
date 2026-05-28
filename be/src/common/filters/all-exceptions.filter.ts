@@ -20,18 +20,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let status: number;
     let message: string | object;
     let error: string;
+    let metadata: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
-        const response = exceptionResponse as {
-          message?: string;
-          error?: string;
-        };
-        message = response.message || exception.message;
-        error = response.error || 'Error';
+        const response = exceptionResponse as Record<string, unknown>;
+        message =
+          typeof response.message === 'string' ||
+          (typeof response.message === 'object' && response.message !== null)
+            ? response.message
+            : exception.message;
+        error = typeof response.error === 'string' ? response.error : 'Error';
+        metadata = Object.fromEntries(
+          Object.entries(response).filter(
+            ([key]) => !['statusCode', 'message', 'error', 'timestamp', 'path', 'method'].includes(key),
+          ),
+        );
       } else {
         message = exceptionResponse;
         error = 'Error';
@@ -60,6 +67,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       method: request.method,
       error,
       message,
+      ...metadata,
     };
 
     response.status(status).json(errorResponse);

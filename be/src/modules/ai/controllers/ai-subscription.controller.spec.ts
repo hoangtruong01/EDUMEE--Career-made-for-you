@@ -68,8 +68,47 @@ describe('AiSubscriptionController', () => {
     expect(result.source).toBe('business_subscription');
     expect(result.seatLimit).toBe(200);
     expect(result.quotas).toHaveProperty('assessment');
+    expect(result.quotas).toHaveProperty('careerComparison');
     expect(result.quotas).toHaveProperty('mentorBooking');
     expect(result.quotas).not.toHaveProperty('careerRecommendation');
     expect(result.features.teamDashboard).toBe(true);
+  });
+
+  it('classifies paid non-business plan variants as Plus', async () => {
+    aiSubscriptionService.getActiveSubscriptionForUser.mockResolvedValue({
+      status: SubscriptionStatus.ACTIVE,
+      billingCycle: BillingCycle.THREE_MONTHS,
+      startDate: new Date('2026-05-01T00:00:00.000Z'),
+      endDate: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    aiQuotaService.getPlanForUserOrFree.mockResolvedValue({
+      id: 'plan-plus-three-months',
+      name: 'Plus (3 tháng)',
+      price: 27900,
+      isDefaultPlan: false,
+      allowedBillingCycles: [BillingCycle.THREE_MONTHS],
+      features: {
+        careerComparison: true,
+        personalizedRoadmap: true,
+        jobSimulation: true,
+        mentorBooking: true,
+      },
+    });
+    aiQuotaService.getRemainingQuota.mockImplementation(async (_userId: string, feature: AiFeature) => ({
+      feature,
+      month: 5,
+      year: 2026,
+      used: 0,
+      limit: 3,
+      remaining: 3,
+      unlimited: false,
+    }));
+
+    const result = await controller.me({ userId: '507f1f77bcf86cd799439011' } as never);
+
+    expect(result.currentPlan).toBe('plus');
+    expect(result.source).toBe('personal_subscription');
+    expect(result.plan?.name).toBe('Plus (3 tháng)');
+    expect(result.availableBillingCycles).toEqual([BillingCycle.THREE_MONTHS]);
   });
 });

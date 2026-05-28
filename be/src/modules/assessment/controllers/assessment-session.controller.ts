@@ -37,8 +37,13 @@ export class AssessmentSessionController {
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Start a new assessment session for current user' })
     @ApiResponse({ status: 201, description: 'Session created' })
-    async create(@CurrentUser() user: AuthUserLike): Promise<AssessmentSession> {
-        return this.sessionService.createSession(getAuthUserId(user));
+    async create(
+        @CurrentUser() user: AuthUserLike,
+        @Body() body?: { forceNew?: boolean },
+    ): Promise<AssessmentSession> {
+        return this.sessionService.createSession(getAuthUserId(user), {
+            forceNew: body?.forceNew === true,
+        });
     }
 
     @Get()

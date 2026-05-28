@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+import { paymentService } from '@/lib/payment.service';
 
 export type BillingCycle =
   | 'monthly'
@@ -28,6 +29,7 @@ export interface AiPlanLimits {
   simulationsPerMonth?: number;
   careerRecommendationRunsPerMonth?: number;
   maxCareerRecommendationsPerRun?: number;
+  visibleCareerRecommendationsPerRun?: number;
   careerComparisonsPerMonth?: number;
   maxCareersPerComparison?: number;
   personalizedRoadmapsPerMonth?: number;
@@ -67,6 +69,10 @@ export interface QuotaView {
   used: number;
   limit: number;
   remaining: number;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  nextResetAt?: string | null;
+  resetPolicy?: 'periodic' | 'lifetime' | 'unlimited';
 }
 
 export interface MyAiSubscription {
@@ -80,6 +86,7 @@ export interface MyAiSubscription {
   quotas: Record<string, QuotaView>;
   features: {
     careerComparison: boolean;
+    aiChatbot?: boolean;
     personalizedRoadmap: boolean;
     jobSimulation: boolean;
     mentorBooking: boolean;
@@ -92,7 +99,13 @@ export interface MyAiSubscription {
     billingCycle: BillingCycle;
     startDate: string;
     endDate?: string;
+    quotaPeriodStart?: string | null;
+    quotaPeriodEnd?: string | null;
+    nextQuotaResetAt?: string | null;
   } | null;
+  quotaPeriodStart?: string | null;
+  quotaPeriodEnd?: string | null;
+  nextQuotaResetAt?: string | null;
   availableBillingCycles: BillingCycle[];
 }
 
@@ -147,6 +160,8 @@ export interface PurchaseAiPlanResult {
   paymentId: string;
   checkoutReference: string;
   redirectUrl: string;
+  purpose?: 'ai_plan' | 'mentor_booking';
+  provider?: string;
 }
 
 export interface SyncPaymentResult {
@@ -165,7 +180,14 @@ export const aiBillingService = {
   },
 
   purchaseAiPlan(token: string, payload: PurchaseAiPlanPayload) {
-    return apiClient.post<PurchaseAiPlanResult>('/payments/ai-plan/purchase', payload, token);
+    return paymentService.createPurchase(token, {
+      purpose: 'ai_plan',
+      targetId: payload.planId,
+      provider: 'sepay',
+      billingCycle: payload.billingCycle,
+      returnUrls: payload.returnUrls,
+      useEdumeeCredit: payload.useEdumeeCredit,
+    });
   },
 
   syncPayment(token: string, paymentId: string) {

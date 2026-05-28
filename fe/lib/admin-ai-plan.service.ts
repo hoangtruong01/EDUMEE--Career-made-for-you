@@ -15,6 +15,7 @@ export interface AiPlanLimits {
   simulationsPerMonth?: number;
   careerRecommendationRunsPerMonth?: number;
   maxCareerRecommendationsPerRun?: number;
+  visibleCareerRecommendationsPerRun?: number;
   careerComparisonsPerMonth?: number;
   maxCareersPerComparison?: number;
   personalizedRoadmapsPerMonth?: number;

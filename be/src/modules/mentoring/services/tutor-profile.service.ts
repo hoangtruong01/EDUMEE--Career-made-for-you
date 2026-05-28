@@ -116,6 +116,33 @@ export class TutorProfileService {
     return profile;
   }
 
+  async resubmitRejectedProfile(
+    id: string,
+    updateDto: Partial<UpdateTutorProfileDto>,
+  ): Promise<TutorProfileDocument> {
+    const profile = await this.tutorProfileModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            ...updateDto,
+            status: TutorStatus.PENDING_APPROVAL,
+          },
+          $unset: {
+            'adminInfo.rejectionReason': 1,
+            'adminInfo.approvedBy': 1,
+            'adminInfo.approvalDate': 1,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    if (!profile) {
+      throw new NotFoundException(`Tutor profile with ID ${id} not found`);
+    }
+    return profile;
+  }
+
   async updateStatus(id: string, status: string, actorId?: string, reason?: string): Promise<TutorProfileDocument> {
     if (!isTutorStatus(status)) {
       throw new BadRequestException('Invalid tutor status');

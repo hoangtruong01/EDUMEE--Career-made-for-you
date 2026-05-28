@@ -34,11 +34,15 @@ interface CareerInput {
 
 interface GenerateAnalysisRequest {
   availableCareers?: CareerInput[];
+  sessionId?: string;
 }
 
 function toOwnerId(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value instanceof Types.ObjectId) return value.toHexString();
+  if (typeof value === 'object' && value !== null && '_id' in value) {
+    return toOwnerId((value as { _id?: unknown })._id);
+  }
   return '';
 }
 
@@ -78,7 +82,8 @@ export class CareerFitResultController {
 
     return this.careerFitResultService.generateAnalysisFromUserAnswers(
       userId,
-      (requestData?.availableCareers as unknown as import('../../careers/schemas/career.schema').Career[]) || []
+      (requestData?.availableCareers as unknown as import('../../careers/schemas/career.schema').Career[]) || [],
+      requestData?.sessionId,
     );
   }
 
@@ -136,17 +141,36 @@ export class CareerFitResultController {
         filters.userId = new Types.ObjectId(currentUserId);
       }
     }
-    return this.careerFitResultService.findAll(page || 1, limit || 10, filters);
+    const result = await this.careerFitResultService.findAll(page || 1, limit || 10, filters);
+    if (!isAdmin(user)) {
+      return {
+        ...result,
+        data: await this.careerFitResultService.applyCareerRecommendationVisibility(
+          currentUserId,
+          result.data,
+        ),
+      };
+    }
+
+    return result;
   }
 
   @Get('my-results')
   @ApiOperation({ summary: 'Get current user career fit results' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'sessionId', required: false, type: String })
   async findMyResults(
     @CurrentUser() user: AuthUserLike,
     @Query('limit') limit?: number,
+    @Query('sessionId') sessionId?: string,
   ) {
-    return this.careerFitResultService.findByUser(getAuthUserId(user), limit);
+    return this.careerFitResultService.findByUserVisible(getAuthUserId(user), limit, sessionId);
+  }
+
+  @Get('my-history')
+  @ApiOperation({ summary: 'Get current user assessment result history' })
+  async findMyHistory(@CurrentUser() user: AuthUserLike) {
+    return this.careerFitResultService.findMyHistory(getAuthUserId(user));
   }
 
   @Get('top-matches')
@@ -156,7 +180,7 @@ export class CareerFitResultController {
     @CurrentUser() user: AuthUserLike,
     @Query('limit') limit?: number,
   ) {
-    return this.careerFitResultService.getTopCareerMatches(getAuthUserId(user), limit || 10);
+    return this.careerFitResultService.getTopCareerMatchesVisible(getAuthUserId(user), limit || 10);
   }
 
 
@@ -168,7 +192,14 @@ export class CareerFitResultController {
     const res = await this.careerFitResultService.findOne(id);
     const ownerId = toOwnerId((res as { userId?: unknown }).userId);
     assertOwnerOrAdmin(ownerId, user);
-    return res;
+    if (isAdmin(user)) {
+      return res;
+    }
+    const [visibleResult] = await this.careerFitResultService.applyCareerRecommendationVisibility(
+      getAuthUserId(user),
+      [res],
+    );
+    return visibleResult;
   }
 
   @Patch(':id')

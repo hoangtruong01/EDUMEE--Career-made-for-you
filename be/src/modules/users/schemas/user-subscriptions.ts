@@ -53,6 +53,15 @@ export class UserSubscription {
     @Prop({ type: Date })
     endDate?: Date;
 
+    @Prop({ type: Date })
+    quotaPeriodStart?: Date;
+
+    @Prop({ type: Date })
+    quotaPeriodEnd?: Date;
+
+    @Prop({ type: Date })
+    nextQuotaResetAt?: Date;
+
     @Prop({ type: String, enum: SubscriptionStatus, default: SubscriptionStatus.ACTIVE })
     status!: SubscriptionStatus;
 }
@@ -63,3 +72,4 @@ UserSubscriptionSchema.index({ planId: 1 });
 UserSubscriptionSchema.index({ status: 1 });
 UserSubscriptionSchema.index({ paymentId: 1 }, { unique: true, sparse: true });
 UserSubscriptionSchema.index({ paymentIds: 1 });
+UserSubscriptionSchema.index({ userId: 1, status: 1, nextQuotaResetAt: 1 });

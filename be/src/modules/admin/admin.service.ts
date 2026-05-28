@@ -14,6 +14,7 @@ import { BookingSession, BookingSessionDocument } from '../mentoring/schemas/boo
 import {
   Payment,
   PaymentDocument,
+  PaymentProvider,
   PaymentPurpose,
   PaymentSettlementStatus,
   PaymentStatus,
@@ -28,6 +29,7 @@ import { AiPlan, AiPlanDocument } from '../ai/schema/ai-plan.schema';
 import { SubscriptionStatus, UserSubscription, UserSubscriptionDocument } from '../users/schemas/user-subscriptions';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { TrackingService } from '../tracking/tracking.service';
+import { FinancialLedgerService } from '../financial-ledger';
 
 type AdminUsersFilters = {
   search?: string;
@@ -41,6 +43,7 @@ type AdminFinancePaymentParams = {
   page?: number;
   limit?: number;
   status?: string;
+  provider?: string;
   purpose?: string;
   plan?: string;
   search?: string;
@@ -51,6 +54,17 @@ type AdminFinanceFeeSettlementParams = {
   limit?: number;
   status?: string;
   search?: string;
+};
+
+type AdminFinanceTransactionParams = {
+  page?: number;
+  limit?: number;
+  eventType?: string;
+  sourceType?: string;
+  purpose?: string;
+  search?: string;
+  from?: string;
+  to?: string;
 };
 
 type AdminFinanceRange = 'month' | 'quarter' | 'year';
@@ -121,6 +135,35 @@ type PaymentAmountAggregateRow = {
   total?: number;
 };
 
+type PaymentRevenueAggregateRow = {
+  grossCashIn?: number;
+  totalRevenue?: number;
+  aiPlanRevenue?: number;
+  platformFeeRevenue?: number;
+};
+
+type PaymentRevenueTotals = {
+  grossCashIn: number;
+  totalRevenue: number;
+  aiPlanRevenue: number;
+  platformFeeRevenue: number;
+};
+
+type PaymentStatusCountAggregateRow = {
+  _id: PaymentStatus;
+  count: number;
+};
+
+type PaymentStatusCounts = {
+  transactionCount: number;
+  paidCount: number;
+  pendingCount: number;
+  failedCount: number;
+  cancelledCount: number;
+  refundedCount: number;
+  refundPendingCount: number;
+};
+
 type CareerDistributionAggregateRow = {
   _id: string;
   count: number;
@@ -145,6 +188,7 @@ export class AdminService {
     private readonly aiService: AIService,
     private readonly trackingService: TrackingService,
     private readonly skillTagService: SkillTagService,
+    private readonly financialLedgerService: FinancialLedgerService,
   ) {}
 
   async getAllCareers(page: number = 1, limit: number = 10, search?: string, category?: string): Promise<{ careers: any[]; total: number }> {
@@ -613,48 +657,50 @@ export class AdminService {
     const range = this.normalizeFinanceRange(rangeValue);
     const current = this.getDateRange(range);
     const previous = this.getPreviousDateRange(current);
-
-    const [
-      currentRevenue,
-      previousRevenue,
-      currentTransactions,
-      previousTransactions,
-      systemBalance,
-      statusCounts,
-    ] = await Promise.all([
-      this.sumPaymentAmount({ status: PaymentStatus.PAID, paidAt: { $gte: current.from, $lt: current.to } }),
-      this.sumPaymentAmount({ status: PaymentStatus.PAID, paidAt: { $gte: previous.from, $lt: previous.to } }),
-      this.paymentModel.countDocuments({ createdAt: { $gte: current.from, $lt: current.to } }).exec(),
-      this.paymentModel.countDocuments({ createdAt: { $gte: previous.from, $lt: previous.to } }).exec(),
-      this.sumPaymentAmount({ status: PaymentStatus.PAID }),
-      this.paymentModel.aggregate([
-        { $match: { createdAt: { $gte: current.from, $lt: current.to } } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
+    const [ledgerSummary, currentRevenue, previousRevenue, currentStatusCounts, previousStatusCounts] = await Promise.all([
+      this.financialLedgerService.getFinanceSummary(range, current, previous),
+      this.getSuccessfulPaymentRevenue(current),
+      this.getSuccessfulPaymentRevenue(previous),
+      this.getPaymentStatusCounts(current),
+      this.getPaymentStatusCounts(previous),
     ]);
 
-    const counts = (statusCounts as { _id: PaymentStatus; count: number }[]).reduce(
-      (acc: Record<string, number>, item) => {
-        acc[item._id] = item.count;
-        return acc;
-      },
-      {},
-    );
+    const netRevenue = currentRevenue.aiPlanRevenue + currentRevenue.platformFeeRevenue;
+    const previousNetRevenue = previousRevenue.aiPlanRevenue + previousRevenue.platformFeeRevenue;
 
     return {
-      range,
-      currency: 'VND',
-      totalRevenue: currentRevenue,
-      revenueDelta: this.calculateDelta(currentRevenue, previousRevenue),
-      transactionCount: currentTransactions,
-      transactionDelta: this.calculateDelta(currentTransactions, previousTransactions),
-      systemBalance,
-      paidCount: counts[PaymentStatus.PAID] || 0,
-      pendingCount: counts[PaymentStatus.PENDING] || 0,
-      failedCount: counts[PaymentStatus.FAILED] || 0,
-      cancelledCount: counts[PaymentStatus.CANCELLED] || 0,
-      refundedCount: counts[PaymentStatus.REFUNDED] || 0,
+      ...ledgerSummary,
+      grossCashIn: currentRevenue.grossCashIn,
+      aiPlanRevenue: currentRevenue.aiPlanRevenue,
+      platformFeeRevenue: currentRevenue.platformFeeRevenue,
+      netRevenue,
+      totalRevenue: currentRevenue.totalRevenue,
+      transactionCount: currentStatusCounts.transactionCount,
+      transactionDelta: this.calculateDelta(
+        currentStatusCounts.transactionCount,
+        previousStatusCounts.transactionCount,
+      ),
+      revenueDelta: this.calculateDelta(netRevenue, previousNetRevenue),
+      paidCount: currentStatusCounts.paidCount,
+      pendingCount: currentStatusCounts.pendingCount,
+      failedCount: currentStatusCounts.failedCount,
+      cancelledCount: currentStatusCounts.cancelledCount,
+      refundedCount: currentStatusCounts.refundedCount,
+      refundPendingCount: currentStatusCounts.refundPendingCount,
     };
+  }
+
+  async getFinanceTransactions(params: AdminFinanceTransactionParams = {}) {
+    return this.financialLedgerService.listFinanceTransactions({
+      page: params.page,
+      limit: params.limit,
+      eventType: params.eventType,
+      sourceType: params.sourceType,
+      purpose: params.purpose,
+      search: params.search,
+      from: params.from ? new Date(params.from) : undefined,
+      to: params.to ? new Date(params.to) : undefined,
+    });
   }
 
   async getFinancePayments(params: AdminFinancePaymentParams = {}) {
@@ -664,6 +710,9 @@ export class AdminService {
 
     if (params.status && params.status !== 'all') {
       filter.status = params.status;
+    }
+    if (params.provider && params.provider !== 'all') {
+      filter.provider = params.provider === PaymentProvider.SEPAY ? PaymentProvider.SEPAY : params.provider;
     }
     if (params.purpose && params.purpose !== 'all') {
       filter.purpose = params.purpose;
@@ -724,17 +773,16 @@ export class AdminService {
 
     const totals = payments.reduce(
       (acc, payment) => {
-        const amounts = this.resolveMentorSettlementAmounts(payment, config.mentorPlatformFeeRate);
-        acc.grossRevenue += amounts.settlementBaseAmount;
-        acc.platformFeeAmount += amounts.platformFeeAmount;
-        acc.mentorPayoutAmount += amounts.mentorPayoutAmount;
         if (payment.settlementStatus === PaymentSettlementStatus.READY) {
+          const amounts = this.resolveMentorSettlementAmounts(payment, config.mentorPlatformFeeRate);
+          acc.grossRevenue += amounts.settlementBaseAmount;
+          acc.platformFeeAmount += amounts.platformFeeAmount;
+          acc.mentorPayoutAmount += amounts.mentorPayoutAmount;
           acc.readyPayoutAmount += amounts.mentorPayoutAmount;
           acc.readyCount += 1;
         } else if (payment.settlementStatus === PaymentSettlementStatus.WITHHELD) {
           acc.withheldCount += 1;
         } else {
-          acc.pendingPayoutAmount += amounts.mentorPayoutAmount;
           acc.pendingCount += 1;
         }
         return acc;
@@ -1106,8 +1154,17 @@ export class AdminService {
   }
 
   private resolveMentorSettlementAmounts(payment: PaymentDocument, defaultRate: number) {
-    const base = this.getMentorSettlementBaseAmount(payment);
     const platformFeeRate = this.normalizeMentorPlatformFeeRate(payment.platformFeeRate, defaultRate);
+    if (payment.settlementStatus !== PaymentSettlementStatus.READY) {
+      return {
+        settlementBaseAmount: 0,
+        platformFeeRate,
+        platformFeeAmount: 0,
+        mentorPayoutAmount: 0,
+      };
+    }
+
+    const base = this.getMentorSettlementBaseAmount(payment);
     const platformFeeAmount = this.resolveCurrencyAmount(payment.platformFeeAmount, this.roundCurrency(base * platformFeeRate));
     const mentorPayoutAmount = this.resolveCurrencyAmount(
       payment.mentorPayoutAmount,
@@ -1125,7 +1182,7 @@ export class AdminService {
   private getMentorSettlementBaseAmount(payment: PaymentDocument): number {
     const explicitBase = Number(payment.settlementBaseAmount);
     if (Number.isFinite(explicitBase) && explicitBase > 0) return this.roundCurrency(explicitBase);
-    return this.roundCurrency(this.getPaymentTotalAmount(payment));
+    return this.roundCurrency(Math.max(this.getPaymentTotalAmount(payment) - Number(payment.refundedAmount || 0), 0));
   }
 
   private getPaymentTotalAmount(payment: PaymentDocument): number {
@@ -1192,6 +1249,111 @@ export class AdminService {
       },
     ]);
     return Number(result[0]?.total || 0);
+  }
+
+  private async getSuccessfulPaymentRevenue(range: { from: Date; to: Date }): Promise<PaymentRevenueTotals> {
+    const result = await this.paymentModel.aggregate<PaymentRevenueAggregateRow>([
+      { $match: this.buildPaidPaymentRangeFilter(range) },
+      {
+        $addFields: {
+          financeTotalAmount: {
+            $cond: [
+              { $gt: [{ $ifNull: ['$subtotalAmount', 0] }, 0] },
+              '$subtotalAmount',
+              { $add: [{ $ifNull: ['$amount', 0] }, { $ifNull: ['$creditAppliedAmount', 0] }] },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          grossCashIn: { $sum: { $ifNull: ['$amount', 0] } },
+          totalRevenue: { $sum: '$financeTotalAmount' },
+          aiPlanRevenue: {
+            $sum: {
+              $cond: [{ $eq: ['$purpose', PaymentPurpose.AI_PLAN] }, '$financeTotalAmount', 0],
+            },
+          },
+          platformFeeRevenue: {
+            $sum: {
+              $cond: [
+                { $eq: ['$purpose', PaymentPurpose.MENTOR_BOOKING] },
+                { $ifNull: ['$platformFeeAmount', 0] },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const row = result[0] || {};
+    return {
+      grossCashIn: this.roundCurrency(Number(row.grossCashIn || 0)),
+      totalRevenue: this.roundCurrency(Number(row.totalRevenue || 0)),
+      aiPlanRevenue: this.roundCurrency(Number(row.aiPlanRevenue || 0)),
+      platformFeeRevenue: this.roundCurrency(Number(row.platformFeeRevenue || 0)),
+    };
+  }
+
+  private async getPaymentStatusCounts(range: { from: Date; to: Date }): Promise<PaymentStatusCounts> {
+    const rows = await this.paymentModel.aggregate<PaymentStatusCountAggregateRow>([
+      {
+        $addFields: {
+          financeEventDate: {
+            $switch: {
+              branches: [
+                {
+                  case: { $eq: ['$status', PaymentStatus.PAID] },
+                  then: { $ifNull: ['$paidAt', '$createdAt'] },
+                },
+                {
+                  case: { $eq: ['$status', PaymentStatus.REFUNDED] },
+                  then: { $ifNull: ['$refundedAt', { $ifNull: ['$paidAt', '$createdAt'] }] },
+                },
+              ],
+              default: '$createdAt',
+            },
+          },
+        },
+      },
+      { $match: { financeEventDate: { $gte: range.from, $lt: range.to } } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const counts = new Map(rows.map((row) => [row._id, Number(row.count || 0)]));
+    const paidCount = counts.get(PaymentStatus.PAID) || 0;
+    const pendingCount = counts.get(PaymentStatus.PENDING) || 0;
+    const failedCount = counts.get(PaymentStatus.FAILED) || 0;
+    const cancelledCount = counts.get(PaymentStatus.CANCELLED) || 0;
+    const refundedCount = counts.get(PaymentStatus.REFUNDED) || 0;
+    const refundPendingCount = counts.get(PaymentStatus.REFUND_PENDING) || 0;
+
+    return {
+      transactionCount: paidCount + pendingCount + failedCount + cancelledCount + refundedCount + refundPendingCount,
+      paidCount,
+      pendingCount,
+      failedCount,
+      cancelledCount,
+      refundedCount,
+      refundPendingCount,
+    };
+  }
+
+  private buildPaidPaymentRangeFilter(range: { from: Date; to: Date }): Record<string, unknown> {
+    return {
+      status: PaymentStatus.PAID,
+      $or: [
+        { paidAt: { $gte: range.from, $lt: range.to } },
+        {
+          $and: [
+            { $or: [{ paidAt: { $exists: false } }, { paidAt: null }] },
+            { createdAt: { $gte: range.from, $lt: range.to } },
+          ],
+        },
+      ],
+    };
   }
 
   private async countUsersByBuckets(buckets: { label: string; from: Date; to: Date }[]) {

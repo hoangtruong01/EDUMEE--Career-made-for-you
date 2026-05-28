@@ -150,6 +150,14 @@ export class CareerComparisonController {
     return this.careerComparisonService.findByUser(currentUserId);
   }
 
+  @Get('allowed-careers')
+  @ApiOperation({ summary: 'Get careers the current user is allowed to compare' })
+  async getAllowedCareers(@CurrentUser() user: AuthUserLike) {
+    const currentUserId = this.getCurrentUserId(user);
+    await this.aiQuotaService.assertFeatureAvailable(currentUserId, AiFeature.CAREER_COMPARISON);
+    return this.careerComparisonService.getAllowedCareersForUser(currentUserId);
+  }
+
   @Post('compare-careers')
   @ApiOperation({
     summary: 'Compare multiple careers side by side without saving',
@@ -181,12 +189,21 @@ export class CareerComparisonController {
       );
     }
 
-    // Quota check will handle plan availability
+    const normalizedCareerIds =
+      await this.careerComparisonService.normalizeAllowedCareerIdsForUser(
+        currentUserId,
+        careerIds,
+      );
 
-    await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
-    const res: Record<string, unknown> = await this.careerComparisonService.compareCareersSideBySide(careerIds) as Record<string, unknown>;
-    await this.aiQuotaService.consumeQuota(currentUserId, AiFeature.CAREER_COMPARISON, { requestCount: 1, tokensUsed: 0 });
-    return res;
+    return this.aiQuotaService.runWithQuota(
+      currentUserId,
+      AiFeature.CAREER_COMPARISON,
+      async () => this.careerComparisonService.compareAllowedCareersSideBySide(
+        currentUserId,
+        normalizedCareerIds,
+      ) as Promise<Record<string, unknown>>,
+      { requestCount: 1, tokensUsed: 0 },
+    );
   }
 
   @Post('detailed-analysis')
@@ -225,17 +242,23 @@ export class CareerComparisonController {
       );
     }
 
-    // Quota check will handle plan availability
+    const normalizedCareerIds =
+      await this.careerComparisonService.normalizeAllowedCareerIdsForUser(
+        currentUserId,
+        careerIds,
+      );
 
-    await this.aiQuotaService.checkQuota(currentUserId, AiFeature.CAREER_COMPARISON);
-    const res: Record<string, unknown> = await this.careerComparisonService.generateDetailedComparison(
+    return this.aiQuotaService.runWithQuota(
       currentUserId,
-      careerIds,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      criteria,
-    ) as Record<string, unknown>;
-    await this.aiQuotaService.consumeQuota(currentUserId, AiFeature.CAREER_COMPARISON, { requestCount: 1, tokensUsed: 0 });
-    return res;
+      AiFeature.CAREER_COMPARISON,
+      async () => this.careerComparisonService.generateAllowedDetailedComparison(
+        currentUserId,
+        normalizedCareerIds,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+        criteria,
+      ) as Promise<Record<string, unknown>>,
+      { requestCount: 1, tokensUsed: 0 },
+    );
   }
 
   @Get('statistics')

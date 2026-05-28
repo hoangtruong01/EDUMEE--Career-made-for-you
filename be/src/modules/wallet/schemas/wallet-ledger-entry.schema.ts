@@ -11,6 +11,11 @@ export enum WalletLedgerEntryType {
   CAPTURE = 'capture',
   RELEASE = 'release',
   REFUND = 'refund',
+  CASH_REFUND_CREDIT = 'cash_refund_credit',
+  MENTOR_PAYOUT_CREDIT = 'mentor_payout_credit',
+  WITHDRAWAL_HOLD = 'withdrawal_hold',
+  WITHDRAWAL_PAID = 'withdrawal_paid',
+  WITHDRAWAL_RELEASE = 'withdrawal_release',
 }
 
 @Schema({

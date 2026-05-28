@@ -11,12 +11,17 @@ import { AssignAiSubscriptionDto, UpsertAiSubscriptionDto } from '../dto';
 import { AiSubscriptionService } from '../services/ai-subscription.service';
 import { AiQuotaService } from '../services/ai-quota.service';
 import { AiFeature } from '../schema/ai-usage-logs.schema';
+import type { AiPlan } from '../schema/ai-plan.schema';
 import { BillingCycle } from '../../users/schemas/user-subscriptions';
 
 type QuotaView = {
   used: number;
   limit: number;
   remaining: number;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  nextResetAt: Date | null;
+  resetPolicy: 'periodic' | 'lifetime' | 'unlimited';
 };
 
 @ApiTags('ai-subscriptions')
@@ -75,10 +80,10 @@ export class AiSubscriptionController {
     const activeSubscription = await this.aiSubscriptionService.getActiveSubscriptionForUser(userId);
     const featuresToShow: Record<string, AiFeature> = {
       assessment: AiFeature.ASSESSMENT,
-      careerComparison: AiFeature.CAREER_COMPARISON,
       aiChat: AiFeature.CHATBOT,
       roadmap: AiFeature.PERSONALIZED_ROADMAP,
       simulation: AiFeature.SIMULATION,
+      careerComparison: AiFeature.CAREER_COMPARISON,
       mentorBooking: AiFeature.MENTOR_BOOKING,
     };
     const quotaEntries = await Promise.all(
@@ -93,8 +98,8 @@ export class AiSubscriptionController {
     );
 
     return {
-      currentPlan: this.resolveCurrentPlanCode(plan?.name),
-      source: activeSubscription ? this.resolveSubscriptionSource(plan?.name) : 'default',
+      currentPlan: this.resolveCurrentPlanCode(plan),
+      source: activeSubscription ? this.resolveSubscriptionSource(plan) : 'default',
       subscriptionStatus: activeSubscription?.status || null,
       billingCycle: activeSubscription?.billingCycle || null,
       expiresAt: activeSubscription?.endDate || null,
@@ -103,6 +108,7 @@ export class AiSubscriptionController {
       quotas: Object.fromEntries(quotaEntries),
       features: {
         careerComparison: plan?.features?.careerComparison === true,
+        aiChatbot: plan?.features?.aiChatbot === true,
         personalizedRoadmap: plan?.features?.personalizedRoadmap === true,
         jobSimulation: plan?.features?.jobSimulation === true,
         mentorBooking: plan?.features?.mentorBooking === true,
@@ -116,21 +122,39 @@ export class AiSubscriptionController {
             billingCycle: activeSubscription.billingCycle,
             startDate: activeSubscription.startDate,
             endDate: activeSubscription.endDate,
+            quotaPeriodStart: activeSubscription.quotaPeriodStart || null,
+            quotaPeriodEnd: activeSubscription.quotaPeriodEnd || null,
+            nextQuotaResetAt: activeSubscription.nextQuotaResetAt || null,
           }
         : null,
+      quotaPeriodStart: activeSubscription?.quotaPeriodStart || null,
+      quotaPeriodEnd: activeSubscription?.quotaPeriodEnd || null,
+      nextQuotaResetAt: activeSubscription?.nextQuotaResetAt || null,
       availableBillingCycles: plan?.allowedBillingCycles || [BillingCycle.MONTHLY],
     };
   }
 
-  private resolveCurrentPlanCode(planName?: string | null): 'free' | 'plus' | 'business' {
-    const normalized = planName?.trim().toLowerCase();
-    if (normalized === 'business') return 'business';
-    if (normalized === 'plus') return 'plus';
-    return 'free';
+  private resolveCurrentPlanCode(
+    plan?: Pick<AiPlan, 'name' | 'price' | 'isDefaultPlan' | 'features' | 'seatLimit'> | null,
+  ): 'free' | 'plus' | 'business' {
+    if (!plan || plan.isDefaultPlan || (typeof plan.price === 'number' && plan.price <= 0)) {
+      return 'free';
+    }
+
+    const normalized = plan.name?.trim().toLowerCase() || '';
+    const isBusinessPlan =
+      normalized.includes('business') ||
+      plan.features?.teamDashboard === true ||
+      plan.features?.multiUserManagement === true ||
+      Number(plan.seatLimit || 0) > 0;
+
+    return isBusinessPlan ? 'business' : 'plus';
   }
 
-  private resolveSubscriptionSource(planName?: string | null): 'personal_subscription' | 'business_subscription' {
-    return this.resolveCurrentPlanCode(planName) === 'business'
+  private resolveSubscriptionSource(
+    plan?: Pick<AiPlan, 'name' | 'price' | 'isDefaultPlan' | 'features' | 'seatLimit'> | null,
+  ): 'personal_subscription' | 'business_subscription' {
+    return this.resolveCurrentPlanCode(plan) === 'business'
       ? 'business_subscription'
       : 'personal_subscription';
   }
@@ -140,15 +164,31 @@ export class AiSubscriptionController {
     used: number;
     remaining?: number;
     unlimited: boolean;
+    periodStart?: Date;
+    periodEnd?: Date;
+    nextResetAt?: Date;
+    resetPolicy?: 'periodic' | 'lifetime' | 'unlimited';
   }): QuotaView {
     if (!quota || quota.unlimited) {
-      return { used: quota?.used || 0, limit: 0, remaining: 0 };
+      return {
+        used: quota?.used || 0,
+        limit: 0,
+        remaining: 0,
+        periodStart: quota?.periodStart || null,
+        periodEnd: quota?.periodEnd || null,
+        nextResetAt: quota?.nextResetAt || null,
+        resetPolicy: quota?.resetPolicy || 'unlimited',
+      };
     }
 
     return {
       used: quota.used,
       limit: quota.limit ?? 0,
       remaining: quota.remaining ?? 0,
+      periodStart: quota.periodStart || null,
+      periodEnd: quota.periodEnd || null,
+      nextResetAt: quota.nextResetAt || null,
+      resetPolicy: quota.resetPolicy || 'periodic',
     };
   }
 }

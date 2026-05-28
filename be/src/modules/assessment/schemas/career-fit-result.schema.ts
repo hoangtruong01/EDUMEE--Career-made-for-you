@@ -32,6 +32,9 @@ export class CareerFitResult {
   @Prop({ type: Number, min: 0, max: 100 })
   overallFitScore?: number;
 
+  @Prop({ type: Number, min: 1 })
+  recommendationRank?: number;
+
   @Prop({ type: [String] })
   strengths?: string[];
 
@@ -159,4 +162,5 @@ export const CareerFitResultSchema = SchemaFactory.createForClass(CareerFitResul
 CareerFitResultSchema.index({ userId: 1 });
 CareerFitResultSchema.index({ assessmentSessionId: 1 });
 CareerFitResultSchema.index({ generatedAt: -1 });
+CareerFitResultSchema.index({ userId: 1, recommendationRank: 1 });
 CareerFitResultSchema.index({ 'careerRecommendations.careerId': 1 });

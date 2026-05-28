@@ -4,7 +4,7 @@ import { AiPlan, AiPlanSchema } from './schema/ai-plan.schema';
 import { AiUsageLog, AiUsageLogSchema } from './schema/ai-usage-logs.schema';
 import { UserSubscription, UserSubscriptionSchema } from '../users/schemas/user-subscriptions';
 import { User, UserSchema } from '../users/schemas/user.schema';
-import { AssessmentSession, AssessmentSessionSchema } from '../assessment/schemas/assessment-sesions.schema';
+import { CareerFitResult, CareerFitResultSchema } from '../assessment/schemas/career-fit-result.schema';
 import { AiQuotaService } from './services/ai-quota.service';
 import { AiPlanService } from './services/ai-plan.service';
 import { AiSubscriptionService } from './services/ai-subscription.service';
@@ -20,7 +20,7 @@ import { AuditModule } from '../audit/audit.module';
       { name: AiUsageLog.name, schema: AiUsageLogSchema },
       { name: UserSubscription.name, schema: UserSubscriptionSchema },
       { name: User.name, schema: UserSchema },
-      { name: AssessmentSession.name, schema: AssessmentSessionSchema },
+      { name: CareerFitResult.name, schema: CareerFitResultSchema },
     ]),
   ],
   controllers: [AiPlanController, AiSubscriptionController],

@@ -38,6 +38,15 @@ export class CareerSimulationService {
     }));
   }
 
+  async hasCachedSimulation(userId: string, careerTitle: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) return false;
+    const existing = await this.simulationModel.exists({
+      userId: new Types.ObjectId(userId),
+      careerTitle,
+    }).exec();
+    return Boolean(existing);
+  }
+
   async getOrGenerateSimulation(userId: string, careerTitle: string): Promise<CareerSimulationData> {
     // 1. Check cache
     const existing = await this.simulationModel.findOne({

@@ -62,8 +62,18 @@ import {
 import { NotificationService } from '../../notifications/services';
 import { NotificationType } from '../../notifications/schemas';
 import { WalletService } from '../../wallet/services';
+import { FinancialLedgerService } from '../../financial-ledger';
 
 type CheckoutFieldValue = string | number | undefined;
+type SepayCheckoutEnvironment = 'sandbox' | 'production';
+
+export type SepayCheckoutForm = {
+  type: 'form_post';
+  method: 'POST';
+  actionUrl: string;
+  fields: Record<string, string | number>;
+  environment: SepayCheckoutEnvironment;
+};
 
 type PaymentProcessingResult = {
   payment: PaymentDocument;
@@ -90,6 +100,7 @@ export type PaymentCheckoutSession = {
   creditAppliedAmount?: number;
   currency: string;
   expiresAt: string;
+  sepayCheckout?: SepayCheckoutForm;
   paidAt?: string;
   booking?: PaymentCheckoutBookingSummary;
 };
@@ -104,6 +115,7 @@ export type PaymentCheckoutStatus = {
   currency: string;
   purpose: PaymentPurpose;
   expiresAt: string;
+  sepayCheckout?: SepayCheckoutForm;
   paidAt?: string;
   bookingStatus?: BookingStatus;
 };
@@ -185,6 +197,7 @@ export class PaymentService {
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
     private readonly walletService: WalletService,
+    private readonly financialLedgerService: FinancialLedgerService,
   ) {}
 
   async createPaymentPurchase(
@@ -925,13 +938,31 @@ export class PaymentService {
       return { status: 'refund_pending' };
     }
 
+    const totalPaidAmount = this.getPaymentTotalAmount(payment);
+    const isFullRefund = refundDecision.amount >= totalPaidAmount;
     await this.refundPaidPaymentToCredit(
       payment,
       refundDecision.amount,
       reason || refundDecision.reason,
       `booking-cancel-${cancelledBy}-${payment._id.toString()}`,
+      undefined,
+      { cancelledBy, partialSettlement: !isFullRefund },
+      { markPaymentRefunded: isFullRefund },
     );
-    await this.updateMentorBookingPaymentState(payment, 'refunded');
+    if (isFullRefund) {
+      await this.updateMentorBookingPaymentState(payment, 'refunded');
+    } else {
+      await this.bookingSessionModel.findByIdAndUpdate(booking._id, {
+        'paymentInfo.paymentStatus': 'paid',
+        'paymentInfo.refundInfo': {
+          refundAmount: refundDecision.amount,
+          refundDate: new Date(),
+          refundReason: reason || refundDecision.reason,
+          refundStatus: 'completed',
+        },
+      }).exec();
+      await this.settleMentorBookingPayment(booking._id);
+    }
     await this.notifyMentorBookingRefunded(booking, refundDecision.amount);
     return { status: 'refunded', refundAmount: refundDecision.amount };
   }
@@ -949,7 +980,13 @@ export class PaymentService {
       .exec();
 
     if (!payment) return null;
-    if (payment.settlementStatus === PaymentSettlementStatus.READY) return payment;
+    const booking = await this.bookingSessionModel.findById(bookingId).exec();
+    if (!booking) throw new NotFoundException('Booking session not found');
+    if (payment.settlementStatus === PaymentSettlementStatus.READY) {
+      await this.creditMentorEarningsForSettlement(payment, booking);
+      await this.financialLedgerService.postMentorSettlementReady(payment);
+      return payment;
+    }
     if (
       payment.settlementStatus === PaymentSettlementStatus.REFUNDED ||
       payment.settlementStatus === PaymentSettlementStatus.WITHHELD
@@ -988,6 +1025,9 @@ export class PaymentService {
         mentorPayoutAmount,
       },
     });
+
+    await this.creditMentorEarningsForSettlement(payment, booking);
+    await this.financialLedgerService.postMentorSettlementReady(payment);
 
     return payment;
   }
@@ -1028,12 +1068,10 @@ export class PaymentService {
     const filter: Record<string, unknown> = {
       purpose: PaymentPurpose.MENTOR_BOOKING,
       status: PaymentStatus.PAID,
+      settlementStatus: PaymentSettlementStatus.READY,
       bookingSessionId: { $in: bookingIds },
       paidAt: { $gte: dateRange.from, $lt: dateRange.to },
     };
-    if (params.settlementStatus && params.settlementStatus !== 'all') {
-      filter.settlementStatus = params.settlementStatus;
-    }
 
     const payments = await this.paymentModel
       .find(filter)
@@ -1134,7 +1172,7 @@ export class PaymentService {
     }
 
     const checkout = this.buildSepayCheckout(payment);
-    return this.buildSepayCheckoutPageHtml(payment, checkout.url, checkout.fields);
+    return this.buildSepayCheckoutPageHtml(payment, checkout.actionUrl, checkout.fields);
   }
 
   async getPaymentCheckoutSession(token: string): Promise<PaymentCheckoutSession> {
@@ -1149,6 +1187,8 @@ export class PaymentService {
     }
 
     const booking = await this.buildMentorBookingCheckoutSummary(payment);
+    const sepayCheckout =
+      payment.status === PaymentStatus.PENDING ? this.buildSepayCheckout(payment) : undefined;
 
     return {
       paymentId: payment._id.toString(),
@@ -1160,6 +1200,7 @@ export class PaymentService {
       creditAppliedAmount: payment.creditAppliedAmount,
       currency: payment.currency,
       expiresAt: payment.checkoutTokenExpiresAt?.toISOString() || new Date().toISOString(),
+      ...(sepayCheckout ? { sepayCheckout } : {}),
       ...(payment.paidAt ? { paidAt: payment.paidAt.toISOString() } : {}),
       ...(booking ? { booking } : {}),
     };
@@ -1181,6 +1222,8 @@ export class PaymentService {
     }
 
     const bookingStatus = await this.resolveCheckoutBookingStatus(payment);
+    const sepayCheckout =
+      payment.status === PaymentStatus.PENDING ? this.buildSepayCheckout(payment) : undefined;
 
     return {
       paymentId: payment._id.toString(),
@@ -1192,6 +1235,7 @@ export class PaymentService {
       currency: payment.currency,
       purpose: payment.purpose,
       expiresAt: payment.checkoutTokenExpiresAt?.toISOString() || new Date().toISOString(),
+      ...(sepayCheckout ? { sepayCheckout } : {}),
       ...(payment.paidAt ? { paidAt: payment.paidAt.toISOString() } : {}),
       ...(bookingStatus ? { bookingStatus } : {}),
     };
@@ -1266,28 +1310,28 @@ export class PaymentService {
 
   private buildSepayCheckout(
     payment: PaymentDocument,
-  ): {
-    type: 'form_post';
-    method: 'POST';
-    url: string;
-    fields: Record<string, CheckoutFieldValue>;
-  } {
+  ): SepayCheckoutForm {
+    const checkoutReference = payment.checkoutReference;
+    if (!checkoutReference) {
+      throw new ConflictException('SePay payment is missing checkoutReference');
+    }
+
     const client = this.getSepayClient();
-    const checkoutURL = client.checkout.initCheckoutUrl();
+    const actionUrl = client.checkout.initCheckoutUrl();
     const checkoutFormFields = client.checkout.initOneTimePaymentFields({
       operation: 'PURCHASE',
       payment_method: payment.paymentMethod || SepayPaymentMethod.BANK_TRANSFER,
-      order_invoice_number: payment.checkoutReference || this.generateCheckoutReference(),
+      order_invoice_number: checkoutReference,
       order_amount: payment.amount,
       currency: payment.currency,
-      order_description: `Thanh toan don hang ${payment.checkoutReference}`,
+      order_description: `Thanh toan don hang ${checkoutReference}`,
       customer_id: payment.userId.toString(),
       success_url: this.resolveCheckoutReturnUrl('success', payment),
       error_url: this.resolveCheckoutReturnUrl('error', payment),
       cancel_url: this.resolveCheckoutReturnUrl('cancel', payment),
       custom_data: JSON.stringify({
         paymentId: payment._id.toString(),
-        checkoutReference: payment.checkoutReference,
+        checkoutReference,
         provider: payment.provider,
       }),
     });
@@ -1295,9 +1339,18 @@ export class PaymentService {
     return {
       type: 'form_post',
       method: 'POST',
-      url: checkoutURL,
-      fields: checkoutFormFields,
+      actionUrl,
+      fields: this.compactCheckoutFields(checkoutFormFields),
+      environment: this.getSepayEnvironment(),
     };
+  }
+
+  private compactCheckoutFields(
+    fields: Record<string, CheckoutFieldValue>,
+  ): Record<string, string | number> {
+    return Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined),
+    ) as Record<string, string | number>;
   }
 
   private resolveCheckoutReturnUrl(
@@ -1341,7 +1394,7 @@ export class PaymentService {
   private getSepayClient(): SePayPgClient {
     const merchantId = this.configService.get<string>('SEPAY_MERCHANT_ID');
     const secretKey = this.configService.get<string>('SEPAY_SECRET_KEY');
-    const env = this.configService.get<'sandbox' | 'production'>('SEPAY_ENV', 'sandbox');
+    const env = this.getSepayEnvironment();
 
     if (!merchantId || !secretKey) {
       throw new BadRequestException('SePay credentials are not configured');
@@ -1395,9 +1448,21 @@ export class PaymentService {
   }
 
   private isPaymentTestBankEnabled(): boolean {
-    const value = this.configService.get<string | boolean>('PAYMENT_TEST_BANK_ENABLED', false);
+    const value = this.configService.get<string | boolean | undefined>('PAYMENT_TEST_BANK_ENABLED');
     if (typeof value === 'boolean') return value;
-    return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return this.isSepaySandboxMode();
+  }
+
+  private isSepaySandboxMode(): boolean {
+    return this.getSepayEnvironment() === 'sandbox';
+  }
+
+  private getSepayEnvironment(): SepayCheckoutEnvironment {
+    const env = this.configService.get<string>('SEPAY_ENV', 'sandbox');
+    return String(env || '').trim().toLowerCase() === 'production' ? 'production' : 'sandbox';
   }
 
   private getTestBankInitialBalance(): number {
@@ -1466,6 +1531,7 @@ export class PaymentService {
     const existingEvent = await this.findExistingEvent(payment, params.eventId);
     if (existingEvent) {
       await this.ensurePaidPaymentEntitlement(payment);
+      await this.financialLedgerService.postPaymentPaid(payment);
       return {
         payment,
         idempotent: true,
@@ -1474,6 +1540,7 @@ export class PaymentService {
 
     if (payment.status === PaymentStatus.PAID) {
       await this.ensurePaidPaymentEntitlement(payment);
+      await this.financialLedgerService.postPaymentPaid(payment);
       return {
         payment,
         idempotent: true,
@@ -1501,6 +1568,7 @@ export class PaymentService {
       status: PaymentTransactionStatus.SUCCESS,
       payload: params.payload,
     });
+    await this.financialLedgerService.postPaymentPaid(payment);
     await this.notifyPaymentPaid(payment);
 
     return { payment, idempotent: false };
@@ -1914,6 +1982,7 @@ export class PaymentService {
       status: PaymentTransactionStatus.SUCCESS,
       payload,
     });
+    await this.financialLedgerService.postPaymentPaid(payment);
   }
 
   private buildWalletPaymentMetadata(payment: PaymentDocument): Record<string, unknown> {
@@ -1934,33 +2003,54 @@ export class PaymentService {
     eventId: string,
     providerTransactionId?: string,
     payload: Record<string, unknown> = {},
+    options: { markPaymentRefunded?: boolean } = {},
   ): Promise<void> {
     const refundAmount = Math.min(amount, this.getPaymentTotalAmount(payment));
     if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
       throw new BadRequestException('Invalid refund amount');
     }
 
-    await this.walletService.refund({
-      userId: payment.userId.toString(),
-      amount: refundAmount,
-      sourceType: 'payment_refund',
-      sourceId: payment._id.toString(),
-      idempotencyKey: `payment:${payment._id.toString()}:refund:${eventId}`,
-      description: reason,
-      metadata: {
-        ...this.buildWalletPaymentMetadata(payment),
-        paymentPurpose: payment.purpose,
-        originalAmount: payment.amount,
-        subtotalAmount: payment.subtotalAmount,
-        creditAppliedAmount: payment.creditAppliedAmount,
-      },
-    });
+    const settlementStatusBefore = payment.settlementStatus;
+    const refundSplit = this.splitRefundByPaymentSource(payment, refundAmount);
+    const baseMetadata = {
+      ...this.buildWalletPaymentMetadata(payment),
+      paymentPurpose: payment.purpose,
+      originalAmount: payment.amount,
+      subtotalAmount: payment.subtotalAmount,
+      creditAppliedAmount: payment.creditAppliedAmount,
+      refundAmount,
+    };
+    if (refundSplit.cashRefundAmount > 0) {
+      await this.walletService.cashRefund({
+        userId: payment.userId.toString(),
+        amount: refundSplit.cashRefundAmount,
+        sourceType: 'payment_refund',
+        sourceId: payment._id.toString(),
+        idempotencyKey: `payment:${payment._id.toString()}:cash-refund:${eventId}`,
+        description: reason,
+        metadata: { ...baseMetadata, refundSource: 'cash' },
+      });
+    }
+    if (refundSplit.creditRefundAmount > 0) {
+      await this.walletService.refund({
+        userId: payment.userId.toString(),
+        amount: refundSplit.creditRefundAmount,
+        sourceType: 'payment_refund',
+        sourceId: payment._id.toString(),
+        idempotencyKey: `payment:${payment._id.toString()}:credit-refund:${eventId}`,
+        description: reason,
+        metadata: { ...baseMetadata, refundSource: 'edumee_credit' },
+      });
+    }
 
-    payment.status = PaymentStatus.REFUNDED;
+    const shouldMarkRefunded = options.markPaymentRefunded ?? refundAmount >= this.getPaymentTotalAmount(payment);
+    if (shouldMarkRefunded) {
+      payment.status = PaymentStatus.REFUNDED;
+    }
     payment.refundedAt = new Date();
     payment.refundedAmount = refundAmount;
     payment.refundReason = reason;
-    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+    if (shouldMarkRefunded && payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
       payment.settlementStatus = PaymentSettlementStatus.REFUNDED;
     }
     await payment.save();
@@ -1971,7 +2061,51 @@ export class PaymentService {
       providerTransactionId,
       eventType: 'payment_refunded',
       status: PaymentTransactionStatus.SUCCESS,
-      payload: { ...payload, refundAmount, reason, refundTarget: 'edumee_credit' },
+      payload: {
+        ...payload,
+        refundAmount,
+        reason,
+        refundTarget: 'wallet',
+        cashRefundAmount: refundSplit.cashRefundAmount,
+        creditRefundAmount: refundSplit.creditRefundAmount,
+      },
+    });
+    await this.financialLedgerService.postPaymentRefunded({
+      payment,
+      eventId,
+      refundAmount,
+      cashRefundAmount: refundSplit.cashRefundAmount,
+      creditRefundAmount: refundSplit.creditRefundAmount,
+      settlementStatusBefore,
+      reason,
+      occurredAt: payment.refundedAt,
+    });
+  }
+
+  private async creditMentorEarningsForSettlement(
+    payment: PaymentDocument,
+    booking: BookingSessionDocument,
+  ): Promise<void> {
+    if (payment.settlementStatus !== PaymentSettlementStatus.READY) return;
+    const mentorPayoutAmount = Number(payment.mentorPayoutAmount || 0);
+    if (!Number.isFinite(mentorPayoutAmount) || mentorPayoutAmount <= 0) return;
+
+    await this.walletService.creditMentorEarnings({
+      userId: booking.mentorId.toString(),
+      amount: this.roundCurrency(mentorPayoutAmount),
+      sourceType: 'mentor_payout',
+      sourceId: payment._id.toString(),
+      idempotencyKey: `payment:${payment._id.toString()}:mentor-payout`,
+      description: 'Mentor payout sau khi booking hoan tat',
+      metadata: {
+        bookingSessionId: booking._id.toString(),
+        checkoutReference: payment.checkoutReference,
+        settlementBaseAmount: payment.settlementBaseAmount,
+        platformFeeRate: payment.platformFeeRate,
+        platformFeeAmount: payment.platformFeeAmount,
+        mentorPayoutAmount: payment.mentorPayoutAmount,
+        currency: payment.currency,
+      },
     });
   }
 
@@ -2072,10 +2206,25 @@ export class PaymentService {
     return Number(payment.amount || 0) + Number(payment.creditAppliedAmount || 0);
   }
 
-  private async buildPendingMentorSettlementFields(baseAmount: number): Promise<Partial<Payment>> {
-    const settlementBaseAmount = this.roundCurrency(baseAmount);
+  private splitRefundByPaymentSource(
+    payment: PaymentDocument,
+    refundAmount: number,
+  ): { cashRefundAmount: number; creditRefundAmount: number } {
+    const total = this.getPaymentTotalAmount(payment);
+    if (!Number.isFinite(total) || total <= 0) {
+      return { cashRefundAmount: 0, creditRefundAmount: 0 };
+    }
+
+    const creditAppliedAmount = Math.min(Math.max(Number(payment.creditAppliedAmount || 0), 0), total);
+    const cashPaidAmount = Math.max(total - creditAppliedAmount, 0);
+    const safeRefundAmount = Math.min(Math.max(refundAmount, 0), total);
+    const cashRefundAmount = this.roundCurrency(safeRefundAmount * (cashPaidAmount / total));
+    const creditRefundAmount = this.roundCurrency(Math.max(safeRefundAmount - cashRefundAmount, 0));
+    return { cashRefundAmount, creditRefundAmount };
+  }
+
+  private async buildPendingMentorSettlementFields(_baseAmount: number): Promise<Partial<Payment>> {
     return {
-      settlementBaseAmount,
       platformFeeRate: await this.resolveMentorPlatformFeeRate(),
       settlementStatus: PaymentSettlementStatus.PENDING,
     };
@@ -2084,7 +2233,8 @@ export class PaymentService {
   private getMentorSettlementBaseAmount(payment: PaymentDocument): number {
     const explicitBase = Number(payment.settlementBaseAmount);
     if (Number.isFinite(explicitBase) && explicitBase > 0) return this.roundCurrency(explicitBase);
-    return this.roundCurrency(this.getPaymentTotalAmount(payment));
+    const refundedAmount = Number(payment.refundedAmount || 0);
+    return this.roundCurrency(Math.max(this.getPaymentTotalAmount(payment) - refundedAmount, 0));
   }
 
   private async resolveMentorPlatformFeeRate(storedRate?: number): Promise<number> {

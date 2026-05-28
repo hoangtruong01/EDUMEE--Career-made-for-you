@@ -11,6 +11,21 @@ export interface ApiErrorBody {
   message?: string | string[];
   error?: string;
   statusCode?: number;
+  code?: string;
+  feature?: string;
+  currentPlan?: string;
+  planName?: string;
+  quota?: {
+    used?: number;
+    limit?: number;
+    remaining?: number;
+    periodStart?: string | null;
+    periodEnd?: string | null;
+    nextResetAt?: string | null;
+    resetPolicy?: 'periodic' | 'lifetime' | 'unlimited';
+  };
+  nextResetAt?: string | null;
+  recommendedAction?: string;
 }
 
 export interface ApiResponse<T> {
@@ -32,6 +47,7 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3001/api/v1';
+const NETWORK_ERROR_MESSAGE = 'Không kết nối được máy chủ. Vui lòng thử lại.';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') || DEFAULT_API_BASE_URL;
@@ -61,10 +77,29 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   return response.json();
 }
 
+function isNetworkFetchError(error: unknown): boolean {
+  return error instanceof TypeError && /fetch/i.test(error.message);
+}
+
+async function safeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (isNetworkFetchError(error)) {
+      throw new ApiError(NETWORK_ERROR_MESSAGE, 0, {
+        message: NETWORK_ERROR_MESSAGE,
+        error: 'NETWORK_ERROR',
+        statusCode: 0,
+      });
+    }
+    throw error;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { method = 'GET', body, token } = options;
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await safeFetch(`${API_BASE_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -106,7 +141,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 }
 
 export async function apiUpload<T>(path: string, formData: FormData, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await safeFetch(`${API_BASE_URL}${path}`, {
     method: 'PATCH', // Usually avatar upload is PATCH in our case
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

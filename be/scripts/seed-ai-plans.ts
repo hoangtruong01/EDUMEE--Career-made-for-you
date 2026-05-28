@@ -34,6 +34,7 @@ type PlanSeed = {
     maxCareersPerComparison?: number;
     careerRecommendationRunsPerMonth?: number;
     maxCareerRecommendationsPerRun?: number;
+    visibleCareerRecommendationsPerRun?: number;
     personalizedRoadmapsPerMonth?: number;
     simulationsPerMonth?: number;
     mentorBookingsPerMonth?: number;
@@ -63,10 +64,10 @@ const PLAN_SEEDS: PlanSeed[] = [
     allowedBillingCycles: [BillingCycle.MONTHLY],
     limits: {
       assessmentsPerMonth: 1,
-      assessmentsLifetimeLimit: 1,
       chatMessagesPerMonth: 10,
       careerRecommendationRunsPerMonth: 1,
-      maxCareerRecommendationsPerRun: 1,
+      maxCareerRecommendationsPerRun: 5,
+      visibleCareerRecommendationsPerRun: 3,
       careerComparisonsPerMonth: 0,
       maxCareersPerComparison: 0,
       personalizedRoadmapsPerMonth: 1,
@@ -102,6 +103,7 @@ const PLAN_SEEDS: PlanSeed[] = [
     limits: {
       assessmentsPerMonth: 3,
       maxCareerRecommendationsPerRun: 5,
+      visibleCareerRecommendationsPerRun: 5,
       chatMessagesPerMonth: 200,
       careerComparisonsPerMonth: 5,
       maxCareersPerComparison: 3,
@@ -130,7 +132,8 @@ const PLAN_SEEDS: PlanSeed[] = [
     seatLimit: 200,
     limits: {
       assessmentsPerMonth: 5,
-      maxCareerRecommendationsPerRun: 10,
+      maxCareerRecommendationsPerRun: 5,
+      visibleCareerRecommendationsPerRun: 5,
       chatMessagesPerMonth: 200,
       careerComparisonsPerMonth: 10,
       maxCareersPerComparison: 5,
@@ -267,6 +270,37 @@ async function upsertPlans(aiPlanModel: AiPlanDocumentModel): Promise<void> {
   }
 }
 
+export async function backfillLegacyVisibleCareerRecommendationLimits(
+  aiPlanModel: AiPlanDocumentModel,
+): Promise<number> {
+  const result = await aiPlanModel.updateMany(
+    {
+      'limits.maxCareerRecommendationsPerRun': { $type: 'number' },
+      $or: [
+        { 'limits.visibleCareerRecommendationsPerRun': { $exists: false } },
+        { 'limits.visibleCareerRecommendationsPerRun': null },
+      ],
+    },
+    [
+      {
+        $set: {
+          'limits.visibleCareerRecommendationsPerRun':
+            '$limits.maxCareerRecommendationsPerRun',
+        },
+      },
+    ],
+  ).exec();
+
+  const modifiedCount = result.modifiedCount || 0;
+  if (modifiedCount > 0) {
+    console.log(
+      `[seed:ai-plans] Backfilled visible career recommendation limits for ${modifiedCount} legacy plan(s).`,
+    );
+  }
+
+  return modifiedCount;
+}
+
 async function main(): Promise<void> {
   loadEnvFiles();
   await mongoose.connect(getDatabaseUri());
@@ -277,6 +311,7 @@ async function main(): Promise<void> {
 
   await migrateLegacyProPlan(aiPlanModel, paymentModel, subscriptionModel);
   await upsertPlans(aiPlanModel);
+  await backfillLegacyVisibleCareerRecommendationLimits(aiPlanModel);
 
   await aiPlanModel.updateMany(
     { name: { $nin: PLAN_SEEDS.map((plan) => plan.name) }, isDefaultPlan: true },
@@ -286,14 +321,16 @@ async function main(): Promise<void> {
   console.log('[seed:ai-plans] Completed.');
 }
 
-void main()
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[seed:ai-plans] Failed: ${message}`);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
-    }
-  });
+if (require.main === module) {
+  void main()
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[seed:ai-plans] Failed: ${message}`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+      }
+    });
+}

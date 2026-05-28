@@ -7,6 +7,12 @@ export enum WalletCurrency {
   VND = 'VND',
 }
 
+export enum WalletAccountType {
+  EDUMEE_CREDIT = 'edumee_credit',
+  CASH_REFUND = 'cash_refund',
+  MENTOR_EARNINGS = 'mentor_earnings',
+}
+
 @Schema({
   timestamps: true,
   collection: 'wallet_accounts',
@@ -29,6 +35,9 @@ export class WalletAccount {
   @Prop({ type: String, enum: WalletCurrency, default: WalletCurrency.VND })
   currency!: WalletCurrency;
 
+  @Prop({ type: String, enum: WalletAccountType, default: WalletAccountType.EDUMEE_CREDIT })
+  accountType!: WalletAccountType;
+
   @Prop({ type: Number, default: 0, min: 0 })
   availableBalance!: number;
 
@@ -41,4 +50,7 @@ export class WalletAccount {
 
 export const WalletAccountSchema = SchemaFactory.createForClass(WalletAccount);
 
-WalletAccountSchema.index({ userId: 1, currency: 1 }, { unique: true });
+WalletAccountSchema.index(
+  { userId: 1, currency: 1, accountType: 1 },
+  { unique: true, name: 'wallet_account_user_currency_type_unique' },
+);

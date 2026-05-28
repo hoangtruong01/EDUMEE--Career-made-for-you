@@ -76,6 +76,9 @@ describe('AiSubscriptionService', () => {
     expect(payload.paymentIds.map((id: Types.ObjectId) => id.toString())).toEqual([paymentId]);
     expect(payload.startDate).toBe(paidAt);
     expect(payload.endDate.toISOString()).toBe('2026-06-16T00:00:00.000Z');
+    expect(payload.quotaPeriodStart.toISOString()).toBe('2026-05-16T00:00:00.000Z');
+    expect(payload.quotaPeriodEnd.toISOString()).toBe('2026-06-16T00:00:00.000Z');
+    expect(payload.nextQuotaResetAt.toISOString()).toBe('2026-06-16T00:00:00.000Z');
     expect(result.status).toBe(SubscriptionStatus.ACTIVE);
   });
 
@@ -106,6 +109,9 @@ describe('AiSubscriptionService', () => {
 
     expect(result).toBe(activeSubscription);
     expect(activeSubscription.endDate?.toISOString()).toBe('2026-07-01T00:00:00.000Z');
+    expect(activeSubscription.quotaPeriodStart?.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+    expect(activeSubscription.quotaPeriodEnd?.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(activeSubscription.nextQuotaResetAt?.toISOString()).toBe('2026-06-01T00:00:00.000Z');
     expect(activeSubscription.paymentIds.map((id: Types.ObjectId) => id.toString())).toEqual([
       previousPaymentId.toString(),
       nextPaymentId,
@@ -147,6 +153,9 @@ describe('AiSubscriptionService', () => {
     expect(payload.planId.toString()).toBe(newPlanId);
     expect(payload.paymentId.toString()).toBe(paymentId);
     expect(payload.endDate.toISOString()).toBe('2026-08-16T00:00:00.000Z');
+    expect(payload.quotaPeriodStart.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+    expect(payload.quotaPeriodEnd.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(payload.nextQuotaResetAt.toISOString()).toBe('2026-06-01T00:00:00.000Z');
   });
 
   it('assigns a plan to a user by case-insensitive email', async () => {
@@ -335,6 +344,9 @@ function createSubscriptionDocument(params: {
   paymentId?: Types.ObjectId;
   paymentIds: Types.ObjectId[];
   endDate: Date;
+  quotaPeriodStart?: Date;
+  quotaPeriodEnd?: Date;
+  nextQuotaResetAt?: Date;
 }) {
   const subscription = {
     _id: new Types.ObjectId(),
@@ -345,6 +357,9 @@ function createSubscriptionDocument(params: {
     billingCycle: BillingCycle.MONTHLY,
     startDate: new Date('2026-05-01T00:00:00.000Z'),
     endDate: params.endDate,
+    quotaPeriodStart: params.quotaPeriodStart,
+    quotaPeriodEnd: params.quotaPeriodEnd,
+    nextQuotaResetAt: params.nextQuotaResetAt,
     status: SubscriptionStatus.ACTIVE,
     save: jest.fn(),
   };

@@ -214,6 +214,130 @@ describe('AiPlanService', () => {
     );
   });
 
+  it('allows career recommendation visibility below the generated recommendation count', async () => {
+    aiPlanModel.findOne.mockReturnValue(createExecMock(null));
+
+    await service.create({
+      name: 'Free',
+      limits: {
+        maxCareerRecommendationsPerRun: 5,
+        visibleCareerRecommendationsPerRun: 3,
+      },
+    });
+
+    expect(aiPlanModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limits: expect.objectContaining({
+          maxCareerRecommendationsPerRun: 5,
+          visibleCareerRecommendationsPerRun: 3,
+        }),
+      }),
+    );
+  });
+
+  it('blocks visible career recommendations above generated recommendations', async () => {
+    aiPlanModel.findOne.mockReturnValue(createExecMock(null));
+
+    await expect(
+      service.create({
+        name: 'Bad Plan',
+        limits: {
+          maxCareerRecommendationsPerRun: 3,
+          visibleCareerRecommendationsPerRun: 5,
+        },
+      }),
+    ).rejects.toThrow('visibleCareerRecommendationsPerRun cannot exceed maxCareerRecommendationsPerRun');
+
+    expect(aiPlanModel).not.toHaveBeenCalled();
+  });
+
+  it('blocks setting visible career recommendations without an effective generated recommendation count', async () => {
+    aiPlanModel.findOne.mockReturnValue(createExecMock(null));
+
+    await expect(
+      service.create({
+        name: 'Bad Plan',
+        limits: {
+          visibleCareerRecommendationsPerRun: 3,
+        },
+      }),
+    ).rejects.toThrow('maxCareerRecommendationsPerRun is required');
+
+    expect(aiPlanModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps unrelated limits valid without career recommendation visibility settings', async () => {
+    aiPlanModel.findOne.mockReturnValue(createExecMock(null));
+
+    await service.create({
+      name: 'Chat Only',
+      limits: {
+        chatMessagesPerMonth: 20,
+      },
+    });
+
+    expect(aiPlanModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limits: expect.objectContaining({
+          chatMessagesPerMonth: 20,
+        }),
+      }),
+    );
+  });
+
+  it('validates updated career visibility against existing plan limits', async () => {
+    const planId = '507f1f77bcf86cd799439011';
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        id: planId,
+        isDefaultPlan: false,
+        limits: {
+          maxCareerRecommendationsPerRun: 5,
+        },
+      }),
+    );
+    aiPlanModel.findByIdAndUpdate.mockReturnValue(
+      createExecMock({
+        id: planId,
+        limits: {
+          maxCareerRecommendationsPerRun: 5,
+          visibleCareerRecommendationsPerRun: 3,
+        },
+      }),
+    );
+
+    await service.update(planId, {
+      limits: {
+        visibleCareerRecommendationsPerRun: 3,
+      },
+    });
+
+    expect(aiPlanModel.findByIdAndUpdate).toHaveBeenCalled();
+  });
+
+  it('blocks updating career visibility above the effective generated recommendation count', async () => {
+    const planId = '507f1f77bcf86cd799439011';
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        id: planId,
+        isDefaultPlan: false,
+        limits: {
+          maxCareerRecommendationsPerRun: 3,
+        },
+      }),
+    );
+
+    await expect(
+      service.update(planId, {
+        limits: {
+          visibleCareerRecommendationsPerRun: 5,
+        },
+      }),
+    ).rejects.toThrow('visibleCareerRecommendationsPerRun cannot exceed maxCareerRecommendationsPerRun');
+
+    expect(aiPlanModel.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
   it('forces default plans to stay active on update', async () => {
     const planId = '507f1f77bcf86cd799439011';
     aiPlanModel.findById.mockReturnValue(

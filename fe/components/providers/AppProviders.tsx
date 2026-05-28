@@ -4,6 +4,7 @@ import { AssessmentProvider } from '@/context/assessment-context';
 import { AuthProvider } from '@/context/auth-context';
 import { BookingChatProvider } from '@/context/booking-chat-context';
 import { NotificationProvider } from '@/context/notification-context';
+import { PlanGateProvider } from '@/context/plan-gate-context';
 import { ThemeProvider } from 'next-themes';
 import type { ReactNode } from 'react';
 import AnalyticsTracker from './AnalyticsTracker';
@@ -16,10 +17,12 @@ export default function AppProviders({ children }: { children: ReactNode }) {
         <AuthProvider>
           <NotificationProvider>
             <BookingChatProvider>
-              <AssessmentProvider>
-                <AnalyticsTracker />
-                {children}
-              </AssessmentProvider>
+              <PlanGateProvider>
+                <AssessmentProvider>
+                  <AnalyticsTracker />
+                  {children}
+                </AssessmentProvider>
+              </PlanGateProvider>
             </BookingChatProvider>
           </NotificationProvider>
         </AuthProvider>

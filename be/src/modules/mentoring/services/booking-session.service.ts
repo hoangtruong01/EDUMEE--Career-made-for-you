@@ -590,6 +590,7 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       tutoringSessionId: session._id,
     });
 
+    await this.paymentService.settleMentorBookingPayment(updated._id);
     await this.notifySessionCompleted(updated, completedBy);
     return updated;
   }

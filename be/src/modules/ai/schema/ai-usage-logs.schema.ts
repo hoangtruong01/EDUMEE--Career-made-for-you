@@ -46,8 +46,15 @@ export class AiUsageLog {
 
     @Prop({ type: Number })
     year?: number;
+
+    @Prop({ type: Date })
+    periodStart?: Date;
+
+    @Prop({ type: Date })
+    periodEnd?: Date;
 }
 
 export const AiUsageLogSchema = SchemaFactory.createForClass(AiUsageLog);
 AiUsageLogSchema.index({ userId: 1, feature: 1 });
 AiUsageLogSchema.index({ userId: 1, feature: 1, year: 1, month: 1 });
+AiUsageLogSchema.index({ userId: 1, feature: 1, periodStart: 1, periodEnd: 1 });

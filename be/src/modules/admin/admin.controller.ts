@@ -9,6 +9,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UpdateMentorPlatformFeeConfigDto } from '../payment/dto';
+import { WalletService } from '../wallet/services';
 import { AdminService } from './admin.service';
 
 @ApiTags('Admin')
@@ -20,6 +21,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly auditLogService: AuditLogService,
+    private readonly walletService: WalletService,
   ) {}
 
   @ApiOperation({ summary: 'Lấy thống kê dashboard' })
@@ -34,12 +36,37 @@ export class AdminController {
     return this.adminService.getFinanceSummary(range);
   }
 
-  @ApiOperation({ summary: 'Lấy danh sách giao dịch tài chính' })
+  @ApiOperation({ summary: 'Lấy sổ cái giao dịch tài chính hợp nhất' })
+  @Get('finance/transactions')
+  async getFinanceTransactions(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('eventType') eventType?: string,
+    @Query('sourceType') sourceType?: string,
+    @Query('purpose') purpose?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.adminService.getFinanceTransactions({
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      eventType,
+      sourceType,
+      purpose,
+      search,
+      from,
+      to,
+    });
+  }
+
+  @ApiOperation({ summary: 'Lấy danh sách payment thô' })
   @Get('finance/payments')
   async getFinancePayments(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('status') status?: string,
+    @Query('provider') provider?: string,
     @Query('purpose') purpose?: string,
     @Query('plan') plan?: string,
     @Query('search') search?: string,
@@ -48,6 +75,7 @@ export class AdminController {
       page: Number(page) || 1,
       limit: Number(limit) || 10,
       status,
+      provider,
       purpose,
       plan,
       search,
@@ -92,6 +120,97 @@ export class AdminController {
         metadata: { mentorPlatformFeePercent: dto.mentorPlatformFeePercent },
       },
       () => this.adminService.updateMentorPlatformFeeConfig(dto.mentorPlatformFeePercent),
+    );
+  }
+
+  @ApiOperation({ summary: 'Lấy danh sách yêu cầu rút tiền' })
+  @Get('withdrawals')
+  async getWithdrawals(
+    @Query('status') status?: string,
+    @Query('accountType') accountType?: string,
+  ) {
+    return this.walletService.listWithdrawals({ status, accountType });
+  }
+
+  @ApiOperation({ summary: 'Duyệt yêu cầu rút tiền' })
+  @Post('withdrawals/:id/approve')
+  async approveWithdrawal(
+    @Param('id') id: string,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'withdrawals.approve',
+        resource: 'wallet_withdrawal',
+        resourceId: id,
+      },
+      () => this.walletService.approveWithdrawalRequest(id, actor.userId),
+    );
+  }
+
+  @ApiOperation({ summary: 'Từ chối yêu cầu rút tiền' })
+  @Post('withdrawals/:id/reject')
+  async rejectWithdrawal(
+    @Param('id') id: string,
+    @Body('reason') reason: string | undefined,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'withdrawals.reject',
+        resource: 'wallet_withdrawal',
+        resourceId: id,
+        metadata: { reason },
+      },
+      () => this.walletService.rejectWithdrawalRequest(id, reason, actor.userId),
+    );
+  }
+
+  @ApiOperation({ summary: 'Đánh dấu yêu cầu rút tiền đã chuyển khoản thủ công' })
+  @Post('withdrawals/:id/mark-paid')
+  async markWithdrawalPaid(
+    @Param('id') id: string,
+    @Body('transferReference') transferReference: string | undefined,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'withdrawals.mark_paid',
+        resource: 'wallet_withdrawal',
+        resourceId: id,
+        metadata: { transferReference },
+      },
+      () => this.walletService.markWithdrawalPaid(id, transferReference, actor.userId),
+    );
+  }
+
+  @ApiOperation({ summary: 'Đánh dấu yêu cầu rút tiền thất bại và hoàn lại số dư tạm giữ' })
+  @Post('withdrawals/:id/mark-failed')
+  async markWithdrawalFailed(
+    @Param('id') id: string,
+    @Body('reason') reason: string | undefined,
+    @CurrentUser() actor: RequestUser,
+    @Req() request: Request,
+  ) {
+    return this.withAudit(
+      {
+        actor,
+        request,
+        action: 'withdrawals.mark_failed',
+        resource: 'wallet_withdrawal',
+        resourceId: id,
+        metadata: { reason },
+      },
+      () => this.walletService.markWithdrawalFailed(id, reason, actor.userId),
     );
   }
 

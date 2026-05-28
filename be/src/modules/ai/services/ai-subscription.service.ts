@@ -10,6 +10,12 @@ import {
 import { User, UserDocument } from '../../users/schemas/user.schema';
 import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 
+type SubscriptionQuotaPeriod = {
+  quotaPeriodStart: Date;
+  quotaPeriodEnd: Date;
+  nextQuotaResetAt: Date;
+};
+
 @Injectable()
 export class AiSubscriptionService {
   constructor(
@@ -49,6 +55,7 @@ export class AiSubscriptionService {
     if (endDate.getTime() <= startDate.getTime()) {
       throw new BadRequestException('endDate must be after startDate');
     }
+    const quotaPeriod = this.computeInitialQuotaPeriod(startDate, endDate);
 
     const sub = new this.userSubscriptionModel({
       userId: new Types.ObjectId(userId),
@@ -62,6 +69,7 @@ export class AiSubscriptionService {
       billingCycle,
       startDate,
       endDate,
+      ...quotaPeriod,
       status: SubscriptionStatus.ACTIVE,
     });
     return sub.save();
@@ -111,6 +119,7 @@ export class AiSubscriptionService {
     const startDate = params.startDate ?? new Date();
     const currentActive = await this.getActiveSubscriptionForUser(params.userId);
     if (currentActive && currentActive.planId.toString() === params.planId) {
+      this.ensureQuotaPeriodForDate(currentActive, startDate);
       const renewalBase =
         currentActive.endDate && currentActive.endDate.getTime() > startDate.getTime()
           ? currentActive.endDate
@@ -121,7 +130,10 @@ export class AiSubscriptionService {
       return currentActive.save();
     }
 
+    let quotaPeriodOverride: SubscriptionQuotaPeriod | undefined;
     if (currentActive) {
+      this.ensureQuotaPeriodForDate(currentActive, startDate);
+      quotaPeriodOverride = this.getReusableQuotaPeriod(currentActive, startDate);
       currentActive.status = SubscriptionStatus.CANCELLED;
       currentActive.endDate = startDate;
       await currentActive.save();
@@ -133,6 +145,7 @@ export class AiSubscriptionService {
       paymentId,
       billingCycle: params.billingCycle,
       startDate,
+      quotaPeriod: quotaPeriodOverride,
     });
   }
 
@@ -252,8 +265,13 @@ export class AiSubscriptionService {
     paymentId: string;
     billingCycle: BillingCycle;
     startDate: Date;
+    quotaPeriod?: SubscriptionQuotaPeriod;
   }): Promise<UserSubscriptionDocument> {
     const paymentObjectId = new Types.ObjectId(params.paymentId);
+    const endDate = this.computeEndDate(params.startDate, params.billingCycle);
+    const quotaPeriod = params.quotaPeriod
+      ? this.capQuotaPeriod(params.quotaPeriod, endDate)
+      : this.computeInitialQuotaPeriod(params.startDate, endDate);
     const sub = new this.userSubscriptionModel({
       userId: new Types.ObjectId(params.userId),
       planId: new Types.ObjectId(params.planId),
@@ -261,7 +279,8 @@ export class AiSubscriptionService {
       paymentIds: [paymentObjectId],
       billingCycle: params.billingCycle,
       startDate: params.startDate,
-      endDate: this.computeEndDate(params.startDate, params.billingCycle),
+      endDate,
+      ...quotaPeriod,
       status: SubscriptionStatus.ACTIVE,
     });
     return sub.save();
@@ -327,5 +346,108 @@ export class AiSubscriptionService {
         endDate.setMonth(endDate.getMonth() + 1);
         return endDate;
     }
+  }
+
+  private computeInitialQuotaPeriod(startDate: Date, endDate: Date): SubscriptionQuotaPeriod {
+    const quotaPeriodStart = new Date(startDate);
+    const quotaPeriodEnd = this.minDate(this.addMonths(quotaPeriodStart, 1), endDate);
+    return {
+      quotaPeriodStart,
+      quotaPeriodEnd,
+      nextQuotaResetAt: new Date(quotaPeriodEnd),
+    };
+  }
+
+  private ensureQuotaPeriodForDate(
+    subscription: UserSubscriptionDocument,
+    now: Date,
+  ): SubscriptionQuotaPeriod {
+    const period = this.resolveQuotaPeriodForDate(
+      subscription.startDate,
+      subscription.endDate || this.computeEndDate(subscription.startDate, subscription.billingCycle),
+      now,
+      subscription.quotaPeriodStart,
+      subscription.quotaPeriodEnd,
+    );
+    subscription.quotaPeriodStart = period.quotaPeriodStart;
+    subscription.quotaPeriodEnd = period.quotaPeriodEnd;
+    subscription.nextQuotaResetAt = period.nextQuotaResetAt;
+    return period;
+  }
+
+  private getReusableQuotaPeriod(
+    subscription: UserSubscriptionDocument,
+    now: Date,
+  ): SubscriptionQuotaPeriod | undefined {
+    if (
+      !subscription.quotaPeriodStart ||
+      !subscription.quotaPeriodEnd ||
+      subscription.quotaPeriodEnd.getTime() <= now.getTime()
+    ) {
+      return undefined;
+    }
+
+    return {
+      quotaPeriodStart: new Date(subscription.quotaPeriodStart),
+      quotaPeriodEnd: new Date(subscription.quotaPeriodEnd),
+      nextQuotaResetAt: new Date(subscription.quotaPeriodEnd),
+    };
+  }
+
+  private resolveQuotaPeriodForDate(
+    subscriptionStart: Date,
+    subscriptionEnd: Date,
+    now: Date,
+    currentPeriodStart?: Date,
+    currentPeriodEnd?: Date,
+  ): SubscriptionQuotaPeriod {
+    let quotaPeriodStart = this.isValidDate(currentPeriodStart)
+      ? new Date(currentPeriodStart)
+      : new Date(subscriptionStart);
+    let quotaPeriodEnd = this.isValidDate(currentPeriodEnd)
+      ? new Date(currentPeriodEnd)
+      : this.minDate(this.addMonths(quotaPeriodStart, 1), subscriptionEnd);
+
+    if (quotaPeriodEnd.getTime() <= quotaPeriodStart.getTime()) {
+      quotaPeriodStart = new Date(subscriptionStart);
+      quotaPeriodEnd = this.minDate(this.addMonths(quotaPeriodStart, 1), subscriptionEnd);
+    }
+
+    while (
+      quotaPeriodEnd.getTime() <= now.getTime() &&
+      quotaPeriodEnd.getTime() < subscriptionEnd.getTime()
+    ) {
+      quotaPeriodStart = new Date(quotaPeriodEnd);
+      quotaPeriodEnd = this.minDate(this.addMonths(quotaPeriodStart, 1), subscriptionEnd);
+    }
+
+    return {
+      quotaPeriodStart,
+      quotaPeriodEnd,
+      nextQuotaResetAt: new Date(quotaPeriodEnd),
+    };
+  }
+
+  private capQuotaPeriod(period: SubscriptionQuotaPeriod, endDate: Date): SubscriptionQuotaPeriod {
+    const quotaPeriodEnd = this.minDate(period.quotaPeriodEnd, endDate);
+    return {
+      quotaPeriodStart: new Date(period.quotaPeriodStart),
+      quotaPeriodEnd,
+      nextQuotaResetAt: new Date(quotaPeriodEnd),
+    };
+  }
+
+  private addMonths(date: Date, months: number): Date {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + months);
+    return next;
+  }
+
+  private minDate(a: Date, b: Date): Date {
+    return new Date(Math.min(a.getTime(), b.getTime()));
+  }
+
+  private isValidDate(value?: Date): value is Date {
+    return value instanceof Date && !Number.isNaN(value.getTime());
   }
 }

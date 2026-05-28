@@ -5,14 +5,16 @@ import ThemeToggle from '@/components/admin/ThemeToggle';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/context/auth-context';
+import { useMentorPortalData } from '@/hooks/useMentorPortalData';
 import { userService, type UserMe } from '@/lib/user.service';
-import { walletService, type WalletAccount } from '@/lib/wallet.service';
+import { walletService, type WalletSummary } from '@/lib/wallet.service';
 import { cn } from '@/lib/utils';
 import {
   CalendarDays,
   GraduationCap,
   HandCoins,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Star,
   User,
@@ -62,7 +64,7 @@ function HeaderAccountMenu({
   profileActive,
 }: {
   user: UserMe | null;
-  wallet: WalletAccount | null;
+  wallet: WalletSummary | null;
   profileActive: boolean;
 }) {
   return (
@@ -136,9 +138,12 @@ function PortalShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { accessToken, logout } = useAuth();
+  const mentorPortalQuery = useMentorPortalData();
   const [userMe, setUserMe] = useState<UserMe | null>(null);
-  const [wallet, setWallet] = useState<WalletAccount | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const profileActive = pathname === '/mentor-dashboard/profile' || pathname.startsWith('/mentor-dashboard/profile/');
+  const mentorProfile = mentorPortalQuery.data?.profile ?? null;
+  const canUsePortalChrome = mentorProfile?.status === 'active';
 
   useEffect(() => {
     if (!accessToken) {
@@ -174,6 +179,25 @@ function PortalShellInner({ children }: { children: ReactNode }) {
   };
   const displayedUser = accessToken ? userMe : null;
   const displayedWallet = accessToken ? wallet : null;
+
+  if (mentorPortalQuery.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+          <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+          Đang kiểm tra hồ sơ mentor...
+        </div>
+      </div>
+    );
+  }
+
+  if (!canUsePortalChrome) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+        <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">

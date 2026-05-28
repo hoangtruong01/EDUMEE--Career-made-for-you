@@ -1,9 +1,10 @@
 'use client';
 
 import { useAuth } from '@/context/auth-context';
-import { apiClient } from '@/lib/api-client';
+import { usePlanGate } from '@/context/plan-gate-context';
 import {
   careerComparisonService,
+  type AllowedCareerComparisonItem,
   type Career,
   type CareerComparisonResponse,
 } from '@/lib/career-comparison.service';
@@ -60,8 +61,18 @@ const renderValue = (val: unknown): string => {
   return String(val);
 };
 
+const renderCareerTitleById = (
+  comparisonData: CareerComparisonResponse,
+  careerId?: string,
+): string => {
+  if (!careerId) return '--';
+  const career = comparisonData.careers.find((item) => item.id === careerId || item._id === careerId);
+  return career?.title || careerId;
+};
+
 const CareerCompare = () => {
   const { accessToken } = useAuth();
+  const { ensureFeatureAvailable, handlePlanError } = usePlanGate();
   const searchParams = useSearchParams();
   const [availableCareers, setAvailableCareers] = useState<Career[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -82,17 +93,21 @@ const CareerCompare = () => {
 
         try {
           const [cRes, tRes] = await Promise.allSettled([
-            apiClient.get<unknown[]>('/career-fit-results/insights', accessToken),
-            apiClient.get<unknown[]>('/career-fit-results/top-matches?limit=3', accessToken),
+            careerComparisonService.getAllowedCareers(accessToken),
+            Promise.resolve([]),
           ]);
 
           if (cRes.status === 'fulfilled') {
             careersRes = cRes.value;
           } else {
             console.error('Insights fetch failed:', cRes.reason);
+            if (handlePlanError(cRes.reason, 'careerComparison')) {
+              careersRes = [];
+              return;
+            }
             // Fallback to careers if insights fail
             try {
-              careersRes = await apiClient.get<unknown>('/careers?limit=100', accessToken);
+              careersRes = [];
             } catch {
               setError('Không thể tải danh sách nghề nghiệp. Vui lòng thử lại sau.');
             }
@@ -124,9 +139,10 @@ const CareerCompare = () => {
         // Map CareerInsight or Career to our UI Career interface
         const mapped: Career[] = careersArray.map((cObj) => {
           const c = cObj as Record<string, unknown>;
+          const allowed = c as Partial<AllowedCareerComparisonItem>;
           const analysis = (c.analysis as Record<string, unknown>) || {};
-          const title = String(c.careerTitle || c.title || '');
-          const id = String(c._id || c.id || '');
+          const title = String(allowed.title || c.careerTitle || c.title || '');
+          const id = String(allowed.id || c._id || c.id || '');
 
           return {
             id,
@@ -135,15 +151,17 @@ const CareerCompare = () => {
             description: String(analysis.overview || c.description || 'Đang cập nhật...'),
             category: String(c.category || 'Công nghệ'),
             icon: '💼',
-            skills: (Array.isArray(analysis.keySkills)
-              ? analysis.keySkills
-              : Array.isArray(c.requiredSkills)
-                ? c.requiredSkills
-                : []) as string[],
+            skills: (Array.isArray(allowed.skills)
+              ? allowed.skills
+              : Array.isArray(analysis.keySkills)
+                ? analysis.keySkills
+                : Array.isArray(c.requiredSkills)
+                  ? c.requiredSkills
+                  : []) as string[],
             pros: (Array.isArray(analysis.pros) ? analysis.pros : []) as string[],
             cons: (Array.isArray(analysis.cons) ? analysis.cons : []) as string[],
-            jobOpportunity: analysis.demandLevel === 'Cao' ? 90 : 70,
-            salary: parseInt(String((analysis.salaryRange as string)?.split('-')[0] ?? '20')) || 20,
+            jobOpportunity: allowed.demandLevel === 'Cao' || analysis.demandLevel === 'Cao' ? 90 : 70,
+            salary: parseInt(String((allowed.salaryRange || (analysis.salaryRange as string))?.split('-')[0] ?? '20')) || 20,
             growth: String((analysis.trends as string[])?.[0] || '+15%'),
             growthPct: 15,
             difficultyStars: 3,
@@ -159,6 +177,14 @@ const CareerCompare = () => {
             .get('ids')
             ?.split(',')
             .filter((id) => id.length > 0) || [];
+        const allowedIds = new Set(mapped.map((career) => career.id));
+        const sanitizeSelection = (ids: string[]) =>
+          [...new Set(ids)].filter((id) => allowedIds.has(id)).slice(0, 3);
+        const defaultSelection = () => mapped.slice(0, Math.min(2, mapped.length)).map((career) => career.id);
+        const resolveSelection = (ids: string[]) => {
+          const sanitized = sanitizeSelection(ids);
+          return sanitized.length >= 2 ? sanitized : defaultSelection();
+        };
 
         // Extract top match ID safely
         const firstMatch = topMatchesRes?.[0];
@@ -170,9 +196,9 @@ const CareerCompare = () => {
 
         if (urlIds.length > 0) {
           if (urlIds.length === 1 && topMatchId && topMatchId !== urlIds[0]) {
-            setSelectedIds([urlIds[0], topMatchId]);
+            setSelectedIds(resolveSelection([urlIds[0], topMatchId]));
           } else {
-            setSelectedIds(urlIds);
+            setSelectedIds(resolveSelection(urlIds));
           }
         } else if (topMatchId) {
           const secondMatch = topMatchesRes?.[1];
@@ -186,9 +212,9 @@ const CareerCompare = () => {
               : null) || (typeof secondCareerId === 'string' ? secondCareerId : null);
 
           if (secondMatchId && secondMatchId !== topMatchId) {
-            setSelectedIds([topMatchId, secondMatchId]);
+            setSelectedIds(resolveSelection([topMatchId, secondMatchId]));
           } else {
-            setSelectedIds([topMatchId]);
+            setSelectedIds(resolveSelection([topMatchId]));
           }
         } else if (mapped.length >= 2) {
           setSelectedIds([mapped[0].id, mapped[1].id]);
@@ -209,12 +235,14 @@ const CareerCompare = () => {
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [accessToken, searchParams]);
+  }, [accessToken, searchParams, handlePlanError]);
 
   // Fetch comparison analysis
   const fetchAnalysis = useCallback(
     async (ids: string[]) => {
       if (ids.length < 2) return;
+      const allowed = await ensureFeatureAvailable('careerComparison');
+      if (!allowed) return;
       setLoading(true);
       setError(null);
       try {
@@ -222,6 +250,9 @@ const CareerCompare = () => {
         setComparisonData(data);
       } catch (err: unknown) {
         console.error('Failed to fetch analysis:', err);
+        if (handlePlanError(err, 'careerComparison')) {
+          return;
+        }
         setError(
           (err as Error)?.message || 'Không thể thực hiện phân tích chuyên sâu. Vui lòng thử lại.',
         );
@@ -229,7 +260,7 @@ const CareerCompare = () => {
         setLoading(false);
       }
     },
-    [accessToken],
+    [accessToken, ensureFeatureAvailable, handlePlanError],
   );
 
   useEffect(() => {
@@ -250,6 +281,7 @@ const CareerCompare = () => {
 
   const selectedCareers = availableCareers.filter((c) => selectedIds.includes(c.id));
   const unselected = availableCareers.filter((c) => !selectedIds.includes(c.id));
+  const hasMaxSelection = selectedIds.length >= 3;
 
   /* Radar data */
   const radarData =
@@ -340,6 +372,9 @@ const CareerCompare = () => {
             </p>
             <span className="text-muted-foreground text-[10px] opacity-50">{debugInfo}</span>
           </div>
+          {hasMaxSelection ? (
+            <p className="mb-3 text-xs font-medium text-amber-600">Đã chọn tối đa 3 nghề</p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {selectedCareers.map((c) => (
               <button
@@ -354,7 +389,7 @@ const CareerCompare = () => {
               <button
                 key={c.id}
                 onClick={() => toggle(c.id)}
-                disabled={selectedIds.length >= 3}
+                disabled={hasMaxSelection}
                 className="border-border text-foreground hover:bg-muted flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {c.icon} {renderValue(c.title)}
@@ -558,6 +593,95 @@ const CareerCompare = () => {
                   <Bar dataKey="Tăng trưởng" fill="#10b981" radius={[6, 6, 0, 0]} barSize={12} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Comparison insight matrix */}
+        {!loading && comparisonData?.comparisonInsights && (
+          <div className="glass-card border-border/70 bg-card/80 dark:bg-card/60 overflow-hidden rounded-2xl border">
+            <div className="border-border flex items-center gap-2 border-b px-6 py-4">
+              <Brain className="text-primary h-5 w-5" />
+              <h3 className="font-display font-semibold">Insight so sanh nghe</h3>
+            </div>
+            <div className="space-y-5 p-6">
+              <div className="grid gap-2 md:grid-cols-3">
+                {comparisonData.comparisonInsights.criteriaGuide.slice(0, 6).map((criterion) => (
+                  <div key={criterion.key} className="rounded-lg border border-border/60 p-3">
+                    <p className="text-sm font-semibold">{criterion.label}</p>
+                    <p className="text-muted-foreground mt-1 text-xs">{criterion.description}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-lg bg-primary/5 p-3">
+                  <p className="text-muted-foreground text-[10px] font-semibold uppercase">Hop tinh cach</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {renderCareerTitleById(comparisonData, comparisonData.comparisonInsights.tradeOffSummary.bestPersonalityFit)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-emerald-50 p-3 dark:bg-emerald-500/10">
+                  <p className="text-muted-foreground text-[10px] font-semibold uppercase">Luong tot</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {renderCareerTitleById(comparisonData, comparisonData.comparisonInsights.tradeOffSummary.bestSalaryUpside)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-sky-50 p-3 dark:bg-sky-500/10">
+                  <p className="text-muted-foreground text-[10px] font-semibold uppercase">Thi truong tot</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {renderCareerTitleById(comparisonData, comparisonData.comparisonInsights.tradeOffSummary.bestMarketOutlook)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-amber-50 p-3 dark:bg-amber-500/10">
+                  <p className="text-muted-foreground text-[10px] font-semibold uppercase">Dai han an toan</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {renderCareerTitleById(comparisonData, comparisonData.comparisonInsights.tradeOffSummary.safestLongTermChoice)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[920px] text-left text-sm">
+                  <thead>
+                    <tr className="border-border border-b text-xs text-muted-foreground">
+                      <th className="py-3 pr-4 font-semibold">Nghe</th>
+                      <th className="px-3 py-3 font-semibold">Con nguoi</th>
+                      <th className="px-3 py-3 font-semibold">Tinh cach</th>
+                      <th className="px-3 py-3 font-semibold">Luong</th>
+                      <th className="px-3 py-3 font-semibold">Thi truong</th>
+                      <th className="px-3 py-3 font-semibold">Ky nang</th>
+                      <th className="px-3 py-3 font-semibold">Dai han</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-border divide-y">
+                    {comparisonData.comparisonInsights.perCareer.map((insight) => (
+                      <tr key={insight.careerId} className="align-top">
+                        <td className="py-3 pr-4 font-semibold">{insight.careerTitle}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {insight.personFit.workEnvironment}. {insight.personFit.stressProfile}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {insight.personalityFit.bestTraits.slice(0, 3).join(', ')}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          Entry: {insight.compensation.entryRange}<br />
+                          Senior: {insight.compensation.seniorRange}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {insight.market.demand}. {insight.market.growthTrend}. AI: {insight.market.aiAutomationRisk}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {insight.skillsAndPath.mustHaveSkills.slice(0, 4).join(', ')}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground">
+                          {insight.longTerm.advancementPotential}. Burnout: {insight.longTerm.burnoutRisk}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

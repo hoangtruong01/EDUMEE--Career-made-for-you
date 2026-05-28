@@ -93,6 +93,14 @@ export interface AdminCareer {
 export interface AdminFinanceSummary {
   range: 'month' | 'quarter' | 'year';
   currency: string;
+  netRevenue: number;
+  grossCashIn: number;
+  aiPlanRevenue: number;
+  platformFeeRevenue: number;
+  refunds: number;
+  mentorEscrowBalance: number;
+  mentorPayableBalance: number;
+  withdrawalsPaid: number;
   totalRevenue: number;
   revenueDelta: number;
   transactionCount: number;
@@ -103,6 +111,38 @@ export interface AdminFinanceSummary {
   failedCount: number;
   cancelledCount: number;
   refundedCount: number;
+  refundPendingCount: number;
+}
+
+export interface AdminFinanceJournalLine {
+  accountCode: string;
+  direction: 'debit' | 'credit';
+  amount: number;
+  walletAccountType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminFinanceTransaction {
+  id: string;
+  eventKey: string;
+  eventType: 'payment_paid' | 'payment_refunded' | 'mentor_settlement_ready' | 'withdrawal_paid' | string;
+  sourceType: string;
+  sourceId: string;
+  occurredAt: string;
+  currency: string;
+  status: 'posted' | 'voided' | string;
+  debitTotal: number;
+  creditTotal: number;
+  lines: AdminFinanceJournalLine[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminFinanceTransactionsResponse {
+  transactions: AdminFinanceTransaction[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface AdminFinancePayment {
@@ -193,6 +233,37 @@ export interface AdminFinanceFeeSettlementsResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+export type AdminWithdrawalStatus =
+  | 'requested'
+  | 'approved'
+  | 'processing'
+  | 'paid'
+  | 'rejected'
+  | 'failed'
+  | 'cancelled';
+
+export interface AdminWithdrawalRequest {
+  id: string;
+  userId:
+    | string
+    | {
+        id?: string;
+        name?: string;
+        email?: string;
+      };
+  accountType: 'edumee_credit' | 'cash_refund' | 'mentor_earnings';
+  amount: number;
+  currency: 'VND';
+  status: AdminWithdrawalStatus;
+  bankAccountSnapshot?: Record<string, unknown>;
+  transferReference?: string;
+  rejectionReason?: string;
+  requestedAt?: string;
+  reviewedAt?: string;
+  processedAt?: string;
+  createdAt?: string;
 }
 
 export interface AnalyticsMetric {
@@ -377,12 +448,32 @@ export const adminService = {
     return apiClient.get<AdminFinanceSummary>(`/admin/finance/summary${queryString({ range })}`, token);
   },
 
+  getFinanceTransactions(
+    token: string,
+    params: {
+      page?: number;
+      limit?: number;
+      eventType?: string;
+      sourceType?: string;
+      purpose?: string;
+      search?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ) {
+    return apiClient.get<AdminFinanceTransactionsResponse>(
+      `/admin/finance/transactions${queryString(params)}`,
+      token,
+    );
+  },
+
   getFinancePayments(
     token: string,
     params: {
       page?: number;
       limit?: number;
       status?: string;
+      provider?: string;
       purpose?: string;
       plan?: string;
       search?: string;
@@ -422,6 +513,30 @@ export const adminService = {
       { mentorPlatformFeePercent },
       token,
     );
+  },
+
+  getWithdrawals(token: string, params: { status?: string; accountType?: string } = {}) {
+    return apiClient.get<AdminWithdrawalRequest[]>(`/admin/withdrawals${queryString(params)}`, token);
+  },
+
+  approveWithdrawal(token: string, id: string) {
+    return apiClient.post<AdminWithdrawalRequest>(`/admin/withdrawals/${id}/approve`, {}, token);
+  },
+
+  rejectWithdrawal(token: string, id: string, reason?: string) {
+    return apiClient.post<AdminWithdrawalRequest>(`/admin/withdrawals/${id}/reject`, { reason }, token);
+  },
+
+  markWithdrawalPaid(token: string, id: string, transferReference?: string) {
+    return apiClient.post<AdminWithdrawalRequest>(
+      `/admin/withdrawals/${id}/mark-paid`,
+      { transferReference },
+      token,
+    );
+  },
+
+  markWithdrawalFailed(token: string, id: string, reason?: string) {
+    return apiClient.post<AdminWithdrawalRequest>(`/admin/withdrawals/${id}/mark-failed`, { reason }, token);
   },
 
   getAnalytics(token: string, range: '6m' | '12m' = '12m') {

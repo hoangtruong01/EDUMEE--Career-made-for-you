@@ -174,6 +174,24 @@ export class AssessmentAnswerService {
       .exec();
   }
 
+  async findByUserAndSession(userId: string, sessionId: string): Promise<AssessmentAnswer[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (!Types.ObjectId.isValid(sessionId)) {
+      throw new BadRequestException('Invalid session ID');
+    }
+
+    return this.assessmentAnswerModel
+      .find({
+        userId: new Types.ObjectId(userId),
+        sessionId: new Types.ObjectId(sessionId),
+      })
+      .populate('questionId', 'questionText dimension orderIndex options')
+      .sort({ 'questionId.orderIndex': 1, createdAt: 1 })
+      .exec();
+  }
+
   async findByQuestion(questionId: string): Promise<AssessmentAnswer[]> {
     if (!Types.ObjectId.isValid(questionId)) {
       throw new BadRequestException('Invalid question ID');
@@ -252,7 +270,7 @@ export class AssessmentAnswerService {
       // Note: answer format validation is handled by DTO validation
     }
 
-    // Upsert by (userId, questionId) to respect unique index.
+    // Upsert by (userId, questionId, sessionId) so retakes keep their own answers.
     // We intentionally do NOT wipe existing answers here; bulk acts as "submit these answers".
 
     const answersWithObjectIds = answers.map(answer => ({
@@ -266,7 +284,7 @@ export class AssessmentAnswerService {
     for (const a of answersWithObjectIds) {
       const saved = await this.assessmentAnswerModel
         .findOneAndUpdate(
-          { userId: a.userId, questionId: a.questionId },
+          { userId: a.userId, questionId: a.questionId, sessionId: a.sessionId },
           {
             $set: {
               sessionId: a.sessionId,

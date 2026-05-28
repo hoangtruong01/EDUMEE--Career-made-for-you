@@ -9,7 +9,6 @@ import {
   Query,
   HttpStatus,
   UseGuards,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { LearningRoadmapService } from '../services/learning-roadmap.service';
@@ -36,14 +35,12 @@ export class LearningRoadmapController {
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Roadmap created successfully' })
   async create(@Body() createDto: CreateLearningRoadmapDto, @CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
-    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
-    if (plan.features?.personalizedRoadmap === false) {
-      throw new ForbiddenException('Personalized roadmap is not available in your plan');
-    }
-    await this.aiQuotaService.checkQuota(userId, AiFeature.PERSONALIZED_ROADMAP);
-    const res = await this.learningRoadmapService.create({ ...createDto, userId });
-    await this.aiQuotaService.consumeQuota(userId, AiFeature.PERSONALIZED_ROADMAP, { requestCount: 1, tokensUsed: 0 });
-    return res;
+    return this.aiQuotaService.runWithQuota(
+      userId,
+      AiFeature.PERSONALIZED_ROADMAP,
+      () => this.learningRoadmapService.create({ ...createDto, userId }),
+      { requestCount: 1, tokensUsed: 0 },
+    );
   }
 
   @Post('generate-ai')
@@ -54,7 +51,12 @@ export class LearningRoadmapController {
     @Body() body: { careerTitle: string },
   ) {
     const userId = getAuthUserId(user);
-    return this.learningRoadmapService.generateAIRoadmap(userId, body.careerTitle);
+    return this.aiQuotaService.runWithQuota(
+      userId,
+      AiFeature.PERSONALIZED_ROADMAP,
+      () => this.learningRoadmapService.generateAIRoadmap(userId, body.careerTitle),
+      { requestCount: 1, tokensUsed: 0 },
+    );
   }
 
   @Get('latest')
@@ -152,10 +154,7 @@ export class LearningRoadmapController {
     @CurrentUser() user: AuthUserLike,
   ) {
     const userId = getAuthUserId(user);
-    const { plan } = await this.aiQuotaService.getPlanLimits(userId);
-    if (plan.features?.personalizedRoadmap === false) {
-      throw new ForbiddenException('Personalized roadmap is not available in your plan');
-    }
+    await this.aiQuotaService.assertFeatureAvailable(userId, AiFeature.PERSONALIZED_ROADMAP);
     return this.learningRoadmapService.generateWeeklyPlan(id, weekNumber, availableHours);
   }
 

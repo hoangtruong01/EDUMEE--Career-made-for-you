@@ -33,7 +33,7 @@ export async function fetchMentorPortalData(accessToken: string): Promise<Mentor
     mentorService.getMyBookings(accessToken),
   ]);
 
-  const slots = profile ? await mentorService.getMyAvailabilitySlots(accessToken) : [];
+  const slots = profile?.status === 'active' ? await mentorService.getMyAvailabilitySlots(accessToken) : [];
 
   return {
     profile,

@@ -52,6 +52,7 @@ export class AiPlanService {
   async create(dto: CreateAiPlanDto): Promise<AiPlanDocument> {
     const existing = await this.aiPlanModel.findOne({ name: dto.name }).exec();
     if (existing) throw new ConflictException('Plan name already exists');
+    this.validateCareerRecommendationLimits(dto.limits);
     const nextDto = this.normalizePlanPayload(dto);
     if (nextDto.isDefaultPlan) {
       await this.unsetOtherDefaultPlans();
@@ -104,6 +105,10 @@ export class AiPlanService {
         .exec();
       if (existing) throw new ConflictException('Plan name already exists');
     }
+    this.validateCareerRecommendationLimits({
+      ...(currentPlan.limits || {}),
+      ...(dto.limits || {}),
+    });
     const nextDto = this.normalizePlanPayload(dto);
     if (nextDto.isDefaultPlan) {
       await this.unsetOtherDefaultPlans(new Types.ObjectId(id));
@@ -341,5 +346,29 @@ export class AiPlanService {
       ...dto,
       isActive: true,
     };
+  }
+
+  private validateCareerRecommendationLimits(
+    limits?: Pick<
+      AiPlan['limits'],
+      'maxCareerRecommendationsPerRun' | 'visibleCareerRecommendationsPerRun'
+    >,
+  ): void {
+    const max = limits?.maxCareerRecommendationsPerRun;
+    const visible = limits?.visibleCareerRecommendationsPerRun;
+
+    if (typeof visible !== 'number') return;
+
+    if (typeof max !== 'number') {
+      throw new BadRequestException(
+        'maxCareerRecommendationsPerRun is required when visibleCareerRecommendationsPerRun is set',
+      );
+    }
+
+    if (visible > max) {
+      throw new BadRequestException(
+        'visibleCareerRecommendationsPerRun cannot exceed maxCareerRecommendationsPerRun',
+      );
+    }
   }
 }

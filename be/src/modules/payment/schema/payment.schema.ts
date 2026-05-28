@@ -28,6 +28,13 @@ export enum PaymentPurpose {
     MENTOR_BOOKING = 'mentor_booking',
 }
 
+export enum PaymentSettlementStatus {
+    PENDING = 'pending',
+    READY = 'ready',
+    WITHHELD = 'withheld',
+    REFUNDED = 'refunded',
+}
+
 @Schema({
     timestamps: true,
     collection: 'payments',
@@ -118,6 +125,24 @@ export class Payment {
 
     @Prop({ type: String })
     refundReason?: string;
+
+    @Prop({ type: Number })
+    settlementBaseAmount?: number;
+
+    @Prop({ type: Number })
+    platformFeeRate?: number;
+
+    @Prop({ type: Number })
+    platformFeeAmount?: number;
+
+    @Prop({ type: Number })
+    mentorPayoutAmount?: number;
+
+    @Prop({ type: String, enum: PaymentSettlementStatus })
+    settlementStatus?: PaymentSettlementStatus;
+
+    @Prop({ type: Date })
+    settledAt?: Date;
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
@@ -128,4 +153,5 @@ PaymentSchema.index({ purpose: 1, status: 1 });
 PaymentSchema.index({ providerPaymentId: 1 });
 PaymentSchema.index({ checkoutReference: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ checkoutTokenHash: 1 }, { sparse: true });
+PaymentSchema.index({ settlementStatus: 1 });
 

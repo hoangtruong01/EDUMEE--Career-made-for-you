@@ -11,14 +11,14 @@ import {
 import { assessmentService, type CareerFitResult } from '@/lib/assessment.service';
 import { profileService, type UserProfile } from '@/lib/profile.service';
 import { userService, type UserMe } from '@/lib/user.service';
-import { walletService, type WalletAccount } from '@/lib/wallet.service';
+import { walletService, type WalletSummary } from '@/lib/wallet.service';
 import { useQuery } from '@tanstack/react-query';
 
 export type AiBillingData = {
   catalog: AiPlanCatalogItem[];
   subscription: MyAiSubscription;
   payments: PaymentRecord[];
-  wallet: WalletAccount | null;
+  wallet: WalletSummary | null;
 };
 
 export const meQueryKey = (accessToken: string) => ['me', accessToken] as const;

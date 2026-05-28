@@ -1,6 +1,14 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   CheckCircle2,
   CreditCard,
@@ -89,7 +97,8 @@ const LIMIT_FIELDS: Array<{ key: LimitKey; label: string }> = [
   { key: 'chatMessagesPerMonth', label: 'Tin nhắn AI / tháng' },
   { key: 'simulationsPerMonth', label: 'Simulation / tháng' },
   { key: 'careerRecommendationRunsPerMonth', label: 'Lượt AI gợi ý nghề / tháng' },
-  { key: 'maxCareerRecommendationsPerRun', label: 'Số nghề AI gợi ý / lần làm bài' },
+  { key: 'maxCareerRecommendationsPerRun', label: 'Số nghề AI tạo/lưu / lần làm bài' },
+  { key: 'visibleCareerRecommendationsPerRun', label: 'Số nghề user được xem / lần làm bài' },
   { key: 'careerComparisonsPerMonth', label: 'Career comparison / tháng' },
   { key: 'maxCareersPerComparison', label: 'Career tối đa / comparison' },
   { key: 'personalizedRoadmapsPerMonth', label: 'Roadmap / tháng' },
@@ -100,6 +109,28 @@ const LIMIT_FIELD_LABELS = LIMIT_FIELDS.reduce<Record<LimitKey, string>>((acc, f
   acc[field.key] = field.label;
   return acc;
 }, {} as Record<LimitKey, string>);
+
+const CAREER_RECOMMENDATION_LIMIT_FIELDS: Array<{
+  key: LimitKey;
+  label: string;
+  helper: string;
+}> = [
+  {
+    key: 'careerRecommendationRunsPerMonth',
+    label: 'Lượt gen/tháng',
+    helper: 'Số lần user được chạy AI để tạo bộ nghề mới trong một tháng.',
+  },
+  {
+    key: 'maxCareerRecommendationsPerRun',
+    label: 'Số nghề AI tạo/lưu mỗi lần',
+    helper: 'Backend lưu đủ số nghề này để có thể mở khóa sau khi user nâng cấp.',
+  },
+  {
+    key: 'visibleCareerRecommendationsPerRun',
+    label: 'Số nghề user được xem mỗi lần',
+    helper: 'Các nghề vượt số này sẽ hiển thị thành card khóa ẩn danh.',
+  },
+];
 
 const FEATURE_FIELDS: Array<{ key: FeatureKey; label: string }> = [
   { key: 'careerRecommendation', label: 'Career Recommendation' },
@@ -123,12 +154,6 @@ const ACCESS_CONTROL_GROUPS: Array<{
     title: 'Assessment',
     description: 'Assessment luôn được phép; quota quyết định số lượt người dùng có thể làm.',
     limitKeys: ['assessmentsPerMonth', 'assessmentsLifetimeLimit'],
-  },
-  {
-    title: 'Career Recommendation',
-    description: 'Bật/tắt gợi ý nghề và giới hạn số lần chạy hoặc số nghề AI trả về mỗi lần. Free nên là 1; Plus admin tự nhập số nghề muốn AI trả về mỗi lần.',
-    featureKey: 'careerRecommendation',
-    limitKeys: ['careerRecommendationRunsPerMonth', 'maxCareerRecommendationsPerRun'],
   },
   {
     title: 'AI Chatbot',
@@ -214,6 +239,7 @@ function createEmptyLimits(): Record<LimitKey, string> {
     simulationsPerMonth: '',
     careerRecommendationRunsPerMonth: '',
     maxCareerRecommendationsPerRun: '',
+    visibleCareerRecommendationsPerRun: '',
     careerComparisonsPerMonth: '',
     maxCareersPerComparison: '',
     personalizedRoadmapsPerMonth: '',
@@ -254,6 +280,16 @@ function createInitialFormState(): PlanFormState {
 
 function buildFormState(plan: AdminAiPlan): PlanFormState {
   const state = createInitialFormState();
+  const limits = {
+    ...state.limits,
+    ...Object.fromEntries(
+      Object.entries(plan.limits || {}).map(([key, value]) => [key, value === undefined ? '' : String(value)]),
+    ),
+  } as Record<LimitKey, string>;
+
+  if (!limits.visibleCareerRecommendationsPerRun && limits.maxCareerRecommendationsPerRun) {
+    limits.visibleCareerRecommendationsPerRun = limits.maxCareerRecommendationsPerRun;
+  }
 
   return {
     name: plan.name || '',
@@ -274,12 +310,7 @@ function buildFormState(plan: AdminAiPlan): PlanFormState {
       ),
     } as Record<BillingCycle, string>,
     seatLimit: plan.seatLimit === undefined || plan.seatLimit === null ? '' : String(plan.seatLimit),
-    limits: {
-      ...state.limits,
-      ...Object.fromEntries(
-        Object.entries(plan.limits || {}).map(([key, value]) => [key, value === undefined ? '' : String(value)]),
-      ),
-    } as Record<LimitKey, string>,
+    limits,
     features: {
       ...state.features,
       ...Object.fromEntries(
@@ -471,6 +502,25 @@ function validatePlanForm(formState: PlanFormState): string | null {
     if (limitValue !== undefined && limitValue < 0) {
       return `${field.label} phải lớn hơn hoặc bằng 0.`;
     }
+  }
+
+  const generatedCareerCount = parseOptionalNumber(
+    formState.limits.maxCareerRecommendationsPerRun,
+  );
+  const visibleCareerCount = parseOptionalNumber(
+    formState.limits.visibleCareerRecommendationsPerRun,
+  );
+
+  if (visibleCareerCount !== undefined && generatedCareerCount === undefined) {
+    return 'Cần nhập số nghề AI tạo/lưu khi đặt số nghề user được xem.';
+  }
+
+  if (
+    visibleCareerCount !== undefined &&
+    generatedCareerCount !== undefined &&
+    visibleCareerCount > generatedCareerCount
+  ) {
+    return 'Số nghề user được xem không được lớn hơn số nghề AI tạo/lưu.';
   }
 
   return null;
@@ -1203,6 +1253,12 @@ export default function AdminPlansPage() {
                     />
                   </FieldBlock>
 
+                  <CareerRecommendationAccessCard
+                    formState={formState}
+                    setFormState={setFormState}
+                    isReadOnly={isReadOnly}
+                  />
+
                   <div className="space-y-4">
                     {ACCESS_CONTROL_GROUPS.map((group) => (
                       <div
@@ -1636,6 +1692,117 @@ function FieldBlock({
     <div className="space-y-2">
       <Label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function CareerRecommendationAccessCard({
+  formState,
+  setFormState,
+  isReadOnly,
+}: {
+  formState: PlanFormState;
+  setFormState: Dispatch<SetStateAction<PlanFormState>>;
+  isReadOnly: boolean;
+}) {
+  const generatedCareerCount = parseOptionalNumber(
+    formState.limits.maxCareerRecommendationsPerRun,
+  );
+  const visibleCareerCount = parseOptionalNumber(
+    formState.limits.visibleCareerRecommendationsPerRun,
+  );
+  const effectiveVisibleCareerCount = visibleCareerCount ?? generatedCareerCount;
+  const lockedCareerCount =
+    generatedCareerCount !== undefined && effectiveVisibleCareerCount !== undefined
+      ? Math.max(generatedCareerCount - effectiveVisibleCareerCount, 0)
+      : undefined;
+  const hasInvalidVisibility =
+    visibleCareerCount !== undefined &&
+    generatedCareerCount !== undefined &&
+    visibleCareerCount > generatedCareerCount;
+  const hasMissingGeneratedCount =
+    visibleCareerCount !== undefined && generatedCareerCount === undefined;
+  const planLabel = formState.name.trim() || 'Plan này';
+
+  let previewText = 'Nhập số nghề AI tạo/lưu để xem preview.';
+  if (hasMissingGeneratedCount) {
+    previewText = 'Cần nhập số nghề AI tạo/lưu khi đặt số nghề user được xem.';
+  } else if (hasInvalidVisibility) {
+    previewText = 'Số nghề user được xem đang lớn hơn số nghề AI tạo/lưu.';
+  } else if (generatedCareerCount !== undefined && lockedCareerCount !== undefined) {
+    previewText =
+      lockedCareerCount > 0
+        ? `${planLabel} sẽ hiển thị ${effectiveVisibleCareerCount} nghề và khóa ${lockedCareerCount} nghề.`
+        : `${planLabel} mở toàn bộ ${generatedCareerCount} nghề.`;
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4 dark:border-violet-500/30 dark:bg-violet-500/10">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-semibold text-slate-900 dark:text-slate-100">
+            Career Recommendation
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Cấu hình riêng phần AI gợi ý nghề: lượt chạy, số nghề backend lưu, và số nghề user được xem.
+          </p>
+        </div>
+        <Switch
+          checked={formState.features.careerRecommendation}
+          disabled={isReadOnly}
+          onCheckedChange={(checked) => {
+            setFormState((current) => ({
+              ...current,
+              features: {
+                ...current.features,
+                careerRecommendation: checked,
+              },
+            }));
+          }}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        {CAREER_RECOMMENDATION_LIMIT_FIELDS.map((field) => (
+          <FieldBlock key={field.key} label={field.label}>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={formState.limits[field.key]}
+              disabled={isReadOnly}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setFormState((current) => ({
+                  ...current,
+                  limits: {
+                    ...current.limits,
+                    [field.key]: nextValue,
+                  },
+                }));
+              }}
+              placeholder="Trống = không giới hạn, 0 = khóa"
+              aria-invalid={
+                field.key === 'visibleCareerRecommendationsPerRun' &&
+                (hasInvalidVisibility || hasMissingGeneratedCount)
+              }
+            />
+            <p className="text-xs text-slate-500 dark:text-slate-400">{field.helper}</p>
+          </FieldBlock>
+        ))}
+      </div>
+
+      <div
+        className={cn(
+          'mt-4 rounded-xl border px-4 py-3 text-sm',
+          hasInvalidVisibility || hasMissingGeneratedCount
+            ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+            : 'border-violet-200 bg-white/70 text-violet-700 dark:border-violet-500/30 dark:bg-slate-950/30 dark:text-violet-200',
+        )}
+      >
+        <p className="font-semibold">Preview khóa nghề</p>
+        <p className="mt-1">{previewText}</p>
+      </div>
     </div>
   );
 }

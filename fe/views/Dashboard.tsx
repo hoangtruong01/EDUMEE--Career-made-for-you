@@ -1,9 +1,11 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { PlanBenefitDetails } from '@/components/ai/PlanBenefitDetails';
 import { useAssessment } from '@/context/assessment-context';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api-client';
+import { getPlanFeatureLabels } from '@/lib/ai-plan-benefits';
 import {
   aiBillingService,
   type AiPlanCatalogItem,
@@ -11,8 +13,10 @@ import {
   type MyAiSubscription,
   type PaymentRecord,
   type PaymentStatus,
+  type QuotaView,
 } from '@/lib/ai-billing.service';
-import { walletService, type WalletAccount } from '@/lib/wallet.service';
+import { normalizePaymentCheckoutRedirectUrl } from '@/lib/payment-redirect';
+import { getWalletAccount, walletService, type WalletSummary } from '@/lib/wallet.service';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import {
@@ -68,8 +72,6 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   refunded: 'Đã hoàn tiền',
   refund_pending: 'Chờ hoàn tiền',
 };
-
-const purchasablePlanNames = new Set(['plus', 'business']);
 
 const headerStats = [
   {
@@ -222,7 +224,7 @@ const Dashboard = () => {
   const [billingError, setBillingError] = useState('');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [syncingPaymentId, setSyncingPaymentId] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<WalletAccount | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [useEdumeeCredit, setUseEdumeeCredit] = useState(true);
 
   const loadBilling = useCallback(async () => {
@@ -237,14 +239,9 @@ const Dashboard = () => {
         aiBillingService.getMyPayments(accessToken),
         walletService.getMine(accessToken),
       ]);
-      const visiblePlans = catalog.filter((plan) => {
-        const normalizedName = normalizePlanCode(plan.name);
-        return (
-          purchasablePlanNames.has(normalizedName) &&
-          plan.isActive !== false &&
-          Number(plan.price || 0) > 0
-        );
-      });
+      const visiblePlans = catalog.filter(
+        (plan) => plan.isActive !== false && !plan.isDefaultPlan && Number(plan.price || 0) > 0,
+      );
 
       setPlans(visiblePlans);
       setSubscription(currentSubscription);
@@ -320,16 +317,15 @@ const Dashboard = () => {
     };
   }, [accessToken, loadBilling]);
 
-  const activePaidPlanCode = subscription?.subscriptionStatus === 'active'
-    ? subscription.currentPlan
-    : 'free';
-  const hasActivePaidPlan = activePaidPlanCode === 'plus' || activePaidPlanCode === 'business';
+  const hasActivePaidPlan =
+    subscription?.subscriptionStatus === 'active' && subscription.currentPlan !== 'free';
+  const activePlanId = hasActivePaidPlan ? subscription?.plan?.id : undefined;
+  const edumeeCreditAccount = getWalletAccount(wallet, 'edumee_credit');
 
   const currentQuotaSummary = useMemo(() => {
     if (!subscription?.quotas) return [];
     return [
       { label: 'Assessment', quota: subscription.quotas.assessment },
-      { label: 'So sánh nghề', quota: subscription.quotas.careerComparison },
       { label: 'AI chat', quota: subscription.quotas.aiChat },
       { label: 'Roadmap', quota: subscription.quotas.roadmap },
     ].filter((item) => item.quota && item.quota.limit > 0);
@@ -351,7 +347,7 @@ const Dashboard = () => {
         returnUrls: buildDashboardReturnUrls(),
         useEdumeeCredit,
       });
-      window.location.href = purchase.redirectUrl;
+      window.location.href = normalizePaymentCheckoutRedirectUrl(purchase.redirectUrl);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Không thể tạo phiên thanh toán.'));
     } finally {
@@ -449,8 +445,8 @@ const Dashboard = () => {
                     </p>
                     <h2 className="font-display text-xl font-bold">Nâng cấp khả năng học với AI</h2>
                     <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-                      Chọn Plus hoặc Business, thanh toán qua SePay và dashboard sẽ tự cập nhật gói
-                      sau khi cổng thanh toán xác nhận.
+                      Chọn gói AI phù hợp, thanh toán qua SePay và dashboard sẽ tự cập nhật sau khi
+                      cổng thanh toán xác nhận.
                     </p>
                   </div>
                   <Button
@@ -483,13 +479,18 @@ const Dashboard = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="mb-5 grid gap-3 md:grid-cols-3">
-                      <div className="bg-primary/5 rounded-xl p-4">
-                        <div className="text-muted-foreground text-xs font-medium uppercase">
-                          Gói hiện tại
+                    <div className="mb-4 grid gap-3 md:grid-cols-[1fr_0.85fr_1.25fr]">
+                      <div className="rounded-xl border border-primary/10 bg-primary/5 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-muted-foreground text-xs font-semibold uppercase">
+                            Gói hiện tại
+                          </div>
+                          <ShieldCheck className="text-primary h-4 w-4" />
                         </div>
-                        <div className="mt-1 text-lg font-bold capitalize">
-                          {subscription?.currentPlan || 'free'}
+                        <div className="mt-2 truncate text-xl font-bold">
+                          {subscription?.subscriptionStatus === 'active'
+                            ? subscription.plan?.name || subscription.currentPlan
+                            : 'Free'}
                         </div>
                         <div className="text-muted-foreground mt-1 text-xs">
                           {subscription?.expiresAt
@@ -497,11 +498,14 @@ const Dashboard = () => {
                             : 'Đang dùng quyền mặc định'}
                         </div>
                       </div>
-                      <div className="bg-secondary/5 rounded-xl p-4">
-                        <div className="text-muted-foreground text-xs font-medium uppercase">
-                          Chu kỳ
+                      <div className="rounded-xl border border-secondary/10 bg-secondary/5 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-muted-foreground text-xs font-semibold uppercase">
+                            Chu kỳ
+                          </div>
+                          <Clock className="text-secondary h-4 w-4" />
                         </div>
-                        <div className="mt-1 text-lg font-bold">
+                        <div className="mt-2 text-xl font-bold">
                           {subscription?.billingCycle
                             ? formatBillingCycle(subscription.billingCycle)
                             : 'Free'}
@@ -512,18 +516,42 @@ const Dashboard = () => {
                             : 'Chưa có subscription trả phí'}
                         </div>
                       </div>
-                      <div className="bg-mint/10 rounded-xl p-4">
-                        <div className="text-muted-foreground text-xs font-medium uppercase">
-                          Quota tháng này
+                      <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="text-muted-foreground text-xs font-semibold uppercase">
+                            Quota gói AI
+                          </div>
+                          <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200">
+                            {currentQuotaSummary.length || 0} mục
+                          </span>
                         </div>
-                        <div className="mt-2 space-y-1">
+                        <div className="space-y-2">
                           {currentQuotaSummary.length > 0 ? (
-                            currentQuotaSummary.slice(0, 2).map((item) => (
-                              <div key={item.label} className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">{item.label}</span>
-                                <span className="font-semibold">
-                                  {item.quota.remaining}/{item.quota.limit}
-                                </span>
+                            currentQuotaSummary.slice(0, 3).map((item) => (
+                              <div key={item.label} className="space-y-1">
+                                <div className="flex items-center justify-between gap-3 text-xs">
+                                  <span className="text-muted-foreground truncate">{item.label}</span>
+                                  <span className="font-semibold">
+                                    {formatQuotaUsageLabel(item.quota)}
+                                  </span>
+                                </div>
+                                <div className="text-muted-foreground flex items-center justify-between gap-3 text-[10px]">
+                                  <span>{formatQuotaRemainingLabel(item.quota)}</span>
+                                  <span className="text-right">{formatQuotaResetLabel(item.quota)}</span>
+                                </div>
+                                {formatQuotaOverageLabel(item.quota) ? (
+                                  <div className="text-[10px] font-medium text-amber-600">
+                                    {formatQuotaOverageLabel(item.quota)}
+                                  </div>
+                                ) : null}
+                                <div className="h-1.5 overflow-hidden rounded-full bg-background/80">
+                                  <div
+                                    className="bg-primary h-full rounded-full"
+                                    style={{
+                                      width: `${getQuotaPercent(item.quota.used, item.quota.limit)}%`,
+                                    }}
+                                  />
+                                </div>
                               </div>
                             ))
                           ) : (
@@ -540,19 +568,37 @@ const Dashboard = () => {
                       </div>
                     ) : null}
 
-                    <label className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                      <span>
-                        <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
-                        <span className="text-emerald-700/80 dark:text-emerald-200/80">
-                          Khả dụng {formatCurrency(wallet?.availableBalance || 0, wallet?.currency || 'VND')}
+                    <label className="mb-4 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
+                          <WalletCards className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
+                          <span className="block truncate text-emerald-700/80 dark:text-emerald-200/80">
+                            Khả dụng {formatCurrency(edumeeCreditAccount?.availableBalance || 0, wallet?.currency || 'VND')}
+                          </span>
                         </span>
                       </span>
                       <input
                         type="checkbox"
                         checked={useEdumeeCredit}
                         onChange={(event) => setUseEdumeeCredit(event.target.checked)}
-                        className="h-5 w-5 accent-emerald-600"
+                        className="sr-only"
                       />
+                      <span
+                        className={cn(
+                          'relative h-6 w-11 flex-shrink-0 rounded-full transition-colors',
+                          useEdumeeCredit ? 'bg-emerald-600' : 'bg-muted',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                            useEdumeeCredit ? 'translate-x-6' : 'translate-x-1',
+                          )}
+                        />
+                      </span>
                     </label>
 
                     <div className="grid gap-4 lg:grid-cols-2">
@@ -560,15 +606,12 @@ const Dashboard = () => {
                         plans.map((plan) => {
                           const selectedCycle = selectedCycles[plan.id] || getDefaultBillingCycle(plan);
                           const pricing = getPricingForCycle(plan, selectedCycle);
-                          const planCode = normalizePlanCode(plan.name);
-                          const isCurrentPlan =
-                            subscription?.subscriptionStatus === 'active' &&
-                            activePaidPlanCode === planCode;
+                          const isCurrentPlan = activePlanId === plan.id;
                           const ctaLabel = !hasActivePaidPlan
                             ? 'Mua ngay'
                             : isCurrentPlan
                               ? 'Gia hạn'
-                              : 'Nâng cấp';
+                              : 'Đổi gói';
                           const isPurchasing = purchasingPlanId === plan.id;
                           const features = getPlanFeatureLabels(plan);
 
@@ -576,43 +619,48 @@ const Dashboard = () => {
                             <div
                               key={plan.id}
                               className={cn(
-                                'rounded-2xl border bg-background/70 p-5 shadow-sm transition-shadow hover:shadow-md',
+                                'flex h-full flex-col rounded-xl border bg-background/80 p-4 shadow-sm transition-shadow hover:shadow-md',
                                 isCurrentPlan
-                                  ? 'border-primary/40 ring-primary/10 ring-4'
+                                  ? 'border-primary/50 ring-primary/10 ring-4'
                                   : 'border-border',
                               )}
                             >
-                              <div className="mb-4 flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h3 className="font-display text-lg font-bold">{plan.name}</h3>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="font-display truncate text-lg font-bold">{plan.name}</h3>
                                     {isCurrentPlan ? (
                                       <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-semibold">
                                         Đang dùng
                                       </span>
                                     ) : null}
                                   </div>
-                                  <p className="text-muted-foreground mt-1 text-sm">
+                                  <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
                                     {plan.description || 'Mở rộng quota và tính năng AI cho hành trình nghề nghiệp.'}
                                   </p>
                                 </div>
-                                <div className="bg-primary/10 text-primary flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl">
+                                <div className="bg-primary/10 text-primary flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
                                   <ShieldCheck className="h-5 w-5" />
                                 </div>
                               </div>
 
-                              <div className="mb-4">
-                                <div className="font-display text-2xl font-bold">
-                                  {formatCurrency(pricing.total, pricing.currency)}
+                              <div className="mt-4 flex items-end justify-between gap-3">
+                                <div>
+                                  <div className="font-display text-2xl font-bold">
+                                    {formatCurrency(pricing.total, pricing.currency)}
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {pricing.discountPercentage > 0
+                                      ? `Tiết kiệm ${pricing.discountPercentage}% so với giá gốc`
+                                      : `${formatCurrency(pricing.monthlyPrice, pricing.currency)} / tháng`}
+                                  </div>
                                 </div>
-                                <div className="text-muted-foreground text-xs">
-                                  {pricing.discountPercentage > 0
-                                    ? `Tiết kiệm ${pricing.discountPercentage}% so với giá gốc`
-                                    : `${formatCurrency(pricing.monthlyPrice, pricing.currency)} / tháng`}
-                                </div>
+                                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">
+                                  {formatBillingCycle(selectedCycle)}
+                                </span>
                               </div>
 
-                              <div className="mb-4 flex flex-wrap gap-2">
+                              <div className="mt-4 flex flex-wrap gap-2">
                                 {getAllowedBillingCycles(plan).map((cycle) => (
                                   <button
                                     key={cycle}
@@ -635,7 +683,7 @@ const Dashboard = () => {
                                 ))}
                               </div>
 
-                              <div className="mb-4 grid gap-2 rounded-xl bg-muted/60 p-3 text-sm">
+                              <div className="mt-4 grid gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
                                 <div className="flex items-center justify-between">
                                   <span className="text-muted-foreground">Tạm tính</span>
                                   <span className="font-semibold">
@@ -656,7 +704,7 @@ const Dashboard = () => {
                                 </div>
                               </div>
 
-                              <div className="mb-5 flex flex-wrap gap-2">
+                              <div className="mt-4 flex flex-wrap gap-2">
                                 {features.map((feature) => (
                                   <span
                                     key={feature}
@@ -667,26 +715,30 @@ const Dashboard = () => {
                                 ))}
                               </div>
 
-                              <Button
-                                className="w-full gap-2"
-                                disabled={isPurchasing || pricing.total <= 0}
-                                onClick={() => {
-                                  void handlePurchase(plan);
-                                }}
-                              >
-                                {isPurchasing ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CreditCard className="h-4 w-4" />
-                                )}
-                                {ctaLabel}
-                              </Button>
+                              <PlanBenefitDetails plan={plan} className="mt-4" />
+
+                              <div className="mt-auto pt-4">
+                                <Button
+                                  className="w-full gap-2"
+                                  disabled={isPurchasing || pricing.total <= 0}
+                                  onClick={() => {
+                                    void handlePurchase(plan);
+                                  }}
+                                >
+                                  {isPurchasing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <CreditCard className="h-4 w-4" />
+                                  )}
+                                  {ctaLabel}
+                                </Button>
+                              </div>
                             </div>
                           );
                         })
                       ) : (
-                        <div className="border-border text-muted-foreground rounded-2xl border border-dashed p-6 text-sm lg:col-span-2">
-                          Chưa có gói Plus hoặc Business khả dụng để mua.
+                        <div className="border-border text-muted-foreground rounded-xl border border-dashed p-6 text-sm lg:col-span-2">
+                          Chưa có gói trả phí đang hoạt động để mua.
                         </div>
                       )}
                     </div>
@@ -951,13 +1003,6 @@ function BillingReturnBanner({ banner }: { banner: BillingBanner }) {
   );
 }
 
-function normalizePlanCode(planName?: string): string {
-  const normalized = planName?.trim().toLowerCase();
-  if (normalized === 'business') return 'business';
-  if (normalized === 'plus') return 'plus';
-  return 'free';
-}
-
 function getAllowedBillingCycles(plan: AiPlanCatalogItem): BillingCycle[] {
   if (plan.allowedBillingCycles?.length) return plan.allowedBillingCycles;
   const pricingCycles = Object.keys(plan.pricingByBillingCycle || {}) as BillingCycle[];
@@ -989,26 +1034,6 @@ function getPricingForCycle(plan: AiPlanCatalogItem, cycle: BillingCycle) {
   };
 }
 
-function getPlanFeatureLabels(plan: AiPlanCatalogItem): string[] {
-  const features = plan.features || {};
-  const labels = [
-    features.aiChatbot ? 'AI chat' : null,
-    features.careerComparison ? 'So sánh nghề' : null,
-    features.personalizedRoadmap ? 'Roadmap cá nhân' : null,
-    features.jobSimulation ? 'Mô phỏng nghề' : null,
-    features.mentorBooking ? 'Mentor booking' : null,
-    features.teamDashboard ? 'Team dashboard' : null,
-  ].filter((label): label is string => Boolean(label));
-
-  if (plan.limits?.chatMessagesPerMonth) {
-    labels.unshift(`${plan.limits.chatMessagesPerMonth} tin nhắn AI/tháng`);
-  }
-  if (plan.seatLimit) {
-    labels.push(`${plan.seatLimit} seat`);
-  }
-  return labels.length ? labels : ['Tính năng AI mở rộng'];
-}
-
 function formatBillingCycle(cycle?: BillingCycle): string {
   if (!cycle) return '--';
   return BILLING_CYCLE_LABELS[cycle] || cycle;
@@ -1025,6 +1050,38 @@ function formatCurrency(amount?: number, currency = 'VND'): string {
     currency,
     maximumFractionDigits: 0,
   }).format(numericAmount);
+}
+
+function getQuotaPercent(used?: number, limit?: number): number {
+  if (!limit || limit <= 0) return 0;
+  return Math.min(Math.max(((used || 0) / limit) * 100, 0), 100);
+}
+
+function formatQuotaUsageLabel(quota: QuotaView): string {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return `${getVisibleQuotaUsed(quota)}/${quota.limit}`;
+}
+
+function formatQuotaRemainingLabel(quota: QuotaView): string {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return `Còn ${Math.max(0, quota.remaining || 0)} lượt`;
+}
+
+function formatQuotaOverageLabel(quota: QuotaView): string | null {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return null;
+  const overage = Math.max(0, (quota.used || 0) - quota.limit);
+  return overage > 0 ? `Đã vượt ${overage} lượt` : null;
+}
+
+function getVisibleQuotaUsed(quota: QuotaView): number {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return Math.max(0, quota.used || 0);
+  return Math.min(Math.max(0, quota.used || 0), quota.limit);
+}
+
+function formatQuotaResetLabel(quota: QuotaView): string {
+  if (quota.resetPolicy === 'lifetime') return 'Không reset theo tháng';
+  if (quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return quota.nextResetAt ? `Làm mới ${formatDate(quota.nextResetAt)}` : 'Làm mới theo chu kỳ';
 }
 
 function formatDate(value?: string): string {

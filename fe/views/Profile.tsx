@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { PlanBenefitDetails } from '@/components/ai/PlanBenefitDetails';
 import { useAuth } from '@/context/auth-context';
 import { useNotifications } from '@/context/notification-context';
 import {
@@ -22,10 +23,12 @@ import {
   type MyAiSubscription,
   type PaymentRecord,
   type PaymentStatus,
+  type QuotaView,
 } from '@/lib/ai-billing.service';
+import { getPlanFeatureLabels } from '@/lib/ai-plan-benefits';
 import { normalizePaymentCheckoutRedirectUrl } from '@/lib/payment-redirect';
 import { adminService, type AuditLogRecord, type DashboardStats } from '@/lib/admin.service';
-import type { WalletAccount } from '@/lib/wallet.service';
+import { getWalletAccount, type WalletSummary } from '@/lib/wallet.service';
 import {
   mentorService,
   type ApplyTutorProfilePayload,
@@ -80,7 +83,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
@@ -221,6 +224,7 @@ const COMMUNICATION_METHOD_OPTIONS: Array<{ value: MentorCommunicationMethod; la
 
 const Profile = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { logout, accessToken, role } = useAuth();
   const { realtimeAlertsEnabled, setRealtimeAlertsEnabled } = useNotifications();
   const { setTheme } = useTheme();
@@ -253,7 +257,7 @@ const Profile = () => {
   const [billingError, setBillingError] = useState('');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [syncingPaymentId, setSyncingPaymentId] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<WalletAccount | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [useEdumeeCredit, setUseEdumeeCredit] = useState(true);
   const [mentorSummary, setMentorSummary] = useState<MentorProfileSummary>({
     profile: null,
@@ -389,6 +393,12 @@ const Profile = () => {
     const savedTheme = localStorage.getItem('theme') || 'system';
     setCurrentTheme(savedTheme);
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('upgrade') === 'ai') {
+      setActiveModal('Upgrade AI');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (meQuery.data) setUserMe(meQuery.data);
@@ -568,12 +578,12 @@ const Profile = () => {
   const activePaidPlanCode =
     aiSubscription?.subscriptionStatus === 'active' ? aiSubscription.currentPlan : 'free';
   const hasActivePaidPlan = activePaidPlanCode === 'plus' || activePaidPlanCode === 'business';
+  const edumeeCreditAccount = getWalletAccount(wallet, 'edumee_credit');
 
   const currentQuotaSummary = useMemo(() => {
     if (!aiSubscription?.quotas) return [];
     return [
       { label: 'Assessment', quota: aiSubscription.quotas.assessment },
-      { label: 'So sánh nghề', quota: aiSubscription.quotas.careerComparison },
       { label: 'AI chat', quota: aiSubscription.quotas.aiChat },
       { label: 'Roadmap', quota: aiSubscription.quotas.roadmap },
     ].filter((item) => item.quota && item.quota.limit > 0);
@@ -819,7 +829,7 @@ const Profile = () => {
                 <span>
                   <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
                   <span className="text-emerald-700/80 dark:text-emerald-200/80">
-                    Khả dụng {formatCurrency(wallet?.availableBalance || 0, wallet?.currency || 'VND')}
+                    Khả dụng {formatCurrency(edumeeCreditAccount?.availableBalance || 0, wallet?.currency || 'VND')}
                   </span>
                 </span>
                 <input
@@ -956,6 +966,8 @@ const Profile = () => {
                             </span>
                           ))}
                         </div>
+
+                        <PlanBenefitDetails plan={plan} className="mb-4" />
 
                         <Button
                           className="h-11 w-full gap-2 rounded-xl bg-violet-600 text-white hover:bg-violet-700"
@@ -2094,7 +2106,7 @@ function CurrentAiPackageCard({
   onRefresh,
 }: {
   subscription: MyAiSubscription | null;
-  quotaSummary: Array<{ label: string; quota: { used: number; limit: number; remaining: number } }>;
+  quotaSummary: Array<{ label: string; quota: QuotaView }>;
   isLoading: boolean;
   error: string;
   onUpgrade: () => void;
@@ -2177,16 +2189,27 @@ function CurrentAiPackageCard({
         </div>
         <div className="rounded-xl bg-mint/10 p-3">
           <p className="text-muted-foreground text-[10px] font-black tracking-wider uppercase">
-            Quota
+            Quota gói AI
           </p>
           <div className="mt-1 space-y-1">
             {quotaSummary.length > 0 ? (
               quotaSummary.slice(0, 2).map((item) => (
-                <div key={item.label} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground truncate">{item.label}</span>
-                  <span className="font-black">
-                    {item.quota.remaining}/{item.quota.limit}
-                  </span>
+                <div key={item.label} className="space-y-0.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground truncate">{item.label}</span>
+                    <span className="font-black">
+                      {formatQuotaUsageLabel(item.quota)}
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground flex items-center justify-between gap-2 text-[10px]">
+                    <span>{formatQuotaRemainingLabel(item.quota)}</span>
+                    <span className="text-right">{formatQuotaResetLabel(item.quota)}</span>
+                  </div>
+                  {formatQuotaOverageLabel(item.quota) ? (
+                    <div className="text-[10px] font-semibold text-amber-600">
+                      {formatQuotaOverageLabel(item.quota)}
+                    </div>
+                  ) : null}
                 </div>
               ))
             ) : (
@@ -2865,26 +2888,6 @@ function getPricingForCycle(plan: AiPlanCatalogItem, cycle: BillingCycle) {
   };
 }
 
-function getPlanFeatureLabels(plan: AiPlanCatalogItem): string[] {
-  const features = plan.features || {};
-  const labels = [
-    features.aiChatbot ? 'AI chat' : null,
-    features.careerComparison ? 'So sánh nghề' : null,
-    features.personalizedRoadmap ? 'Roadmap cá nhân' : null,
-    features.jobSimulation ? 'Mô phỏng nghề' : null,
-    features.mentorBooking ? 'Mentor booking' : null,
-    features.teamDashboard ? 'Team dashboard' : null,
-  ].filter((label): label is string => Boolean(label));
-
-  if (plan.limits?.chatMessagesPerMonth) {
-    labels.unshift(`${plan.limits.chatMessagesPerMonth} tin nhắn AI/tháng`);
-  }
-  if (plan.seatLimit) {
-    labels.push(`${plan.seatLimit} seat`);
-  }
-  return labels.length ? labels : ['Tính năng AI mở rộng'];
-}
-
 function formatBillingCycle(cycle?: BillingCycle | null): string {
   if (!cycle) return '--';
   return BILLING_CYCLE_LABELS[cycle] || cycle;
@@ -2912,6 +2915,33 @@ function formatDate(value?: string): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date);
+}
+
+function formatQuotaUsageLabel(quota: QuotaView): string {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return `${getVisibleQuotaUsed(quota)}/${quota.limit}`;
+}
+
+function formatQuotaRemainingLabel(quota: QuotaView): string {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return `Còn ${Math.max(0, quota.remaining || 0)} lượt`;
+}
+
+function formatQuotaOverageLabel(quota: QuotaView): string | null {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return null;
+  const overage = Math.max(0, (quota.used || 0) - quota.limit);
+  return overage > 0 ? `Đã vượt ${overage} lượt` : null;
+}
+
+function getVisibleQuotaUsed(quota: QuotaView): number {
+  if (!quota.limit || quota.resetPolicy === 'unlimited') return Math.max(0, quota.used || 0);
+  return Math.min(Math.max(0, quota.used || 0), quota.limit);
+}
+
+function formatQuotaResetLabel(quota: QuotaView): string {
+  if (quota.resetPolicy === 'lifetime') return 'Không reset theo tháng';
+  if (quota.resetPolicy === 'unlimited') return 'Không giới hạn';
+  return quota.nextResetAt ? `Làm mới ${formatDate(quota.nextResetAt)}` : 'Làm mới theo chu kỳ';
 }
 
 function buildProfileReturnUrls() {

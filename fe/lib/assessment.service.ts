@@ -3,12 +3,33 @@ import { apiClient } from '@/lib/api-client';
 export interface CareerFitResult {
   id?: string;
   careerId?: string | null;
-  careerTitle?: string;
-  overallFitScore?: number;
-  strengths?: string[];
-  developmentAreas?: string[];
-  aiExplanation?: string;
-  confidence?: number;
+  careerTitle?: string | null;
+  overallFitScore?: number | null;
+  assessmentSessionId?: string;
+  generatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  recommendationRank?: number;
+  rank?: number;
+  strengths?: string[] | null;
+  developmentAreas?: string[] | null;
+  aiExplanation?: string | null;
+  confidence?: number | null;
+  isLocked?: boolean;
+  lockedReason?: 'plan_limit';
+  requiredPlan?: string;
+}
+
+export interface CareerFitResultHistoryItem {
+  sessionId: string;
+  attemptNumber?: number;
+  status?: string;
+  completedAt?: string;
+  generatedAt?: string;
+  topCareerTitle?: string;
+  topFitScore?: number;
+  resultCount: number;
+  isLatest: boolean;
 }
 
 export interface AssessmentQuestionOption {
@@ -36,12 +57,33 @@ export interface AssessmentSession {
   status?: string;
 }
 
+export interface StartSessionOptions {
+  forceNew?: boolean;
+}
+
+export interface GenerateMyAnalysisOptions {
+  sessionId?: string;
+}
+
+export interface GetMyResultsOptions {
+  limit?: number;
+  sessionId?: string;
+}
+
 export interface BulkAnswerPayload {
   sessionId: string;
   questionId: string;
   answer: 'A' | 'B' | 'C' | 'D';
   responseTime?: number;
 }
+
+const buildMyResultsPath = (options: GetMyResultsOptions = {}) => {
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.sessionId) params.set('sessionId', options.sessionId);
+  const query = params.toString();
+  return `/career-fit-results/my-results${query ? `?${query}` : ''}`;
+};
 
 export const assessmentService = {
   async hasAssessmentResult(accessToken: string): Promise<boolean> {
@@ -61,8 +103,11 @@ export const assessmentService = {
     return questions.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   },
 
-  async startSession(accessToken: string): Promise<AssessmentSession> {
-    return apiClient.post<AssessmentSession>('/assessment-sessions', undefined, accessToken);
+  async startSession(
+    accessToken: string,
+    options: StartSessionOptions = {},
+  ): Promise<AssessmentSession> {
+    return apiClient.post<AssessmentSession>('/assessment-sessions', options, accessToken);
   },
 
   async listSessions(accessToken: string): Promise<AssessmentSession[]> {
@@ -77,11 +122,21 @@ export const assessmentService = {
     return apiClient.post(`/assessment-sessions/${sessionId}/finish`, undefined, accessToken);
   },
 
-  async generateMyAnalysis(accessToken: string) {
-    return apiClient.post('/career-fit-results/generate-my-analysis', undefined, accessToken);
+  async generateMyAnalysis(accessToken: string, options: GenerateMyAnalysisOptions = {}) {
+    return apiClient.post('/career-fit-results/generate-my-analysis', options, accessToken);
   },
 
-  async getMyResults(accessToken: string): Promise<CareerFitResult[]> {
-    return apiClient.get<CareerFitResult[]>('/career-fit-results/my-results', accessToken);
+  async getMyResults(
+    accessToken: string,
+    options: GetMyResultsOptions = {},
+  ): Promise<CareerFitResult[]> {
+    return apiClient.get<CareerFitResult[]>(buildMyResultsPath(options), accessToken);
+  },
+
+  async getMyHistory(accessToken: string): Promise<CareerFitResultHistoryItem[]> {
+    return apiClient.get<CareerFitResultHistoryItem[]>(
+      '/career-fit-results/my-history',
+      accessToken,
+    );
   },
 };

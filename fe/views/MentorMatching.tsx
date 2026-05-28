@@ -1,7 +1,9 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useBookingChat } from '@/context/booking-chat-context';
+import { usePlanGate } from '@/context/plan-gate-context';
 import { useBookingRealtimeSync } from '@/hooks/useBookingRealtimeSync';
 import {
   Command,
@@ -14,8 +16,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { authStorage } from '@/lib/auth-storage';
 import { careerTagsService, type CareerTag, type SkillTag } from '@/lib/career-tags.service';
+import { normalizePaymentCheckoutRedirectUrl } from '@/lib/payment-redirect';
 import { paymentService, type PaymentRecord, type PaymentStatus } from '@/lib/payment.service';
-import { walletService, type WalletAccount } from '@/lib/wallet.service';
+import { getWalletAccount, walletService, type WalletSummary } from '@/lib/wallet.service';
 import {
   BookingSession,
   BookingReviewStatus,
@@ -116,6 +119,8 @@ type MentorPaymentBanner = {
   description: string;
   payment?: PaymentRecord | null;
 };
+
+type MentorUserTab = 'browse' | 'schedule';
 
 function formatMoney(amount?: number, currency = 'VND') {
   if (!amount) return 'Miễn phí';
@@ -266,6 +271,36 @@ function getSessionTypes(profile: TutorProfile): MentorSessionType[] {
   return Array.from(new Set([...fromAvailability, ...fromPricing])).filter(Boolean);
 }
 
+function formatSessionTypeLabel(value?: string) {
+  const labels: Record<string, string> = {
+    career_guidance: 'Định hướng nghề nghiệp',
+    skill_coaching: 'Coaching kỹ năng',
+    interview_preparation: 'Luyện phỏng vấn',
+    project_review: 'Review dự án',
+    general_mentoring: 'Mentoring tổng quát',
+  };
+  return labels[value || ''] || value?.replace(/_/g, ' ') || 'Buổi mentoring';
+}
+
+function getBookingStatusClassName(status: string) {
+  switch (status) {
+    case 'confirmed':
+    case 'completed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'pending':
+    case 'awaiting_payment':
+    case 'rescheduled':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'cancelled_by_mentee':
+    case 'cancelled_by_mentor':
+    case 'no_show_mentee':
+    case 'no_show_mentor':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    default:
+      return 'border-border bg-muted text-muted-foreground';
+  }
+}
+
 function FilterDropdown({
   label,
   placeholder,
@@ -300,8 +335,8 @@ function FilterDropdown({
             aria-expanded={open}
             disabled={disabled}
             className={cn(
-              'h-11 w-full justify-between rounded-xl border-primary/20 bg-primary/5 px-3 text-left font-semibold text-foreground shadow-soft transition-all hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:ring-primary disabled:border-border disabled:bg-muted disabled:text-muted-foreground dark:border-primary/25 dark:bg-primary/10 dark:hover:bg-primary/15',
-              open && 'border-primary/40 bg-primary/10 text-primary ring-2 ring-primary/20',
+              'h-11 w-full justify-between rounded-xl border-input bg-background px-3 text-left font-semibold text-foreground transition-all hover:border-primary/30 hover:bg-muted/40 focus-visible:ring-primary disabled:border-border disabled:bg-muted disabled:text-muted-foreground',
+              open && 'border-primary/40 text-primary ring-2 ring-primary/20',
             )}
           >
             <span className={selectedOption ? 'truncate' : 'truncate text-muted-foreground'}>
@@ -578,64 +613,83 @@ function MentorCard({
   const skills = mentor.mentoringExpertise?.skillExpertise?.slice(0, 4) || [];
   const careers = mentor.mentoringExpertise?.careerExpertise?.slice(0, 2) || [];
   const rate = getPrimaryRate(mentor);
+  const sessionTypes = getSessionTypes(mentor).slice(0, 2);
+  const experienceYears = mentor.professionalBackground?.yearsOfExperience || 0;
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass-card flex flex-col overflow-hidden rounded-2xl"
+      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-elevated"
     >
-      <div className="bg-gradient-hero h-20" />
+      <div className="h-2 bg-gradient-hero" />
       <div className="flex flex-1 flex-col p-5">
-        <div className="-mt-12 mb-4 flex items-end justify-between">
-          <MentorAvatar mentor={mentor} />
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <MentorAvatar mentor={mentor} />
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-lg font-bold">{getMentorName(mentor)}</h3>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">{getMentorTitle(mentor)}</p>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
             Đã xác thực
           </span>
         </div>
 
-        <div className="mb-3">
-          <h3 className="font-display text-lg font-bold">{getMentorName(mentor)}</h3>
-          <p className="text-muted-foreground text-sm">
-            {getMentorTitle(mentor)}
-            {' · '}
-            {mentor.professionalBackground?.company || 'Độc lập'} -{' '}
-            {mentor.professionalBackground?.yearsOfExperience || 0} năm kinh nghiệm
-          </p>
+        <div className="mb-4 grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-xl border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold text-muted-foreground">Kinh nghiệm</p>
+            <p className="mt-1 font-bold">{experienceYears} năm</p>
+          </div>
+          <div className="rounded-xl border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold text-muted-foreground">Công ty</p>
+            <p className="mt-1 truncate font-bold">{mentor.professionalBackground?.company || 'Độc lập'}</p>
+          </div>
         </div>
 
-        <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {careers.map((career) => (
-            <span key={career.careerTitle} className="rounded-full bg-muted px-2.5 py-1">
-              {career.careerTitle}
-            </span>
-          ))}
-        </div>
+        {(careers.length > 0 || sessionTypes.length > 0) && (
+          <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {careers.map((career) => (
+              <span key={career.careerTitle} className="rounded-full bg-muted px-2.5 py-1">
+                {career.careerTitle}
+              </span>
+            ))}
+            {sessionTypes.map((type) => (
+              <span key={type} className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
+                {formatSessionTypeLabel(type)}
+              </span>
+            ))}
+          </div>
+        )}
 
-        <div className="mb-4 flex flex-wrap gap-1.5">
-          {skills.map((skill) => (
-            <span
-              key={skill.skillName}
-              className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-            >
-              {skill.skillName}
-            </span>
-          ))}
-        </div>
+        {skills.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {skills.map((skill) => (
+              <span
+                key={skill.skillName}
+                className="rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground"
+              >
+                {skill.skillName}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="mt-auto space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4 text-sm">
             <span className="min-w-0">
               <RatingDisplay mentor={mentor} compact />
             </span>
-            <span className="shrink-0 font-bold text-primary">
-              {formatMoney(rate?.pricePerSession, mentor.pricing?.currency)}
-            </span>
+            <div className="shrink-0 text-right">
+              <p className="text-xs text-muted-foreground">{rate?.duration || 60} phút</p>
+              <p className="font-bold text-primary">{formatMoney(rate?.pricePerSession, mentor.pricing?.currency)}</p>
+            </div>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             <Button className="min-w-0 w-full justify-center whitespace-nowrap" variant="outline" onClick={() => onViewProfile(mentor)}>
               <Eye className="h-4 w-4 shrink-0" />
-              Xem profile
+              Xem hồ sơ
             </Button>
             <Button className="min-w-0 w-full justify-center whitespace-nowrap" variant="hero" onClick={() => onBook(mentor)}>
               <Calendar className="h-4 w-4 shrink-0" />
@@ -851,11 +905,12 @@ function BookingModal({
   mentor: TutorProfile;
   onClose: () => void;
   onBooked: () => void;
-  wallet: WalletAccount | null;
+  wallet: WalletSummary | null;
   useEdumeeCredit: boolean;
   onUseEdumeeCreditChange: (value: boolean) => void;
 }) {
   const token = authStorage.getAccessToken();
+  const { ensureFeatureAvailable, handlePlanError } = usePlanGate();
   const sessionTypes = getSessionTypes(mentor);
   const [slots, setSlots] = useState<MentorAvailabilitySlot[]>([]);
   const [sessionType, setSessionType] = useState<MentorSessionType>(sessionTypes[0] || 'general_mentoring');
@@ -866,6 +921,7 @@ function BookingModal({
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(true);
+  const edumeeCreditAccount = getWalletAccount(wallet, 'edumee_credit');
 
   useEffect(() => {
     let active = true;
@@ -895,6 +951,9 @@ function BookingModal({
       return;
     }
 
+    const allowed = await ensureFeatureAvailable('mentorBooking');
+    if (!allowed) return;
+
     const payload: CreateBookingPayload = {
       tutorProfileId: mentor.id,
       availabilitySlotId: selectedSlotId,
@@ -923,11 +982,14 @@ function BookingModal({
       const result = await mentorService.createBooking(token, payload);
       onBooked();
       if (result.payment?.redirectUrl) {
-        window.location.href = result.payment.redirectUrl;
+        window.location.href = normalizePaymentCheckoutRedirectUrl(result.payment.redirectUrl);
         return;
       }
       setMessage('Đặt lịch thành công. Mentor sẽ xác nhận lịch sớm.');
     } catch (error) {
+      if (handlePlanError(error, 'mentorBooking')) {
+        return;
+      }
       setMessage(error instanceof Error ? error.message : 'Không thể tạo booking.');
     } finally {
       setIsSubmitting(false);
@@ -1045,7 +1107,7 @@ function BookingModal({
             <span>
               <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
               <span className="text-emerald-700/80 dark:text-emerald-200/80">
-                Khả dụng {formatMoney(wallet?.availableBalance || 0, wallet?.currency || 'VND')}
+                Khả dụng {formatMoney(edumeeCreditAccount?.availableBalance || 0, wallet?.currency || 'VND')}
               </span>
             </span>
             <input
@@ -1509,17 +1571,34 @@ function BookingList({
   onOpenReschedule: (booking: BookingSession) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-background p-5">
-      <h2 className="mb-4 font-display text-xl font-bold">Lịch của tôi</h2>
+    <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-5 py-4">
+        <div>
+          <h2 className="font-display text-xl font-bold">Lịch của tôi</h2>
+          <p className="text-sm text-muted-foreground">Theo dõi trạng thái các buổi mentoring đã đặt.</p>
+        </div>
+        <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-bold text-primary">
+          {bookings.length} booking
+        </span>
+      </div>
       {bookings.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Chưa có booking nào.</p>
+        <div className="flex flex-col items-center justify-center px-5 py-12 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Calendar className="h-6 w-6" />
+          </span>
+          <p className="mt-4 font-semibold">Chưa có booking nào</p>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            Khi bạn đặt lịch với mentor, các buổi tư vấn sẽ xuất hiện tại đây.
+          </p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border">
           {bookings.slice(0, 5).map((booking) => {
             const meetingHref = booking.schedulingDetails.meetingLink || '';
             const reviewStatus = reviewStatuses[booking.id];
             const pendingProposal = getPendingRescheduleProposal(booking);
             const canOpenReschedule = ACTIVE_BOOKING_STATUSES.includes(booking.status);
+            const bookingDate = getBookingDate(booking);
             const rescheduleLabel = pendingProposal
               ? pendingProposal.proposedByRole === 'mentor'
                 ? 'Phản hồi đổi lịch'
@@ -1527,19 +1606,34 @@ function BookingList({
               : 'Đề xuất đổi lịch';
 
             return (
-              <div key={booking.id} className="rounded-xl border border-border p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold">{booking.sessionType.replace(/_/g, ' ')}</span>
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs">
+              <article key={booking.id} className="p-5 text-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Clock className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-semibold">{formatSessionTypeLabel(booking.sessionType)}</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {Number.isNaN(bookingDate.getTime()) ? 'Chưa xác định thời gian' : bookingDate.toLocaleString('vi-VN')}
+                        {' · '}
+                        {booking.schedulingDetails.duration} phút
+                      </p>
+                      {booking.mentorUser?.name && (
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">Mentor: {booking.mentorUser.name}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      'w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-bold',
+                      getBookingStatusClassName(booking.status),
+                    )}
+                  >
                     {statusLabel[booking.status] || booking.status}
                   </span>
                 </div>
-                <p className="mt-2 text-muted-foreground">
-                  {new Date(
-                    booking.schedulingDetails.confirmedDateTime || booking.schedulingDetails.requestedDateTime,
-                  ).toLocaleString('vi-VN')}{' '}
-                  - {booking.schedulingDetails.duration} phút
-                </p>
+
                 {pendingProposal && (
                   <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">
                     Đề xuất đang chờ: {new Date(pendingProposal.newDateTime).toLocaleString('vi-VN')}
@@ -1583,7 +1677,7 @@ function BookingList({
                     )}
                   </div>
                 ) : null}
-              </div>
+              </article>
             );
           })}
         </div>
@@ -1603,6 +1697,7 @@ export default function MentorMatching() {
   const [bookings, setBookings] = useState<BookingSession[]>([]);
   const [careerCatalog, setCareerCatalog] = useState<CareerTag[]>([]);
   const [skillTags, setSkillTags] = useState<SkillTag[]>([]);
+  const [activeTab, setActiveTab] = useState<MentorUserTab>('browse');
   const [search, setSearch] = useState('');
   const [selectedCareerId, setSelectedCareerId] = useState('');
   const [selectedSkillSlug, setSelectedSkillSlug] = useState('');
@@ -1612,7 +1707,7 @@ export default function MentorMatching() {
   const [message, setMessage] = useState('');
   const [paymentBanner, setPaymentBanner] = useState<MentorPaymentBanner | null>(null);
   const [syncingPaymentId, setSyncingPaymentId] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<WalletAccount | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [useEdumeeCredit, setUseEdumeeCredit] = useState(true);
   const [reviewStatuses, setReviewStatuses] = useState<Record<string, BookingReviewStatus | undefined>>({});
   const [reviewTarget, setReviewTarget] = useState<BookingSession | null>(null);
@@ -1699,6 +1794,7 @@ export default function MentorMatching() {
       const toastId = `payment-return:${paymentId || paymentResult}`;
       const banner = buildPaymentReturnBanner(paymentResult, payment);
       setPaymentBanner(banner);
+      setActiveTab('schedule');
       showPaymentToast(banner, toastId);
       void loadData();
       router.replace('/mentor-matching', { scroll: false });
@@ -1753,6 +1849,7 @@ export default function MentorMatching() {
     if (!reviewBookingId || bookings.length === 0) return;
     const booking = bookings.find((item) => item.id === reviewBookingId);
     if (!booking) return;
+    setActiveTab('schedule');
     void openReviewForBooking(booking);
     router.replace('/mentor-matching', { scroll: false });
   }, [bookings, openReviewForBooking, reviewBookingId, router]);
@@ -1782,6 +1879,18 @@ export default function MentorMatching() {
     return skillTags.filter((skill) => skill.careerIds?.includes(selectedCareerId));
   }, [selectedCareerId, skillTags]);
 
+  const selectedCareer = useMemo(
+    () => careerCatalog.find((career) => getCareerId(career) === selectedCareerId),
+    [careerCatalog, selectedCareerId],
+  );
+
+  const selectedSkill = useMemo(
+    () => skillTags.find((skill) => skill.slug === selectedSkillSlug),
+    [selectedSkillSlug, skillTags],
+  );
+
+  const activeFilterCount = Number(Boolean(selectedCareerId)) + Number(Boolean(selectedSkillSlug));
+
   const filteredMentors = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return mentors.filter((mentor) => {
@@ -1790,7 +1899,6 @@ export default function MentorMatching() {
         mentor.mentoringExpertise?.careerExpertise?.some(
           (career) => career.careerId === selectedCareerId || career.careerTitle === selectedCareerId,
         );
-      const selectedSkill = skillTags.find((skill) => skill.slug === selectedSkillSlug);
       const skillMatch =
         !selectedSkillSlug ||
         mentor.mentoringExpertise?.skillExpertise?.some((skill) => skill.skillName === selectedSkill?.name);
@@ -1809,40 +1917,64 @@ export default function MentorMatching() {
         .toLowerCase();
       return text.includes(keyword);
     });
-  }, [mentors, search, selectedCareerId, selectedSkillSlug, skillTags]);
+  }, [mentors, search, selectedCareerId, selectedSkillSlug, selectedSkill]);
 
   return (
     <>
-      <div className="min-h-screen pb-20">
-        <div className="bg-gradient-card">
-          <div className="container py-10">
-            <div className="mx-auto max-w-3xl text-center">
-              <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                <GraduationCap className="h-4 w-4" />
-                Mentor được admin xác thực
-              </span>
-              <h1 className="font-display text-3xl font-bold md:text-4xl">Kết nối với mentor</h1>
-              <p className="mt-2 text-muted-foreground">
-                Đặt lịch 1-1, thanh toán qua SePay và theo dõi trạng thái xác nhận từ mentor.
-              </p>
+      <div className="min-h-screen bg-muted/20 pb-20">
+        <section className="border-b border-border/60 bg-gradient-card">
+          <div className="container py-8 md:py-12">
+            <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="min-w-0">
+                <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                  <GraduationCap className="h-4 w-4" />
+                  Mentor được admin xác thực
+                </span>
+                <h1 className="font-display text-3xl font-bold leading-tight md:text-5xl">Kết nối với mentor</h1>
+                <p className="mt-2 max-w-2xl text-muted-foreground">
+                  Đặt lịch 1-1, thanh toán qua SePay và theo dõi trạng thái xác nhận từ mentor.
+                </p>
+
+                <div className="mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
+                  {[
+                    { icon: Users, label: 'Mentor đang hoạt động', value: mentors.length.toString() },
+                    { icon: Calendar, label: 'Booking của tôi', value: bookings.length.toString() },
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="rounded-2xl border border-border/70 bg-background/75 p-4 shadow-sm backdrop-blur">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-2xl font-bold leading-none">{value}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-primary/15 bg-background/85 p-5 shadow-elevated backdrop-blur">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <GraduationCap className="h-5 w-5" />
+                </div>
+                <p className="mt-4 font-display text-xl font-bold">Muốn trở thành mentor?</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Tạo hồ sơ để admin duyệt, mở lịch tư vấn và nhận booking từ học viên phù hợp.
+                </p>
+                <Link href="/mentor-dashboard/profile" className="mt-5 block">
+                  <Button className="w-full justify-center">
+                    Tạo hồ sơ mentor
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         <div className="container mt-6 space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[
-              { icon: Users, label: 'Mentor đang hoạt động', value: mentors.length.toString() },
-              { icon: Calendar, label: 'Booking của tôi', value: bookings.length.toString() },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="glass-card rounded-2xl p-4 text-center">
-                <Icon className="mx-auto mb-2 h-5 w-5 text-primary" />
-                <p className="text-2xl font-bold">{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-              </div>
-            ))}
-          </div>
-
           {paymentBanner ? <PaymentReturnBanner banner={paymentBanner} /> : null}
           {syncingPaymentId ? (
             <div className="flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-700">
@@ -1851,55 +1983,60 @@ export default function MentorMatching() {
             </div>
           ) : null}
 
-          <section className="rounded-2xl border border-border bg-background p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-xl font-bold">Muốn trở thành mentor?</h2>
-                <p className="text-sm text-muted-foreground">
-                  Tạo hồ sơ mentor riêng để admin duyệt và bắt đầu mở lịch tư vấn.
-                </p>
-              </div>
-              <Link href="/mentor-dashboard/profile">
-                <Button variant="outline">
-                  Tạo hồ sơ mentor
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as MentorUserTab)} className="space-y-5">
+            <div className="rounded-2xl border border-border bg-background p-1.5 shadow-sm">
+              <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-muted/60 p-1">
+                <TabsTrigger value="browse" className="gap-2 rounded-lg py-2.5">
+                  <Users className="h-4 w-4" />
+                  Khám phá mentor
+                </TabsTrigger>
+                <TabsTrigger value="schedule" className="gap-2 rounded-lg py-2.5">
+                  <Calendar className="h-4 w-4" />
+                  Lịch của tôi
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                    {bookings.length}
+                  </span>
+                </TabsTrigger>
+              </TabsList>
             </div>
-          </section>
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-            <div className="space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Tìm theo vị trí, công ty, kỹ năng..."
-                  className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <section className="rounded-2xl border border-border bg-background p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <TabsContent value="browse" className="space-y-4 pt-2">
+              <section className="rounded-2xl border border-border bg-background p-4 shadow-sm">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-bold">Lọc theo nghề và kỹ năng</h2>
-                    <p className="text-xs text-muted-foreground">Tag được lấy từ bảng career và skill_tags.</p>
+                    <h2 className="font-display text-lg font-bold">Tìm mentor phù hợp</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {isLoading ? 'Đang tải danh sách mentor...' : `${filteredMentors.length} mentor phù hợp bộ lọc`}
+                    </p>
                   </div>
-                  {(selectedCareerId || selectedSkillSlug) && (
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-primary"
-                      onClick={() => {
-                        setSelectedCareerId('');
-                        setSelectedSkillSlug('');
-                      }}
-                    >
-                      Xóa bộ lọc
-                    </button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!activeFilterCount && !search.trim()}
+                    onClick={() => {
+                      setSearch('');
+                      setSelectedCareerId('');
+                      setSelectedSkillSlug('');
+                    }}
+                  >
+                    Xóa lọc
+                  </Button>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
+
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px_260px]">
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Tìm kiếm</p>
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Vị trí, công ty, kỹ năng..."
+                        className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
+
                   <FilterDropdown
                     label="Nghề"
                     placeholder="Chọn nghề"
@@ -1931,17 +2068,38 @@ export default function MentorMatching() {
                     disabled={visibleSkillTags.length === 0}
                   />
                 </div>
+
+                {(search.trim() || selectedCareer || selectedSkill) && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {search.trim() && (
+                      <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                        Từ khóa: {search.trim()}
+                      </span>
+                    )}
+                    {selectedCareer && (
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                        Nghề: {selectedCareer.title}
+                      </span>
+                    )}
+                    {selectedSkill && (
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                        Kỹ năng: {selectedSkill.name}
+                      </span>
+                    )}
+                  </div>
+                )}
               </section>
 
               {message && <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
 
               {isLoading ? (
-                <div className="flex h-48 items-center justify-center rounded-2xl border border-border">
+                <div className="flex h-56 items-center justify-center rounded-2xl border border-border bg-background shadow-sm">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
               ) : filteredMentors.length === 0 ? (
-                <div className="rounded-2xl border border-border p-10 text-center text-muted-foreground">
-                  Chưa có mentor phù hợp.
+                <div className="rounded-2xl border border-dashed border-border bg-background p-12 text-center shadow-sm">
+                  <p className="font-semibold">Chưa có mentor phù hợp</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Thử đổi từ khóa hoặc bỏ bớt bộ lọc để xem thêm mentor.</p>
                 </div>
               ) : (
                 <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -1955,9 +2113,9 @@ export default function MentorMatching() {
                   ))}
                 </div>
               )}
-            </div>
+            </TabsContent>
 
-            <aside className="space-y-5">
+            <TabsContent value="schedule" className="space-y-5 pt-2">
               <BookingList
                 bookings={bookings}
                 reviewStatuses={reviewStatuses}
@@ -1965,15 +2123,15 @@ export default function MentorMatching() {
                 onOpenChat={openBookingChat}
                 onOpenReschedule={setRescheduleTarget}
               />
-              <section className="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
+              <section className="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground shadow-sm">
                 <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
-                  <Clock className="h-4 w-4" />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                   Quy trình thanh toán
                 </div>
                 Booking có phí sẽ ở trạng thái chờ thanh toán. Sau khi SePay xác nhận thành công, booking mới vào hàng chờ mentor xác nhận.
               </section>
-            </aside>
-          </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
@@ -1992,7 +2150,10 @@ export default function MentorMatching() {
           <BookingModal
             mentor={activeMentor}
             onClose={() => setActiveMentor(null)}
-            onBooked={loadData}
+            onBooked={() => {
+              setActiveTab('schedule');
+              void loadData();
+            }}
             wallet={wallet}
             useEdumeeCredit={useEdumeeCredit}
             onUseEdumeeCreditChange={setUseEdumeeCredit}

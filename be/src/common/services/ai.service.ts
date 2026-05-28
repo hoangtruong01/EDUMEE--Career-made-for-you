@@ -151,7 +151,7 @@ Please provide a comprehensive analysis in the following JSON format:
 Requirements:
 1. Analyze personality dimensions based on assessment answers (Scale 1-5).
 2. Calculate realistic scores (0-100) for Big Five and RIASEC. For RIASEC, map each dimension from its corresponding answer.
-3. Recommend 3-5 most suitable careers.
+3. Recommend exactly 5 most suitable careers. The "careerRecommendations" array MUST contain 5 unique careers.
 4. Provide specific, actionable insights.
 5. Be accurate and evidence-based.
 6. Return valid JSON only (no additional text, no markdown code blocks).
@@ -325,6 +325,58 @@ Requirements:
           reasons: ['Kỹ năng phân tích tốt', 'Khả năng giao tiếp mạnh'],
           potentialChallenges: ['Có thể cần đào tạo kỹ thuật'],
           developmentSuggestions: ['Phát triển kỹ năng phân tích dữ liệu', 'Tìm hiểu quy trình kinh doanh']
+        },
+        {
+          careerId: null,
+          careerTitle: 'Chuyên viên phân tích dữ liệu',
+          fitScore: 73,
+          personalityMatch: {
+            bigFiveAlignment: 72,
+            riasecAlignment: 78,
+            overallFit: 73
+          },
+          reasons: ['Phù hợp với tư duy logic', 'Có thể phát triển từ kỹ năng phân tích'],
+          potentialChallenges: ['Cần học thêm công cụ dữ liệu'],
+          developmentSuggestions: ['Học SQL, Excel nâng cao và trực quan hóa dữ liệu']
+        },
+        {
+          careerId: null,
+          careerTitle: 'Quản lý sản phẩm',
+          fitScore: 71,
+          personalityMatch: {
+            bigFiveAlignment: 74,
+            riasecAlignment: 70,
+            overallFit: 71
+          },
+          reasons: ['Kết hợp phân tích, giao tiếp và định hướng người dùng'],
+          potentialChallenges: ['Cần rèn kỹ năng ưu tiên và ra quyết định'],
+          developmentSuggestions: ['Xây dựng portfolio sản phẩm nhỏ và học discovery người dùng']
+        },
+        {
+          careerId: null,
+          careerTitle: 'Chuyên viên tư vấn giải pháp',
+          fitScore: 69,
+          personalityMatch: {
+            bigFiveAlignment: 70,
+            riasecAlignment: 68,
+            overallFit: 69
+          },
+          reasons: ['Tận dụng khả năng giao tiếp và phân tích nhu cầu'],
+          potentialChallenges: ['Áp lực làm việc với nhiều bên liên quan'],
+          developmentSuggestions: ['Rèn kỹ năng trình bày, đặt câu hỏi và phân tích quy trình']
+        },
+        {
+          careerId: null,
+          careerTitle: 'Chuyên viên vận hành kinh doanh',
+          fitScore: 67,
+          personalityMatch: {
+            bigFiveAlignment: 68,
+            riasecAlignment: 66,
+            overallFit: 67
+          },
+          reasons: ['Phù hợp với người thích tối ưu quy trình và làm việc có hệ thống'],
+          potentialChallenges: ['Cần chú ý chi tiết và theo dõi chỉ số thường xuyên'],
+          developmentSuggestions: ['Học quản trị quy trình, dashboard và phân tích hiệu suất']
         }
       ],
       explanation: 'Phân tích hoàn thành với dữ liệu hạn chế. Vui lòng hoàn thành đầy đủ bài đánh giá để có kết quả chính xác hơn.',

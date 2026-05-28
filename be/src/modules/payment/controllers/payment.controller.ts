@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -11,12 +11,14 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import {
   CreateAiPlanPurchaseDto,
   CreateMentorBookingPurchaseDto,
+  CreatePaymentPurchaseDto,
   PaymentWebhookTestDto,
   RefundPaymentDto,
 } from '../dto';
 import { PaymentService } from '../services';
 import { AuditLogService } from '../../audit/audit-log.service';
 import { AuditLogCategory, AuditLogStatus } from '../../audit/schema/audit-log.schema';
+import { PaymentProvider, PaymentPurpose } from '../schema/payment.schema';
 
 @ApiTags('payments')
 @ApiBearerAuth('JWT-auth')
@@ -28,16 +30,37 @@ export class PaymentController {
     private readonly auditLogService: AuditLogService,
   ) {}
 
+  @Post('purchase')
+  @ApiOperation({ summary: 'Create a unified payment purchase and return a browser redirect URL' })
+  createPaymentPurchase(@Body() dto: CreatePaymentPurchaseDto, @CurrentUser() user: AuthUserLike) {
+    return this.paymentService.createPaymentPurchase(getAuthUserId(user), dto);
+  }
+
   @Post('ai-plan/purchase')
-  @ApiOperation({ summary: 'Create a pending AI plan SePay purchase and return a browser redirect URL' })
+  @ApiOperation({ summary: 'Legacy wrapper: create an AI plan payment purchase' })
   purchaseAiPlan(@Body() dto: CreateAiPlanPurchaseDto, @CurrentUser() user: AuthUserLike) {
-    return this.paymentService.purchaseAiPlan(getAuthUserId(user), dto);
+    return this.paymentService.createPaymentPurchase(getAuthUserId(user), {
+      purpose: PaymentPurpose.AI_PLAN,
+      targetId: dto.planId,
+      provider: PaymentProvider.SEPAY,
+      billingCycle: dto.billingCycle,
+      paymentMethod: dto.paymentMethod,
+      returnUrls: dto.returnUrls,
+      useEdumeeCredit: dto.useEdumeeCredit,
+    });
   }
 
   @Post('mentor-booking/purchase')
-  @ApiOperation({ summary: 'Create a pending mentor booking SePay purchase and return a browser redirect URL' })
+  @ApiOperation({ summary: 'Legacy wrapper: create a mentor booking payment purchase' })
   purchaseMentorBooking(@Body() dto: CreateMentorBookingPurchaseDto, @CurrentUser() user: AuthUserLike) {
-    return this.paymentService.purchaseMentorBooking(getAuthUserId(user), dto);
+    return this.paymentService.createPaymentPurchase(getAuthUserId(user), {
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      targetId: dto.bookingSessionId,
+      provider: PaymentProvider.SEPAY,
+      paymentMethod: dto.paymentMethod,
+      returnUrls: dto.returnUrls,
+      useEdumeeCredit: dto.useEdumeeCredit,
+    });
   }
 
   @Post(':id/sepay/sync')
@@ -95,6 +118,23 @@ export class PaymentController {
   @ApiOperation({ summary: 'List payments for the current user' })
   findMine(@CurrentUser() user: AuthUserLike) {
     return this.paymentService.findMine(getAuthUserId(user));
+  }
+
+  @Get('mentor/income')
+  @ApiOperation({ summary: 'Get mentor income summary and settlement entries for the current mentor' })
+  getMentorIncome(
+    @CurrentUser() user: AuthUserLike,
+    @Query('range') range?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('settlementStatus') settlementStatus?: string,
+  ) {
+    return this.paymentService.getMentorIncome(getAuthUserId(user), {
+      range,
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      settlementStatus,
+    });
   }
 
   @Get(':id')

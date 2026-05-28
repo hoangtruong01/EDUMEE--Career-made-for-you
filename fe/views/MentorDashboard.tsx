@@ -34,6 +34,7 @@ import { authStorage } from '@/lib/auth-storage';
 import { careerTagsService, type CareerTag, type SkillTag } from '@/lib/career-tags.service';
 import {
   BookingSession,
+  ApplyTutorProfilePayload,
   MentorAvailabilitySlot,
   mentorService,
   SessionReview,
@@ -142,6 +143,18 @@ function splitList(value: string) {
 
 function getCareerId(career: CareerTag) {
   return career.id || career._id || career.title;
+}
+
+function createMentorApplicationForm(profile?: TutorProfile | null) {
+  const firstRate = profile?.pricing?.sessionRates?.[0];
+  return {
+    currentPosition: profile?.professionalBackground?.currentPosition || '',
+    company: profile?.professionalBackground?.company || '',
+    yearsOfExperience: String(profile?.professionalBackground?.yearsOfExperience ?? 3),
+    industries: profile?.professionalBackground?.industries?.join(', ') || '',
+    specializations: profile?.mentoringExpertise?.specializations?.join(', ') || '',
+    price: String(firstRate?.pricePerSession ?? 200000),
+  };
 }
 
 function PortalPanel({
@@ -342,23 +355,23 @@ function TagPicker({
   );
 }
 
-function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
+function ApplyMentorForm({
+  onSubmitted,
+  profile = null,
+}: {
+  onSubmitted: () => void;
+  profile?: TutorProfile | null;
+}) {
   const token = authStorage.getAccessToken();
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    currentPosition: '',
-    company: '',
-    yearsOfExperience: '3',
-    industries: '',
-    specializations: '',
-    price: '200000',
-  });
+  const [form, setForm] = useState(() => createMentorApplicationForm(profile));
   const [careerCatalog, setCareerCatalog] = useState<CareerTag[]>([]);
   const [skillTags, setSkillTags] = useState<SkillTag[]>([]);
   const [selectedCareerIds, setSelectedCareerIds] = useState<string[]>([]);
   const [selectedSkillSlugs, setSelectedSkillSlugs] = useState<string[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(true);
+  const isEditing = Boolean(profile?.id);
 
   const updateField = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -385,6 +398,25 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
       active = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    setForm(createMentorApplicationForm(profile));
+
+    const careerIds = (profile.mentoringExpertise?.careerExpertise || [])
+      .map((item) => {
+        const matchedCareer = careerCatalog.find((career) => career.title === item.careerTitle);
+        return item.careerId || (matchedCareer ? getCareerId(matchedCareer) : item.careerTitle);
+      })
+      .filter(Boolean) as string[];
+    const skillSlugs = (profile.mentoringExpertise?.skillExpertise || [])
+      .map((item) => skillTags.find((skill) => skill.name === item.skillName)?.slug)
+      .filter(Boolean) as string[];
+
+    setSelectedCareerIds(careerIds);
+    setSelectedSkillSlugs(skillSlugs);
+  }, [careerCatalog, profile, skillTags]);
 
   const selectedCareers = useMemo(
     () => careerCatalog.filter((career) => selectedCareerIds.includes(getCareerId(career))),
@@ -428,7 +460,7 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
     setIsSubmitting(true);
     setMessage('');
     try {
-      await mentorService.applyTutorProfile(token, {
+      const payload: ApplyTutorProfilePayload = {
         professionalBackground: {
           currentPosition: form.currentPosition,
           company: form.company,
@@ -475,8 +507,17 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
           ],
           freeSessionOffered: false,
         },
-      });
-      setMessage('Đã gửi hồ sơ mentor. Admin sẽ duyệt trước khi hồ sơ hiển thị công khai.');
+      };
+      if (profile?.id) {
+        await mentorService.updateTutorProfile(token, profile.id, payload);
+      } else {
+        await mentorService.applyTutorProfile(token, payload);
+      }
+      setMessage(
+        isEditing
+          ? 'Đã gửi lại hồ sơ mentor. Admin sẽ duyệt trước khi mở portal.'
+          : 'Đã gửi hồ sơ mentor. Admin sẽ duyệt trước khi hồ sơ hiển thị công khai.',
+      );
       onSubmitted();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể gửi hồ sơ mentor.');
@@ -490,8 +531,12 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
       <div className="space-y-5">
         <PortalPanel
           id="profile"
-          title="Đăng ký làm mentor"
-          description="Hoàn thiện hồ sơ để admin xét duyệt. Sau khi được duyệt, bạn có thể mở lịch và nhận booking từ học viên."
+          title={isEditing ? 'Cập nhật hồ sơ mentor' : 'Đăng ký làm mentor'}
+          description={
+            isEditing
+              ? 'Cập nhật thông tin rồi gửi lại để admin xét duyệt hồ sơ mentor.'
+              : 'Hoàn thiện hồ sơ để admin xét duyệt. Sau khi được duyệt, bạn có thể mở lịch và nhận booking từ học viên.'
+          }
         >
           <div className="space-y-6">
             <div>
@@ -594,7 +639,7 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <Button onClick={submit} disabled={isSubmitting} className="bg-sky-600 hover:bg-sky-700">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Gửi hồ sơ cho admin duyệt
+              {isEditing ? 'Gửi lại hồ sơ cho admin duyệt' : 'Gửi hồ sơ cho admin duyệt'}
             </Button>
           </div>
         </PortalPanel>
@@ -627,38 +672,51 @@ function ApplyMentorForm({ onSubmitted }: { onSubmitted: () => void }) {
   );
 }
 
-function ProfileStatusCard({ profile }: { profile: TutorProfile }) {
+function ProfileStatusCard({ profile, onSubmitted }: { profile: TutorProfile; onSubmitted: () => void }) {
   const rejectedReason = profile.adminInfo?.rejectionReason;
   const isRejected = profile.status === 'rejected';
+  const [isEditingRejectedProfile, setIsEditingRejectedProfile] = useState(false);
 
   return (
-    <PortalPanel id="profile" title="Trạng thái xét duyệt" description="Hồ sơ của bạn đang được theo dõi trong cổng mentor.">
-      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-start">
-        <div
-          className={cn(
-            'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
-            isRejected
-              ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
-              : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-          )}
-        >
-          {isRejected ? <XCircle className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">
-            {profileStatusLabel[profile.status] || profile.status}
-          </h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Hồ sơ {getMentorName(profile)} hiện chưa thể mở lịch tư vấn công khai. Bạn có thể theo dõi trạng thái ở trang này.
-          </p>
-          {rejectedReason && (
-            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-              Lý do từ chối: {rejectedReason}
+    <div className="space-y-6">
+      <PortalPanel id="profile" title="Trạng thái xét duyệt" description="Portal mentor sẽ mở sau khi admin duyệt hồ sơ của bạn.">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-start">
+          <div
+            className={cn(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+              isRejected
+                ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+            )}
+          >
+            {isRejected ? <XCircle className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">
+              {profileStatusLabel[profile.status] || profile.status}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Hồ sơ {getMentorName(profile)} hiện chưa thể mở lịch tư vấn công khai. Bạn sẽ truy cập được portal sau khi hồ sơ được duyệt.
             </p>
-          )}
+            {rejectedReason && (
+              <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                Lý do từ chối: {rejectedReason}
+              </p>
+            )}
+            {isRejected && (
+              <Button
+                type="button"
+                className="mt-4 bg-sky-600 hover:bg-sky-700"
+                onClick={() => setIsEditingRejectedProfile((value) => !value)}
+              >
+                {isEditingRejectedProfile ? 'Ẩn form chỉnh sửa' : 'Cập nhật và gửi lại hồ sơ'}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-    </PortalPanel>
+      </PortalPanel>
+      {isRejected && isEditingRejectedProfile ? <ApplyMentorForm profile={profile} onSubmitted={onSubmitted} /> : null}
+    </div>
   );
 }
 
@@ -3146,7 +3204,7 @@ function MentorIncomePanel({ income }: { income?: MentorIncomeResponse }) {
 
       <PortalPanel
         title="Chi tiết thu nhập"
-        description="Thu nhập được ghi nhận từ booking mentor đã thanh toán và settlement sau khi phiên hoàn thành."
+        description="Chỉ hiển thị các khoản đã hoàn thành và sẵn sàng nhận."
       >
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
@@ -3237,9 +3295,10 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
 
   const portalData = mentorPortalQuery.data;
   const myProfile = portalData?.profile ?? null;
+  const isActiveProfile = myProfile?.status === 'active';
   const mentorUserId = myProfile?.userId || '';
-  const mentorReviewsQuery = useMentorPortalReviews(view === 'reviews' && Boolean(myProfile));
-  const mentorIncomeQuery = useMentorIncome(view === 'income' && Boolean(myProfile));
+  const mentorReviewsQuery = useMentorPortalReviews(view === 'reviews' && isActiveProfile);
+  const mentorIncomeQuery = useMentorIncome(view === 'income' && isActiveProfile);
   const mySlots = useMemo(() => portalData?.slots ?? EMPTY_MENTOR_SLOTS, [portalData?.slots]);
   const bookings = useMemo(() => portalData?.bookings ?? EMPTY_MENTOR_BOOKINGS, [portalData?.bookings]);
   const reviews = useMemo(
@@ -3308,7 +3367,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
   }, [accessToken, mentorUserId, queryClient]);
 
   useBookingRealtimeSync({
-    enabled: Boolean(myProfile),
+    enabled: isActiveProfile,
     onBookingUpdated: applyBookingUpdate,
     onRefresh: refreshMentorPortalData,
   });
@@ -3336,6 +3395,66 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     reviews: 'Theo dõi phản hồi học viên gửi sau các buổi tư vấn.',
   };
 
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <Loader2 className="h-7 w-7 animate-spin text-sky-600" />
+        </div>
+      </div>
+    );
+  }
+
+  if (queryError) {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          {queryError}
+        </p>
+      </div>
+    );
+  }
+
+  if (!myProfile) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section>
+          <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+            <BadgeCheck className="h-4 w-4" />
+            Đăng ký mentor
+          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-slate-50 md:text-4xl">
+            Hoàn thiện hồ sơ mentor
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+            Điền thông tin chuyên môn để admin xét duyệt trước khi mở portal mentor.
+          </p>
+        </section>
+        <ApplyMentorForm onSubmitted={refreshMentorPortalData} />
+      </div>
+    );
+  }
+
+  if (!isActiveProfile) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section>
+          <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            <AlertCircle className="h-4 w-4" />
+            Chờ duyệt mentor
+          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-slate-50 md:text-4xl">
+            Hồ sơ mentor chưa được mở portal
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+            Admin cần duyệt hồ sơ trước khi bạn quản lý lịch trống, booking, thu nhập và đánh giá.
+          </p>
+        </section>
+        <ProfileStatusCard profile={myProfile} onSubmitted={refreshMentorPortalData} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <section id="overview" className="flex flex-wrap items-end justify-between gap-4">
@@ -3353,22 +3472,14 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
         </div>
       </section>
 
-      {(queryError || reviewsError || incomeError) && (
+      {(reviewsError || incomeError) && (
         <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          {queryError || reviewsError || incomeError}
+          {reviewsError || incomeError}
         </p>
       )}
 
-      {isLoading ? (
-        <div className="flex h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <Loader2 className="h-7 w-7 animate-spin text-sky-600" />
-        </div>
-      ) : !myProfile ? (
-        <ApplyMentorForm onSubmitted={refreshMentorPortalData} />
-      ) : (
-        <>
-          {view === 'overview' && (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {view === 'overview' && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
               title="Trạng thái hồ sơ"
               value={profileStatusLabel[myProfile.status] || myProfile.status}
@@ -3384,48 +3495,40 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
               tone="bg-emerald-600"
             />
           </div>
-          )}
-
-          {myProfile.status !== 'active' ? (
-            <ProfileStatusCard profile={myProfile} />
-          ) : (
-            <>
-              {view === 'overview' && (
-                <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-                  <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />
-                  <PortalPanel title="Chất lượng phiên tư vấn" description="Giữ lịch rõ ràng, xác nhận nhanh và chuẩn bị trước nội dung học viên gửi.">
-                    <div className="flex items-center gap-2 text-amber-500">
-                      <Star className="h-5 w-5 fill-current" />
-                      <span className="font-bold">Sẵn sàng nhận đánh giá tốt</span>
-                    </div>
-                  </PortalPanel>
-                </div>
-              )}
-              {view === 'profile' && <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />}
-              {view === 'availability' && (
-                <MentorSchedulingWorkspace
-                  profile={myProfile}
-                  slots={mySlots}
-                  bookings={bookings}
-                  onChanged={refreshSlotsOnly}
-                  onBookingUpdated={applyBookingUpdate}
-                  onOpenChat={openBookingChat}
-                />
-              )}
-              {view === 'bookings' && (
-                <MentorBookingList
-                  bookings={bookings}
-                  onChanged={refreshSlotsOnly}
-                  onBookingUpdated={applyBookingUpdate}
-                  onOpenChat={openBookingChat}
-                />
-              )}
-              {view === 'income' && <MentorIncomePanel income={income} />}
-              {view === 'reviews' && <MentorReviewsPanel reviews={reviews} />}
-            </>
-          )}
-        </>
       )}
+
+      {view === 'overview' && (
+        <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+          <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />
+          <PortalPanel title="Chất lượng phiên tư vấn" description="Giữ lịch rõ ràng, xác nhận nhanh và chuẩn bị trước nội dung học viên gửi.">
+            <div className="flex items-center gap-2 text-amber-500">
+              <Star className="h-5 w-5 fill-current" />
+              <span className="font-bold">Sẵn sàng nhận đánh giá tốt</span>
+            </div>
+          </PortalPanel>
+        </div>
+      )}
+      {view === 'profile' && <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />}
+      {view === 'availability' && (
+        <MentorSchedulingWorkspace
+          profile={myProfile}
+          slots={mySlots}
+          bookings={bookings}
+          onChanged={refreshSlotsOnly}
+          onBookingUpdated={applyBookingUpdate}
+          onOpenChat={openBookingChat}
+        />
+      )}
+      {view === 'bookings' && (
+        <MentorBookingList
+          bookings={bookings}
+          onChanged={refreshSlotsOnly}
+          onBookingUpdated={applyBookingUpdate}
+          onOpenChat={openBookingChat}
+        />
+      )}
+      {view === 'income' && <MentorIncomePanel income={income} />}
+      {view === 'reviews' && <MentorReviewsPanel reviews={reviews} />}
     </div>
   );
 }

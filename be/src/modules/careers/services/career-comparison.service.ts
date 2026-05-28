@@ -9,8 +9,26 @@ import { CareerFitResultService } from '../../assessment/services/career-fit-res
 import { Career } from '../schemas/career.schema';
 import { CareerInsightDocument } from '../schemas/career-insight.schema';
 
+const MAX_CAREERS_PER_COMPARISON = 3;
+
 interface ComparisonQuery {
   userId?: Types.ObjectId;
+}
+
+export interface AllowedCareerComparisonItem {
+  id: string;
+  source: 'career' | 'career_insight' | 'career_fit_result';
+  careerFitResultId: string;
+  careerId?: string;
+  careerInsightId?: string;
+  title: string;
+  description?: string;
+  category?: string;
+  match?: number;
+  rank?: number;
+  skills: string[];
+  salaryRange?: string;
+  demandLevel?: string;
 }
 
 interface AIAnalysisResult {
@@ -56,6 +74,61 @@ interface AIAnalysisResult {
       growthPotential: number;
     };
   }[];
+  comparisonInsights?: ComparisonInsights;
+}
+
+interface ComparisonInsights {
+  criteriaGuide: { key: string; label: string; description: string }[];
+  perCareer: {
+    careerId: string;
+    careerTitle: string;
+    personFit: {
+      workEnvironment: string;
+      workRhythm: string;
+      autonomyLevel: string;
+      communicationLoad: string;
+      stressProfile: string;
+    };
+    personalityFit: {
+      bestTraits: string[];
+      potentialFriction: string[];
+      teamStyle: string;
+      decisionStyle: string;
+    };
+    compensation: {
+      entryRange: string;
+      midRange: string;
+      seniorRange: string;
+      growthCeiling: string;
+      stability: string;
+    };
+    market: {
+      demand: string;
+      growthTrend: string;
+      competition: string;
+      remoteAvailability: string;
+      aiAutomationRisk: string;
+    };
+    skillsAndPath: {
+      mustHaveSkills: string[];
+      skillGaps: string[];
+      rampUpTime: string;
+      portfolioSignals: string[];
+    };
+    longTerm: {
+      advancementPotential: string;
+      workLifeBalance: string;
+      burnoutRisk: string;
+      transferability: string;
+    };
+  }[];
+  tradeOffSummary: {
+    bestPersonalityFit: string;
+    bestSalaryUpside: string;
+    bestMarketOutlook: string;
+    safestLongTermChoice: string;
+    notes: string[];
+  };
 }
 
 @Injectable()
@@ -131,6 +204,158 @@ export class CareerComparisonService {
       .populate('careerIds', 'title category industry')
       .sort({ createdAt: -1 })
       .exec();
+  }
+
+  async getAllowedCareersForUser(userId: string): Promise<AllowedCareerComparisonItem[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const visibleResults = await this.careerFitResultService.findByUserVisible(userId);
+    const insights = await this.careerFitResultService.findAllInsights();
+
+    return visibleResults
+      .filter((result) => result.isLocked !== true)
+      .map((result) => this.toAllowedCareerComparisonItem(result, insights))
+      .filter((item): item is AllowedCareerComparisonItem => Boolean(item));
+  }
+
+  async normalizeAllowedCareerIdsForUser(
+    userId: string,
+    careerIds: string[],
+  ): Promise<string[]> {
+    const requestedIds = this.assertCareerComparisonCount(careerIds);
+    const allowedCareers = await this.getAllowedCareersForUser(userId);
+    const allowedByAlias = this.buildAllowedCareerLookup(allowedCareers);
+
+    return requestedIds.map((careerId) => {
+      const allowed = allowedByAlias.get(careerId);
+      if (!allowed) {
+        throw new BadRequestException(`Career is not available for comparison: ${careerId}`);
+      }
+      return allowed.id;
+    });
+  }
+
+  async compareAllowedCareersSideBySide(userId: string, careerIds: string[]): Promise<any> {
+    const { careers } = await this.resolveAllowedCareerSelection(userId, careerIds);
+
+    return {
+      careers,
+      comparison: this.generateSideBySideComparison(careers),
+      summary: this.generateComparisonSummary(careers),
+    };
+  }
+
+  async generateAllowedDetailedComparison(
+    userId: string,
+    careerIds: string[],
+    criteria?: Record<string, unknown>,
+  ): Promise<any> {
+    const { careerIds: normalizedCareerIds, careers } =
+      await this.resolveAllowedCareerSelection(userId, careerIds);
+    const userFitResults = await this.careerFitResultService.findLatestByUser(userId, 1);
+    const userFit = userFitResults[0];
+    const personalityTraits = userFit?.personalityProfile?.primaryTraits || [];
+    const quantitativeComparison = this.generateSideBySideComparison(careers);
+    const careersInfo = careers
+      .map((career) => {
+        const skills = career.requiredSkills?.join(', ') || 'Dang cap nhat';
+        return `- ID: ${career._id?.toString() || ''}; Ten: ${career.title}; Ky nang: ${skills}`;
+      })
+      .join('\n');
+
+    const aiPrompt = `
+      Ban la mot chuyen gia huong nghiep. Hay so sanh chi tiet cac nghe sau cho mot nguoi co tinh cach: ${personalityTraits.join(', ') || 'chua ro'}.
+
+      Danh sach nghe:
+      ${careersInfo}
+
+      Hay phan tich sau ve con nguoi, tinh cach, luong, thi truong, ky nang va dai han.
+      Moi nghe phai co danh gia va ly do khac nhau. Chi tra ve JSON, khong them Markdown.
+
+      JSON schema:
+      {
+        "detailedAnalysis": {
+          "skillsAlignment": { "overlapPercentage": 0, "transferableSkills": ["skill"], "gapAnalysis": [{ "careerId": "ID", "missingSkills": ["skill"] }] },
+          "careerProgression": [{ "careerId": "ID", "progressionPath": ["step"], "timeToAdvancement": "time", "seniorityLevels": ["level"] }],
+          "marketDemand": [{ "careerId": "ID", "demandLevel": "Cao/Trung binh/Thap", "jobGrowthRate": "trend", "competitionLevel": "Cao/Trung binh/Thap" }],
+          "compatibility": { "personalityFit": "text", "skillsCompatibility": "text", "lifestyleAlignment": "text", "longTermViability": "text" }
+        },
+        "recommendations": {
+          "bestMatch": "ID",
+          "reasonsForRecommendation": ["reason"],
+          "alternativeOptions": ["ID"],
+          "developmentSuggestions": ["suggestion"]
+        },
+        "scoreBreakdown": [{
+          "careerId": "ID",
+          "careerTitle": "Ten nghe",
+          "overallScore": 0,
+          "criteriaScores": { "skillMatch": 0, "salaryPotential": 0, "workLifeBalance": 0, "growthPotential": 0 }
+        }],
+        "comparisonInsights": {
+          "criteriaGuide": [{ "key": "personFit", "label": "Con nguoi", "description": "Moi truong, nhip lam viec, giao tiep, ap luc, tu chu va lifestyle." }],
+          "perCareer": [{
+            "careerId": "ID",
+            "careerTitle": "Ten nghe",
+            "personFit": { "workEnvironment": "text", "workRhythm": "text", "autonomyLevel": "text", "communicationLoad": "text", "stressProfile": "text" },
+            "personalityFit": { "bestTraits": ["trait"], "potentialFriction": ["risk"], "teamStyle": "text", "decisionStyle": "text" },
+            "compensation": { "entryRange": "text", "midRange": "text", "seniorRange": "text", "growthCeiling": "text", "stability": "text" },
+            "market": { "demand": "text", "growthTrend": "text", "competition": "text", "remoteAvailability": "text", "aiAutomationRisk": "text" },
+            "skillsAndPath": { "mustHaveSkills": ["skill"], "skillGaps": ["gap"], "rampUpTime": "text", "portfolioSignals": ["signal"] },
+            "longTerm": { "advancementPotential": "text", "workLifeBalance": "text", "burnoutRisk": "text", "transferability": "text" }
+          }],
+          "tradeOffSummary": {
+            "bestPersonalityFit": "ID",
+            "bestSalaryUpside": "ID",
+            "bestMarketOutlook": "ID",
+            "safestLongTermChoice": "ID",
+            "notes": ["note"]
+          }
+        }
+      }
+    `;
+
+    let aiResults: AIAnalysisResult;
+    try {
+      const response = await this.aiService.callGeminiAPI(aiPrompt);
+      let clean = response.trim();
+      if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
+      if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
+      aiResults = JSON.parse(clean) as AIAnalysisResult;
+    } catch {
+      aiResults = {
+        detailedAnalysis: this.performDetailedAnalysis(careers),
+        recommendations: this.generateRecommendations(careers),
+        scoreBreakdown: this.calculateScoreBreakdown(careers),
+      };
+    }
+
+    aiResults.comparisonInsights ||= this.generateComparisonInsights(careers);
+
+    const comparisonResults = {
+      userId,
+      careerIds: normalizedCareerIds,
+      careers,
+      quantitativeComparison,
+      ...aiResults,
+    };
+
+    const savedComparison = await this.create({
+      userId,
+      careerIds: normalizedCareerIds,
+      comparisonName: 'Detailed Career Analysis',
+      purpose: 'detailed_comparison',
+      comparisonCriteria: criteria,
+      results: comparisonResults,
+      insights: aiResults.recommendations?.reasonsForRecommendation || [],
+    });
+
+    return {
+      ...comparisonResults,
+      comparisonId: savedComparison._id,
+    };
   }
 
   async compareCareersSideBySide(careerIds: string[]): Promise<any> {
@@ -340,6 +565,323 @@ export class CareerComparisonService {
     };
   }
 
+  private async resolveAllowedCareerSelection(
+    userId: string,
+    careerIds: string[],
+  ): Promise<{ careerIds: string[]; careers: Career[]; allowedCareers: AllowedCareerComparisonItem[] }> {
+    const requestedIds = this.assertCareerComparisonCount(careerIds);
+    const allowedCareers = await this.getAllowedCareersForUser(userId);
+    const allowedByAlias = this.buildAllowedCareerLookup(allowedCareers);
+    const selectedAllowedCareers = requestedIds.map((careerId) => {
+      const allowed = allowedByAlias.get(careerId);
+      if (!allowed) {
+        throw new BadRequestException(`Career is not available for comparison: ${careerId}`);
+      }
+      return allowed;
+    });
+    const normalizedCareerIds = selectedAllowedCareers.map((career) => career.id);
+    const careers = await Promise.all(
+      selectedAllowedCareers.map((career) => this.resolveAllowedCareerToCareer(career)),
+    );
+
+    return { careerIds: normalizedCareerIds, careers, allowedCareers: selectedAllowedCareers };
+  }
+
+  private assertCareerComparisonCount(careerIds: string[]): string[] {
+    const requestedIds = (Array.isArray(careerIds) ? careerIds : [])
+      .map((careerId) => String(careerId || '').trim())
+      .filter(Boolean);
+    const uniqueIds = [...new Set(requestedIds)];
+
+    if (uniqueIds.length !== requestedIds.length) {
+      throw new BadRequestException('Please choose distinct careers for comparison');
+    }
+    if (uniqueIds.length < 2) {
+      throw new BadRequestException('At least 2 career IDs are required for comparison');
+    }
+    if (uniqueIds.length > MAX_CAREERS_PER_COMPARISON) {
+      throw new BadRequestException(`You can compare up to ${MAX_CAREERS_PER_COMPARISON} careers at once`);
+    }
+
+    for (const careerId of uniqueIds) {
+      if (!Types.ObjectId.isValid(careerId)) {
+        throw new BadRequestException(`Invalid career ID: ${careerId}`);
+      }
+    }
+
+    return uniqueIds;
+  }
+
+  private toAllowedCareerComparisonItem(
+    result: Record<string, unknown>,
+    insights: Record<string, any>[],
+  ): AllowedCareerComparisonItem | null {
+    const careerValue = result.careerId;
+    const careerRecord =
+      typeof careerValue === 'object' && careerValue !== null
+        ? (careerValue as Record<string, unknown>)
+        : {};
+    const fitResultId = this.extractId(result.id) || this.extractId(result._id);
+    const careerId = this.extractId(careerValue);
+    const title = String(result.careerTitle || careerRecord.title || '').trim();
+
+    if (!fitResultId || !title) {
+      return null;
+    }
+
+    const insight = this.findInsightByTitle(title, insights);
+    const careerInsightId = this.extractId(insight?._id);
+    const analysis = (insight?.analysis || {}) as Record<string, unknown>;
+    const skills =
+      this.toStringArray(careerRecord.requiredSkills) ||
+      this.toStringArray(analysis.keySkills) ||
+      this.toStringArray(result.strengths) ||
+      [];
+    const id = careerId || careerInsightId || fitResultId;
+
+    return {
+      id,
+      source: careerId ? 'career' : careerInsightId ? 'career_insight' : 'career_fit_result',
+      careerFitResultId: fitResultId,
+      careerId,
+      careerInsightId,
+      title,
+      description: String(careerRecord.description || analysis.overview || result.aiExplanation || ''),
+      category: String(careerRecord.category || insight?.category || 'other'),
+      match: this.toOptionalNumber(result.overallFitScore),
+      rank: this.toOptionalNumber(result.rank || result.recommendationRank),
+      skills,
+      salaryRange: typeof analysis.salaryRange === 'string' ? analysis.salaryRange : undefined,
+      demandLevel: typeof analysis.demandLevel === 'string' ? analysis.demandLevel : undefined,
+    };
+  }
+
+  private buildAllowedCareerLookup(
+    allowedCareers: AllowedCareerComparisonItem[],
+  ): Map<string, AllowedCareerComparisonItem> {
+    const lookup = new Map<string, AllowedCareerComparisonItem>();
+    for (const career of allowedCareers) {
+      for (const alias of [career.id, career.careerId, career.careerInsightId, career.careerFitResultId]) {
+        if (alias) {
+          lookup.set(alias, career);
+        }
+      }
+    }
+    return lookup;
+  }
+
+  private async resolveAllowedCareerToCareer(
+    allowedCareer: AllowedCareerComparisonItem,
+  ): Promise<Career> {
+    if (allowedCareer.careerId) {
+      try {
+        return await this.careerService.findOne(allowedCareer.careerId);
+      } catch {
+        // Fall through to insight/result mapping.
+      }
+    }
+
+    if (allowedCareer.careerInsightId) {
+      const insights = await this.careerFitResultService.findAllInsights();
+      const insight = insights.find((item) => this.extractId(item._id) === allowedCareer.careerInsightId);
+      if (insight) {
+        return this.mapInsightToCareer(insight);
+      }
+    }
+
+    return this.mapAllowedItemToCareer(allowedCareer);
+  }
+
+  private mapInsightToCareer(insight: Record<string, any>): Career {
+    const analysis = (insight.analysis || {}) as Record<string, unknown>;
+    const id = this.extractId(insight._id) || new Types.ObjectId().toHexString();
+    return {
+      _id: new Types.ObjectId(id),
+      title: String(insight.careerTitle || ''),
+      category: String(insight.category || 'other'),
+      description: String(analysis.overview || ''),
+      requiredSkills: this.toStringArray(analysis.keySkills) || [],
+      marketInfo: {
+        demandLevel: String(analysis.demandLevel || 'medium'),
+      },
+      discoveryData: {
+        pros: this.toStringArray(analysis.pros) || [],
+        cons: this.toStringArray(analysis.cons) || [],
+        trends: Array.isArray(analysis.trends) ? analysis.trends : [],
+        topCompanies: this.toStringArray(analysis.topCompanies) || [],
+        salarySummary: typeof analysis.salaryRange === 'string' ? analysis.salaryRange : undefined,
+      },
+    } as unknown as Career;
+  }
+
+  private mapAllowedItemToCareer(allowedCareer: AllowedCareerComparisonItem): Career {
+    return {
+      _id: new Types.ObjectId(allowedCareer.id),
+      title: allowedCareer.title,
+      category: allowedCareer.category || 'other',
+      description: allowedCareer.description || '',
+      requiredSkills: allowedCareer.skills,
+      marketInfo: {
+        demandLevel: allowedCareer.demandLevel || 'medium',
+      },
+      discoveryData: {
+        pros: [],
+        cons: [],
+        trends: [],
+        topCompanies: [],
+        salarySummary: allowedCareer.salaryRange,
+      },
+    } as unknown as Career;
+  }
+
+  private generateComparisonInsights(careers: Career[]): ComparisonInsights {
+    const firstCareerId = careers[0]?._id?.toString() || '';
+    const secondCareerId = careers[1]?._id?.toString() || firstCareerId;
+
+    return {
+      criteriaGuide: [
+        {
+          key: 'personFit',
+          label: 'Con nguoi',
+          description: 'Moi truong, nhip lam viec, giao tiep, ap luc, tu chu va lifestyle.',
+        },
+        {
+          key: 'personalityFit',
+          label: 'Tinh cach',
+          description: 'Traits phu hop, diem de met, team style va cach ra quyet dinh.',
+        },
+        {
+          key: 'compensation',
+          label: 'Luong',
+          description: 'Entry/mid/senior range, tran thu nhap, toc do tang va do on dinh.',
+        },
+        {
+          key: 'market',
+          label: 'Thi truong',
+          description: 'Nhu cau tuyen dung, tang truong, canh tranh, remote va rui ro AI.',
+        },
+        {
+          key: 'skillsAndPath',
+          label: 'Ky nang',
+          description: 'Skill can hoc, gap hien tai, portfolio va thoi gian ramp-up.',
+        },
+        {
+          key: 'longTerm',
+          label: 'Dai han',
+          description: 'Thang tien, work-life balance, burnout va kha nang chuyen nganh.',
+        },
+      ],
+      perCareer: careers.map((career, index) => {
+        const skills = career.requiredSkills?.slice(0, 5) || [];
+        const market = career.marketInfo;
+        return {
+          careerId: career._id?.toString() || '',
+          careerTitle: career.title,
+          personFit: {
+            workEnvironment: this.renderWorkEnvironment(career),
+            workRhythm: index === 0 ? 'Nhanh, nhieu van de moi' : 'On dinh hon, can do sau',
+            autonomyLevel: index === 0 ? 'Cao' : 'Trung binh den cao',
+            communicationLoad: index === 0 ? 'Trung binh' : 'Cao khi lam voi stakeholder',
+            stressProfile: career.workEnvironment?.stressLevel || 'Trung binh',
+          },
+          personalityFit: {
+            bestTraits: career.personalityFit?.idealTraits?.slice(0, 4) || ['Tu duy hoc hoi', 'Ky luat', 'Giai quyet van de'],
+            potentialFriction: career.personalityFit?.challengingTraits?.slice(0, 3) || ['De met neu khong hop nhip lam viec'],
+            teamStyle: index === 0 ? 'Hop tac linh hoat' : 'Can phoi hop ro voi team',
+            decisionStyle: 'Can bang giua du lieu, trai nghiem va muc tieu dai han',
+          },
+          compensation: {
+            entryRange: this.extractSalaryRange(career, 0) || 'Dang cap nhat',
+            midRange: this.extractSalaryRange(career, 1) || 'Tang theo kinh nghiem va portfolio',
+            seniorRange: this.extractSalaryRange(career, 2) || 'Phu thuoc cap bac, cong ty va thi truong',
+            growthCeiling: index === 0 ? 'Tot neu len senior/lead' : 'Tot neu co chuyen mon sau',
+            stability: 'Phu thuoc nang luc cap nhat ky nang va nhu cau nganh',
+          },
+          market: {
+            demand: String(market?.demandLevel || 'Dang cap nhat'),
+            growthTrend: String(market?.growthProjection || 'Co tiem nang tang truong'),
+            competition: String(market?.competitionLevel || 'Trung binh'),
+            remoteAvailability: career.workEnvironment?.workSettings?.includes('remote') ? 'Tot' : 'Tuy cong ty/nganh',
+            aiAutomationRisk: String(market?.automationRisk || 'Can theo doi'),
+          },
+          skillsAndPath: {
+            mustHaveSkills: skills,
+            skillGaps: skills.slice(0, 3),
+            rampUpTime: index === 0 ? '6-12 thang voi lo trinh tap trung' : '9-18 thang de co do sau',
+            portfolioSignals: ['Du an thuc te', 'Case study', 'Bang chung ket qua hoc/lam'],
+          },
+          longTerm: {
+            advancementPotential: 'Tot neu lien tuc nang cap ky nang va network',
+            workLifeBalance: String(career.workEnvironment?.workSchedule?.join(', ') || 'Tuy moi truong lam viec'),
+            burnoutRisk: String(career.workEnvironment?.stressLevel || 'Trung binh'),
+            transferability: 'Co the chuyen sang vai tro lien quan neu xay dung skill nen tot',
+          },
+        };
+      }),
+      tradeOffSummary: {
+        bestPersonalityFit: firstCareerId,
+        bestSalaryUpside: secondCareerId,
+        bestMarketOutlook: firstCareerId,
+        safestLongTermChoice: firstCareerId,
+        notes: [
+          'Dung nhom Con nguoi/Tinh cach de xem nghe co hop cach lam viec hang ngay khong.',
+          'Dung nhom Luong/Thi truong de xem trade-off giua thu nhap, canh tranh va do ben.',
+          'Dung nhom Ky nang/Dai han de chon lo trinh it rui ro nhat.',
+        ],
+      },
+    };
+  }
+
+  private findInsightByTitle(
+    title: string,
+    insights: Record<string, any>[],
+  ): Record<string, any> | undefined {
+    const normalizedTitle = title.trim().toLowerCase();
+    return insights.find((insight) => String(insight.careerTitle || '').trim().toLowerCase() === normalizedTitle);
+  }
+
+  private extractId(value: unknown): string | undefined {
+    if (!value) return undefined;
+    if (value instanceof Types.ObjectId) return value.toHexString();
+    if (typeof value === 'string') return Types.ObjectId.isValid(value) ? value : undefined;
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const id = record.id || record._id;
+      if (id instanceof Types.ObjectId) return id.toHexString();
+      if (typeof id === 'string' && Types.ObjectId.isValid(id)) return id;
+      if (id && typeof id === 'object' && 'toString' in id) {
+        const stringId = String(id);
+        return Types.ObjectId.isValid(stringId) ? stringId : undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private toStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  private toOptionalNumber(value: unknown): number | undefined {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
+  }
+
+  private renderWorkEnvironment(career: Career): string {
+    const settings = career.workEnvironment?.workSettings || [];
+    if (settings.length > 0) return settings.join(', ');
+    return career.description ? career.description.slice(0, 120) : 'Dang cap nhat';
+  }
+
+  private extractSalaryRange(career: Career, levelIndex: number): string | undefined {
+    const salary = career.careerLevels?.[levelIndex]?.salary?.[0];
+    if (!salary) {
+      return career.discoveryData?.salarySummary;
+    }
+    const currency = salary.currency || 'VND';
+    return `${salary.min}-${salary.max} ${currency}/${salary.location || 'market'}`;
+  }
+
   private async validateCareerIds(careerIds: string[]): Promise<Types.ObjectId[]> {
     const objectIds: Types.ObjectId[] = [];
     
@@ -354,11 +896,15 @@ export class CareerComparisonService {
       try {
         await this.careerService.findOne(careerId);
       } catch {
-        // If not in static careers, it MUST be in career insights (Discovery repo)
+        // If not in static careers, it can be a Discovery insight or an allowed fit-result id.
         const insight = await this.careerFitResultService.findAllInsights();
         const exists = insight.some(i => (i as CareerInsightDocument)._id.toString() === careerId);
         if (!exists) {
-          throw new BadRequestException(`Career not found: ${careerId}`);
+          try {
+            await this.careerFitResultService.findOne(careerId);
+          } catch {
+            throw new BadRequestException(`Career not found: ${careerId}`);
+          }
         }
       }
       

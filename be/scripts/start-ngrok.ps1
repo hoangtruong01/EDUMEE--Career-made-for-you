@@ -18,6 +18,7 @@ if ($config -match 'YOUR_NGROK_AUTHTOKEN') {
   Write-Error "ngrok.yml still contains the placeholder authtoken. Replace it with your real ngrok token first."
 }
 
-Write-Host "Starting ngrok tunnel for backend http://localhost:3000 ..."
-Write-Host "SePay IPN URL will be: https://<your-ngrok-domain>/api/v1/payments/sepay/ipn"
+Write-Host "Starting ngrok tunnel for backend http://localhost:3001 ..."
+Write-Host "SePay bank webhook URL will be: https://<your-ngrok-domain>/hooks/sepay-payments"
+Write-Host "SePay payment gateway IPN URL will be: https://<your-ngrok-domain>/api/v1/payments/sepay/ipn"
 & $ngrok.Source start backend --config $configPath

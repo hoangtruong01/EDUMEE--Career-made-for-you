@@ -109,6 +109,7 @@ describe('BookingSessionService', () => {
   };
   const paymentService = {
     handleMentorBookingCancellation: jest.fn(),
+    settleMentorBookingPayment: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -120,6 +121,7 @@ describe('BookingSessionService', () => {
     tutoringSessionModel.findOne.mockReturnValue(createExecMock(null));
     tutoringSessionModel.findByIdAndUpdate.mockReturnValue(createExecMock(null));
     paymentService.handleMentorBookingCancellation.mockResolvedValue({ status: 'none' });
+    paymentService.settleMentorBookingPayment.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -636,6 +638,7 @@ describe('BookingSessionService', () => {
       expect.objectContaining({ status: BookingStatus.COMPLETED, tutoringSessionId }),
       { new: true },
     );
+    expect(paymentService.settleMentorBookingPayment).toHaveBeenCalledWith(bookingId);
     expect(notificationService.createMany).toHaveBeenCalled();
   });
 

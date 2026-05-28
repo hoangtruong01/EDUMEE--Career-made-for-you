@@ -16,9 +16,24 @@ export class PaymentPublicController {
     return this.paymentService.handleSepayIpn(secretKey, payload);
   }
 
+  @Get('checkout/:token/session')
+  getPaymentCheckoutSession(@Param('token') token: string) {
+    return this.paymentService.getPaymentCheckoutSession(token);
+  }
+
+  @Get('checkout/:token/status')
+  getPaymentCheckoutStatus(@Param('token') token: string) {
+    return this.paymentService.getPaymentCheckoutStatus(token);
+  }
+
   @Get('sepay/checkout/:token/session')
   getSepayCheckoutSession(@Param('token') token: string) {
     return this.paymentService.getSepayCheckoutSession(token);
+  }
+
+  @Get('sepay/checkout/:token/status')
+  getSepayCheckoutStatus(@Param('token') token: string) {
+    return this.paymentService.getSepayCheckoutStatus(token);
   }
 
   @Get('sepay/checkout/:token')

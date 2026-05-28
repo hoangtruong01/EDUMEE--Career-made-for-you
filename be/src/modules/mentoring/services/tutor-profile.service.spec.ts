@@ -126,6 +126,48 @@ describe('TutorProfileService', () => {
     expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(userId, { role: UserRole.MENTOR });
   });
 
+  it('resubmits a rejected tutor profile as pending approval', async () => {
+    const profileId = new Types.ObjectId();
+    tutorProfileModel.findByIdAndUpdate.mockReturnValue(
+      createExecMock({
+        _id: profileId,
+        status: TutorStatus.PENDING_APPROVAL,
+      }),
+    );
+
+    await service.resubmitRejectedProfile(profileId.toString(), {
+      professionalBackground: {
+        currentPosition: 'Product Mentor',
+        company: 'EDUMEE',
+        yearsOfExperience: 4,
+        industries: ['Product'],
+        seniority: ExperienceLevel.MID_LEVEL,
+      },
+    });
+
+    expect(tutorProfileModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      profileId.toString(),
+      {
+        $set: expect.objectContaining({
+          professionalBackground: {
+            currentPosition: 'Product Mentor',
+            company: 'EDUMEE',
+            yearsOfExperience: 4,
+            industries: ['Product'],
+            seniority: ExperienceLevel.MID_LEVEL,
+          },
+          status: TutorStatus.PENDING_APPROVAL,
+        }),
+        $unset: {
+          'adminInfo.rejectionReason': 1,
+          'adminInfo.approvedBy': 1,
+          'adminInfo.approvalDate': 1,
+        },
+      },
+      { new: true },
+    );
+  });
+
   it('rejects unsupported tutor statuses', async () => {
     await expect(service.updateStatus(new Types.ObjectId().toString(), 'approved')).rejects.toBeInstanceOf(
       BadRequestException,

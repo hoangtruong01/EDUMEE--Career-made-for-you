@@ -21,6 +21,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { getAuthUserId, isAdmin } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
+import { TutorStatus } from '../schemas/tutor-profile.schema';
 
 @ApiTags('tutor-profiles')
 @ApiBearerAuth('JWT-auth')
@@ -109,6 +110,9 @@ export class TutorProfileController {
       delete (rest as Record<string, unknown>).status;
       delete (rest as Record<string, unknown>).adminInfo;
       delete (rest as Record<string, unknown>).performanceMetrics;
+      if (profile.status === TutorStatus.REJECTED) {
+        return this.tutorProfileService.resubmitRejectedProfile(id, rest);
+      }
       return this.tutorProfileService.update(id, rest);
     }
 

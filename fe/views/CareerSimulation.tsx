@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
+import { usePlanGate } from '@/context/plan-gate-context';
 import { 
   simulationService, 
   CareerSimulationData, 
@@ -49,6 +50,7 @@ const CareerIcon = ({ title, className }: { title: string; className?: string })
 /* ─── Component ─── */
 const CareerSimulation = () => {
   const { accessToken } = useAuth();
+  const { handlePlanError } = usePlanGate();
   
   const [topCareers, setTopCareers] = useState<TopCareer[]>([]);
   const [activeCareerTitle, setActiveCareerTitle] = useState<string | null>(null);
@@ -95,6 +97,9 @@ const CareerSimulation = () => {
         setLevelIdx(0);
       } catch (err) {
         console.error('Failed to load simulation:', err);
+        if (handlePlanError(err, 'simulation')) {
+          return;
+        }
         setError('Không thể tạo mô phỏng. AI có thể đang bận, vui lòng thử lại.');
       } finally {
         setIsLoadingSimulation(false);
@@ -102,7 +107,7 @@ const CareerSimulation = () => {
     };
 
     loadSimulation();
-  }, [accessToken, activeCareerTitle]);
+  }, [accessToken, activeCareerTitle, handlePlanError]);
 
   const level = simulation?.levels[levelIdx];
   const totalLevels = simulation?.levels.length || 0;

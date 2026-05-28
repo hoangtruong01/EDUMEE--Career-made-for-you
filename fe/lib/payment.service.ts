@@ -27,6 +27,14 @@ export interface PaymentRecord {
   updatedAt?: string;
 }
 
+export interface SepayCheckoutForm {
+  type: 'form_post';
+  method: 'POST';
+  actionUrl: string;
+  fields: Record<string, string | number>;
+  environment: 'sandbox' | 'production';
+}
+
 export interface PaymentCheckoutSession {
   paymentId: string;
   status: PaymentStatus;
@@ -37,6 +45,7 @@ export interface PaymentCheckoutSession {
   creditAppliedAmount?: number;
   currency: string;
   expiresAt: string;
+  sepayCheckout?: SepayCheckoutForm;
   paidAt?: string;
   booking?: {
     id: string;
@@ -59,6 +68,7 @@ export interface PaymentCheckoutStatus {
   currency: string;
   purpose: 'ai_plan' | 'mentor_booking' | string;
   expiresAt: string;
+  sepayCheckout?: SepayCheckoutForm;
   paidAt?: string;
   bookingStatus?: string;
 }
@@ -83,23 +93,6 @@ export interface CreatePaymentPurchaseResult {
   redirectUrl: string;
   purpose: 'ai_plan' | 'mentor_booking';
   provider: 'sepay' | string;
-}
-
-export interface TestBankTransferRequest {
-  amount: number;
-  content: string;
-}
-
-export interface TestBankTransferResult {
-  processed: boolean;
-  paymentId: string;
-  status: PaymentStatus;
-  checkoutReference: string;
-  testBank: {
-    beforeBalance: number;
-    afterBalance: number;
-    transactionId: string;
-  };
 }
 
 export interface PaymentDetail {
@@ -162,13 +155,6 @@ export const paymentService = {
   getCheckoutStatus(token: string) {
     return apiClient.get<PaymentCheckoutStatus>(
       `/payments/checkout/${encodeURIComponent(token)}/status`,
-    );
-  },
-
-  simulateTestBankTransfer(token: string, body: TestBankTransferRequest) {
-    return apiClient.post<TestBankTransferResult>(
-      `/payments/checkout/${encodeURIComponent(token)}/test-bank/transfer`,
-      body,
     );
   },
 

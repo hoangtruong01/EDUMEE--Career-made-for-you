@@ -24,6 +24,7 @@ import { CreateBookingSessionDto } from '../dto/booking-session.dto';
 import { AiQuotaService } from '../../ai/services/ai-quota.service';
 import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 import { PaymentService } from '../../payment/services';
+import { PaymentProvider, PaymentPurpose } from '../../payment/schema/payment.schema';
 
 @ApiTags('booking-sessions')
 @ApiBearerAuth('JWT-auth')
@@ -42,25 +43,32 @@ export class BookingSessionController {
   async create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
     const { paymentReturnUrls, useEdumeeCredit, ...bookingDto } = createDto;
-    await this.aiQuotaService.checkQuota(userId, AiFeature.MENTOR_BOOKING);
-    const booking = await this.bookingSessionService.createForMentee(
+    return this.aiQuotaService.runWithQuota(
       userId,
-      bookingDto as unknown as { tutorProfileId: string; [key: string]: unknown },
+      AiFeature.MENTOR_BOOKING,
+      async () => {
+        const booking = await this.bookingSessionService.createForMentee(
+          userId,
+          bookingDto as unknown as { tutorProfileId: string; [key: string]: unknown },
+        );
+
+        const sessionPrice = Number(booking.paymentInfo?.sessionPrice ?? 0);
+        if (sessionPrice <= 0) {
+          const freeBooking = await this.bookingSessionService.markFreeBookingPending(booking._id.toString());
+          return { booking: freeBooking, payment: null };
+        }
+
+        const payment = await this.paymentService.createPaymentPurchase(userId, {
+          purpose: PaymentPurpose.MENTOR_BOOKING,
+          targetId: booking._id.toString(),
+          provider: PaymentProvider.SEPAY,
+          returnUrls: paymentReturnUrls,
+          useEdumeeCredit,
+        });
+        return { booking, payment };
+      },
+      { requestCount: 1, tokensUsed: 0 },
     );
-    await this.aiQuotaService.consumeQuota(userId, AiFeature.MENTOR_BOOKING, { requestCount: 1, tokensUsed: 0 });
-
-    const sessionPrice = Number(booking.paymentInfo?.sessionPrice ?? 0);
-    if (sessionPrice <= 0) {
-      const freeBooking = await this.bookingSessionService.markFreeBookingPending(booking._id.toString());
-      return { booking: freeBooking, payment: null };
-    }
-
-    const payment = await this.paymentService.purchaseMentorBooking(userId, {
-      bookingSessionId: booking._id.toString(),
-      returnUrls: paymentReturnUrls,
-      useEdumeeCredit,
-    });
-    return { booking, payment };
   }
 
   @Get()
