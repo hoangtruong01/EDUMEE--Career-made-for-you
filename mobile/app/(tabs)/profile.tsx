@@ -15,9 +15,11 @@ import {
   Modal,
   Pressable
 } from 'react-native';
-import { COLORS, SPACING, RADIUS } from '../../src/theme';
+import { COLORS, SPACING, RADIUS, useTheme, LIGHT_COLORS } from '../../src/theme';
+import * as ImagePicker from 'expo-image-picker';
 import { GlassView } from '../../src/components/GlassView';
 import { Svg, Polygon, Line, Text as SvgText } from 'react-native-svg';
+
 import {
   User,
   CreditCard,
@@ -70,12 +72,27 @@ const DIMENSION_OPTIONS = [
 ];
 
 export default function ProfileScreen() {
+  const { isDarkMode, colors, toggleTheme } = useTheme();
+  const styles = getStyles(colors);
+
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'profile' | 'riasec'>('riasec');
   const [userData, setUserData] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('user');
   const [testResult, setTestResult] = useState<any>(null);
   const [recommendedCareers, setRecommendedCareers] = useState<any[]>([]);
+
+  // Dynamic Wallet state
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+
+  // Edit Profile States
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editGender, setEditGender] = useState('other');
+  const [editDob, setEditDob] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Career Detailed Analysis Modal States
   const [selectedCareer, setSelectedCareer] = useState<string | null>(null);
@@ -106,6 +123,115 @@ export default function ProfileScreen() {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền truy cập', 'EDUMEE cần quyền truy cập ảnh của bạn để đổi ảnh đại diện.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+        await uploadAvatar(selectedImage.uri);
+      }
+    } catch (error) {
+      console.error('Pick image error:', error);
+      showToast('Không thể chọn ảnh. Vui lòng thử lại.');
+    }
+  };
+
+  const uploadAvatar = async (uri: string) => {
+    try {
+      setIsLoading(true);
+      const formData = new FormData();
+
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        formData.append('file', blob, 'avatar.jpg');
+      } else {
+        formData.append('file', {
+          uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+          name: 'avatar.jpg',
+          type: 'image/jpeg',
+        } as any);
+      }
+
+      const res = await api.patch('/users/me/avatar', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const newAvatar = res.data?.avatar || res.data?.data?.avatar;
+      if (newAvatar) {
+        setUserData((prev: any) => ({ ...prev, avatar: newAvatar }));
+        showToast('Cập nhật ảnh đại diện thành công!');
+      }
+    } catch (error: any) {
+      console.error('Upload avatar error:', error);
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tải ảnh lên. Vui lòng thử lại.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openEditProfile = () => {
+    setEditName(userData?.name || '');
+    setEditPhone(userData?.phone_number || '');
+    setEditGender(userData?.gender || 'other');
+    let dobString = '';
+    if (userData?.date_of_birth) {
+      try {
+        dobString = new Date(userData.date_of_birth).toISOString().split('T')[0];
+      } catch {
+        dobString = userData.date_of_birth;
+      }
+    }
+    setEditDob(dobString);
+    setEditCity(userData?.Address?.city || userData?.address?.city || '');
+    setIsEditProfileOpen(true);
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!editName.trim()) {
+      showToast('Tên không được để trống');
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      const payload = {
+        name: editName.trim(),
+        phone_number: editPhone.trim(),
+        gender: editGender,
+        date_of_birth: editDob || undefined,
+        address: {
+          city: editCity.trim()
+        }
+      };
+      const res = await api.patch('/users/me', payload);
+      const updatedUser = res.data?.data || res.data;
+      if (updatedUser) {
+        setUserData(updatedUser);
+        setIsEditProfileOpen(false);
+        showToast('Cập nhật thông tin thành công!');
+      }
+    } catch (err: any) {
+      console.error('Update profile error:', err);
+      showToast(err.response?.data?.message || 'Không thể cập nhật thông tin. Vui lòng thử lại.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const fetchProfileAndResult = useCallback(async (refreshing = false) => {
     try {
       if (refreshing) setIsRefreshing(true); else setIsLoading(true);
@@ -115,6 +241,15 @@ export default function ProfileScreen() {
       setUserData(profile);
       const role = profile?.role || 'user';
       setUserRole(role);
+
+      // Fetch dynamic wallet balance
+      try {
+        const walletRes = await api.get('/wallet/me');
+        const balance = walletRes.data?.availableBalance ?? walletRes.data?.data?.availableBalance ?? 0;
+        setWalletBalance(balance);
+      } catch (e) {
+        console.error('Fetch wallet balance error:', e);
+      }
 
       const resultRes = await api.get('/career-fit-results/my-results', {
         params: { limit: 3 }
@@ -394,7 +529,7 @@ export default function ProfileScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -408,14 +543,14 @@ export default function ProfileScreen() {
             onPress={() => setActiveTab('riasec')}
             style={[styles.segmentBtn, activeTab === 'riasec' && styles.segmentBtnActive]}
           >
-            <Brain size={16} color={activeTab === 'riasec' ? COLORS.primary : COLORS.muted} style={{ marginRight: 6 }} />
+            <Brain size={16} color={activeTab === 'riasec' ? colors.primary : colors.muted} style={{ marginRight: 6 }} />
             <Text style={[styles.segmentBtnText, activeTab === 'riasec' && styles.segmentBtnTextActive]}>Kết quả</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab('profile')}
             style={[styles.segmentBtn, activeTab === 'profile' && styles.segmentBtnActive]}
           >
-            <User size={16} color={activeTab === 'profile' ? COLORS.primary : COLORS.muted} style={{ marginRight: 6 }} />
+            <User size={16} color={activeTab === 'profile' ? colors.primary : colors.muted} style={{ marginRight: 6 }} />
             <Text style={[styles.segmentBtnText, activeTab === 'profile' && styles.segmentBtnTextActive]}>Hồ sơ & Ví</Text>
           </TouchableOpacity>
         </View>
@@ -428,8 +563,8 @@ export default function ProfileScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => fetchProfileAndResult(true)}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
           />
         }
       >
@@ -438,15 +573,20 @@ export default function ProfileScreen() {
           <View>
             {/* User Info Header */}
             <View style={styles.header}>
-              <Image
-                source={{ uri: userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150' }}
-                style={styles.avatar}
-              />
+              <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+                <Image
+                  source={{ uri: userData?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150' }}
+                  style={styles.avatar}
+                />
+                <View style={styles.avatarEditOverlay}>
+                  <Pencil size={11} color="#fff" />
+                </View>
+              </TouchableOpacity>
               <View style={styles.userInfo}>
                 <Text style={styles.userName}>{userData?.name || 'Học viên EDUMEE'}</Text>
                 <Text style={styles.userEmail}>{userData?.email || 'user@edumee.vn'}</Text>
                 <View style={styles.badge}>
-                  <Award size={12} color={COLORS.secondary} style={{ marginRight: 4 }} />
+                  <Award size={12} color={colors.secondary} style={{ marginRight: 4 }} />
                   <Text style={styles.badgeText}>
                     {userRole === 'admin' ? 'Quản trị viên' : 'Gói Thành viên'}
                   </Text>
@@ -455,18 +595,18 @@ export default function ProfileScreen() {
             </View>
 
             {/* Wallet & AI Limit Card */}
-            <GlassView style={styles.sectionCard}>
+            <GlassView tint={isDarkMode ? 'dark' : 'light'} style={styles.sectionCard}>
               <View style={styles.cardHeaderWithIcon}>
-                <Wallet size={20} color={COLORS.primary} />
+                <Wallet size={20} color={colors.primary} />
                 <Text style={styles.cardTitleInline}>Ví & Hạn mức AI</Text>
               </View>
 
               <View style={styles.walletRow}>
                 <View>
                   <Text style={styles.walletLabel}>Số dư ví EDUMEE</Text>
-                  <Text style={styles.walletBalance}>150,000đ</Text>
+                  <Text style={styles.walletBalance}>{walletBalance.toLocaleString('vi-VN')}đ</Text>
                 </View>
-                <TouchableOpacity style={styles.depositBtn}>
+                <TouchableOpacity onPress={() => Alert.alert('Nạp tiền', 'Tính năng nạp tiền qua cổng thanh toán đang được xử lý.')} style={styles.depositBtn}>
                   <Text style={styles.depositText}>Nạp tiền</Text>
                 </TouchableOpacity>
               </View>
@@ -480,7 +620,7 @@ export default function ProfileScreen() {
                 <Text style={styles.quotaValue}>1 / 3 lượt</Text>
               </View>
               <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: '33%', backgroundColor: COLORS.primary }]} />
+                <View style={[styles.progressBarFill, { width: '33%', backgroundColor: colors.primary }]} />
               </View>
 
               <View style={styles.quotaRow}>
@@ -488,7 +628,7 @@ export default function ProfileScreen() {
                 <Text style={styles.quotaValue}>2 / 5 lượt</Text>
               </View>
               <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: '40%', backgroundColor: COLORS.secondary }]} />
+                <View style={[styles.progressBarFill, { width: '40%', backgroundColor: colors.secondary }]} />
               </View>
 
               <View style={styles.quotaRow}>
@@ -501,9 +641,9 @@ export default function ProfileScreen() {
             </GlassView>
 
             {/* AI Membership Plan Selection */}
-            <GlassView style={styles.sectionCard}>
+            <GlassView tint={isDarkMode ? 'dark' : 'light'} style={styles.sectionCard}>
               <View style={styles.cardHeaderWithIcon}>
-                <Sparkles size={20} color={COLORS.secondary} />
+                <Sparkles size={20} color={colors.secondary} />
                 <Text style={styles.cardTitleInline}>Gói thành viên Premium</Text>
               </View>
               <Text style={styles.planDesc}>Nâng cấp để nhận không giới hạn lượt tạo AI Roadmap và đặt lịch ưu tiên với các Hot Mentors.</Text>
@@ -516,12 +656,43 @@ export default function ProfileScreen() {
 
             {/* Actions List */}
             <View style={styles.actionList}>
+              <TouchableOpacity onPress={openEditProfile} style={styles.actionRow}>
+                <View style={styles.actionLeft}>
+                  <Pencil size={20} color={colors.primary} />
+                  <Text style={styles.actionLabel}>Cập nhật thông tin cá nhân</Text>
+                </View>
+                <ChevronRight size={18} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={pickImage} style={styles.actionRow}>
+                <View style={styles.actionLeft}>
+                  <Award size={20} color={colors.secondary} />
+                  <Text style={styles.actionLabel}>Thay đổi ảnh đại diện</Text>
+                </View>
+                <ChevronRight size={18} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={toggleTheme} style={styles.actionRow}>
+                <View style={styles.actionLeft}>
+                  <Sparkles size={20} color={isDarkMode ? colors.secondary : colors.primary} />
+                  <Text style={styles.actionLabel}>
+                    Giao diện: {isDarkMode ? 'Tối (Dark Mode)' : 'Sáng (Light Mode)'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    {isDarkMode ? 'Đổi sang Sáng' : 'Đổi sang Tối'}
+                  </Text>
+                  <ChevronRight size={18} color={colors.muted} />
+                </View>
+              </TouchableOpacity>
+
               <TouchableOpacity onPress={handleExportPDF} style={styles.actionRow}>
                 <View style={styles.actionLeft}>
-                  <FileDown size={20} color={COLORS.muted} />
+                  <FileDown size={20} color={colors.muted} />
                   <Text style={styles.actionLabel}>Xuất báo cáo PDF RIASEC</Text>
                 </View>
-                <ChevronRight size={18} color={COLORS.muted} />
+                <ChevronRight size={18} color={colors.muted} />
               </TouchableOpacity>
 
               <TouchableOpacity onPress={handleLogout} style={[styles.actionRow, { borderBottomWidth: 0 }]}>
@@ -766,6 +937,132 @@ export default function ProfileScreen() {
         <View style={styles.footerSpace} />
       </ScrollView>
 
+      {/* ✏️ EDIT PROFILE MODAL */}
+      <Modal
+        visible={isEditProfileOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditProfileOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsEditProfileOpen(false)}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.65)' }]} />
+          </Pressable>
+          
+          <View style={styles.editProfileModalContent}>
+            {/* Modal Header Handle */}
+            <View style={styles.modalHandle} />
+            
+            {/* Close Button */}
+            <TouchableOpacity onPress={() => setIsEditProfileOpen(false)} style={styles.modalCloseBtn}>
+              <X size={20} color={colors.foreground} />
+            </TouchableOpacity>
+
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <Text style={[styles.modalCareerTitle, { fontSize: 20, marginBottom: SPACING.lg }]}>
+                ✏️ Cập nhật thông tin cá nhân
+              </Text>
+
+              {/* Tên */}
+              <View style={styles.formInputWrapper}>
+                <Text style={styles.formLabel}>Họ và tên</Text>
+                <TextInput
+                  style={styles.inputField}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Nhập họ và tên..."
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+
+              {/* Số điện thoại */}
+              <View style={styles.formInputWrapper}>
+                <Text style={styles.formLabel}>Số điện thoại</Text>
+                <TextInput
+                  style={styles.inputField}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="Nhập số điện thoại..."
+                  placeholderTextColor={colors.muted}
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              {/* Giới tính */}
+              <View style={styles.formInputWrapper}>
+                <Text style={styles.formLabel}>Giới tính</Text>
+                <View style={styles.genderSelector}>
+                  {(['male', 'female', 'other'] as const).map((g) => {
+                    const label = g === 'male' ? 'Nam' : g === 'female' ? 'Nữ' : 'Khác';
+                    const active = editGender === g;
+                    return (
+                      <TouchableOpacity
+                        key={g}
+                        onPress={() => setEditGender(g)}
+                        style={[styles.genderBtn, active && styles.genderBtnActive]}
+                      >
+                        <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Ngày sinh */}
+              <View style={styles.formInputWrapper}>
+                <Text style={styles.formLabel}>Ngày sinh (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={styles.inputField}
+                  value={editDob}
+                  onChangeText={setEditDob}
+                  placeholder="Ví dụ: 2001-09-28"
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+
+              {/* Thành phố */}
+              <View style={styles.formInputWrapper}>
+                <Text style={styles.formLabel}>Thành phố</Text>
+                <TextInput
+                  style={styles.inputField}
+                  value={editCity}
+                  onChangeText={setEditCity}
+                  placeholder="Nhập tỉnh/thành phố..."
+                  placeholderTextColor={colors.muted}
+                />
+              </View>
+
+              {/* Save & Cancel buttons */}
+              <View style={[styles.formActions, { marginTop: SPACING.lg }]}>
+                <TouchableOpacity 
+                  onPress={handleUpdateProfile} 
+                  disabled={isSavingProfile} 
+                  style={styles.saveBtn}
+                >
+                  {isSavingProfile ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Save size={16} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.saveBtnText}>Lưu thay đổi</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setIsEditProfileOpen(false)} style={styles.cancelBtn}>
+                  <X size={16} color={colors.muted} style={{ marginRight: 4 }} />
+                  <Text style={styles.cancelBtnText}>Hủy</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* 🔮 PREMIUM GLASSMORPHIC CAREER DETAIL MODAL */}
       <Modal
         visible={selectedCareer !== null}
@@ -950,10 +1247,10 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   center: {
     justifyContent: 'center',
@@ -964,17 +1261,17 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 60 : 45,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.sm,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(15, 23, 42, 0.4)' : 'rgba(248, 250, 252, 0.8)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: colors.border,
   },
   segmentWrapper: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(15, 23, 42, 0.03)',
     borderRadius: RADIUS.md,
     padding: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: colors.border,
   },
   segmentBtn: {
     flex: 1,
@@ -985,17 +1282,22 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
   },
   segmentBtnActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 1)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: colors.border,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+      android: { elevation: 1 },
+      web: { boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }
+    })
   },
   segmentBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.muted,
+    color: colors.muted,
   },
   segmentBtnTextActive: {
-    color: COLORS.foreground,
+    color: colors.foreground,
   },
   scrollContent: {
     padding: SPACING.lg,
@@ -1007,12 +1309,28 @@ const styles = StyleSheet.create({
     gap: SPACING.lg,
     marginTop: SPACING.sm,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
   avatar: {
     width: 68,
     height: 68,
     borderRadius: 34,
     borderWidth: 2,
-    borderColor: COLORS.primary,
+    borderColor: colors.primary,
+  },
+  avatarEditOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.card,
   },
   userInfo: {
     flex: 1,
@@ -1020,17 +1338,17 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 22,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
   },
   userEmail: {
     fontSize: 14,
-    color: COLORS.muted,
+    color: colors.muted,
     marginTop: 2,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.06)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: RADIUS.sm,
@@ -1038,7 +1356,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   badgeText: {
-    color: COLORS.secondary,
+    color: colors.secondary,
     fontSize: 10,
     fontWeight: '700',
   },
@@ -1050,7 +1368,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginBottom: SPACING.md,
   },
   cardHeaderWithIcon: {
@@ -1062,25 +1380,25 @@ const styles = StyleSheet.create({
   cardTitleInline: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
   },
   noChartContainer: {
     alignItems: 'center',
     paddingVertical: SPACING.xl,
   },
   noChartText: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 13,
     marginBottom: SPACING.md,
   },
   takeTestBtn: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: RADIUS.md,
   },
   takeTestText: {
-    color: COLORS.foreground,
+    color: '#fff',
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1096,36 +1414,36 @@ const styles = StyleSheet.create({
   },
   walletLabel: {
     fontSize: 12,
-    color: COLORS.muted,
+    color: colors.muted,
   },
   walletBalance: {
     fontSize: 22,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginTop: 2,
   },
   depositBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: RADIUS.md,
   },
   depositText: {
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontSize: 13,
     fontWeight: '700',
   },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.border,
     marginVertical: SPACING.md,
   },
   quotaTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginBottom: SPACING.md,
   },
   quotaRow: {
@@ -1135,16 +1453,16 @@ const styles = StyleSheet.create({
   },
   quotaLabel: {
     fontSize: 12,
-    color: COLORS.muted,
+    color: colors.muted,
   },
   quotaValue: {
     fontSize: 12,
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontWeight: '600',
   },
   progressBarBg: {
     height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.06)',
     borderRadius: 3,
     marginBottom: SPACING.md,
   },
@@ -1154,12 +1472,12 @@ const styles = StyleSheet.create({
   },
   planDesc: {
     fontSize: 13,
-    color: COLORS.muted,
+    color: colors.muted,
     lineHeight: 18,
     marginBottom: SPACING.md,
   },
   upgradeBtn: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: colors.secondary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1173,10 +1491,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   actionList: {
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.02)' : 'rgba(15, 23, 42, 0.01)',
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: colors.border,
     marginTop: SPACING.md,
   },
   actionRow: {
@@ -1185,7 +1503,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: colors.border,
   },
   actionLeft: {
     flexDirection: 'row',
@@ -1195,17 +1513,15 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.foreground,
+    color: colors.foreground,
   },
   footerSpace: {
     height: 100,
   },
-
-  /* 🧠 ASSESSMENT SPECIFIC INTEGRATED STYLES */
   sectionTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginBottom: SPACING.md,
     marginTop: SPACING.sm,
   },
@@ -1221,14 +1537,14 @@ const styles = StyleSheet.create({
   },
   profileLabel: {
     fontSize: 10,
-    color: COLORS.muted,
+    color: colors.muted,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
   profileTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: colors.primary,
     marginTop: 2,
   },
   fitBadge: {
@@ -1246,7 +1562,7 @@ const styles = StyleSheet.create({
   },
   aiExplanationText: {
     fontSize: 13,
-    color: COLORS.muted,
+    color: colors.muted,
     lineHeight: 20,
     marginBottom: SPACING.lg,
   },
@@ -1258,7 +1574,7 @@ const styles = StyleSheet.create({
     flex: 1.2,
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1273,15 +1589,15 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryReportBtnText: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1293,7 +1609,7 @@ const styles = StyleSheet.create({
   barLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.foreground,
+    color: colors.foreground,
   },
   barScore: {
     fontSize: 13,
@@ -1301,7 +1617,7 @@ const styles = StyleSheet.create({
   },
   barBg: {
     height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.06)',
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -1311,7 +1627,7 @@ const styles = StyleSheet.create({
   },
   barDesc: {
     fontSize: 11,
-    color: COLORS.muted,
+    color: colors.muted,
     marginTop: 4,
     lineHeight: 16,
   },
@@ -1341,13 +1657,13 @@ const styles = StyleSheet.create({
   introTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: SPACING.md,
   },
   introDesc: {
     fontSize: 14,
-    color: COLORS.muted,
+    color: colors.muted,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: SPACING.xl,
@@ -1356,7 +1672,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 56,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1367,33 +1683,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-
-  /* 🛠️ ADMIN STYLES FOR INTEGRATED QUESTION BANK */
   adminHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    borderTopColor: colors.border,
   },
   adminHeaderLabel: {
     fontSize: 10,
-    color: COLORS.primary,
+    color: colors.primary,
     fontWeight: '800',
     letterSpacing: 2,
   },
   adminHeaderTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginTop: 2,
   },
   addQBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1406,7 +1720,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontSize: 13,
     height: 36,
     borderWidth: 0,
@@ -1414,7 +1728,7 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineStyle: 'none' as any } })
   },
   countText: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 12,
     marginBottom: SPACING.md,
     fontWeight: '600',
@@ -1427,23 +1741,23 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginBottom: SPACING.md,
   },
   fieldLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: COLORS.muted,
+    color: colors.muted,
     marginBottom: 4,
     marginTop: 8,
     textTransform: 'uppercase',
   },
   textArea: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    color: COLORS.foreground,
+    borderColor: colors.border,
+    color: colors.foreground,
     padding: SPACING.sm,
     fontSize: 14,
     minHeight: 80,
@@ -1451,11 +1765,11 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineStyle: 'none' as any } })
   },
   inputField: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    color: COLORS.foreground,
+    borderColor: colors.border,
+    color: colors.foreground,
     paddingHorizontal: SPACING.sm,
     height: 42,
     fontSize: 14,
@@ -1465,17 +1779,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
     marginRight: 6,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: colors.border,
   },
   dimPillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   dimPillText: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -1494,7 +1808,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   saveBtnText: {
     color: '#fff',
@@ -1508,12 +1822,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 44,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.border,
   },
   cancelBtnText: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1546,26 +1860,26 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   qText: {
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
     marginBottom: 8,
   },
   qOpt: {
-    color: COLORS.muted,
+    color: colors.muted,
     fontSize: 12,
     lineHeight: 18,
   },
   retryAssessmentBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1575,7 +1889,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   retryAssessmentBtnText: {
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -1584,18 +1898,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.card,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     height: '85%',
     paddingTop: SPACING.md,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.border,
   },
   modalHandle: {
     width: 40,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(15, 23, 42, 0.15)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: SPACING.sm,
@@ -1608,7 +1922,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.04)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1621,13 +1935,13 @@ const styles = StyleSheet.create({
   modalLoadingText: {
     fontSize: 16,
     fontWeight: '700',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginTop: SPACING.md,
     textAlign: 'center',
   },
   modalLoadingSubtext: {
     fontSize: 13,
-    color: COLORS.muted,
+    color: colors.muted,
     marginTop: 4,
     textAlign: 'center',
   },
@@ -1651,7 +1965,7 @@ const styles = StyleSheet.create({
   modalCareerTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     textAlign: 'center',
     marginBottom: SPACING.md,
   },
@@ -1687,7 +2001,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(59, 130, 246, 0.2)',
   },
   modalDemandText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
     marginLeft: 4,
@@ -1698,7 +2012,7 @@ const styles = StyleSheet.create({
   modalSectionTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     marginBottom: SPACING.md,
   },
   modalGlassCard: {
@@ -1707,7 +2021,7 @@ const styles = StyleSheet.create({
   },
   modalOverviewText: {
     fontSize: 14,
-    color: COLORS.muted,
+    color: colors.muted,
     lineHeight: 22,
   },
   prosConsContainer: {
@@ -1737,7 +2051,7 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     fontSize: 12,
-    color: COLORS.muted,
+    color: colors.muted,
     lineHeight: 18,
     flex: 1,
   },
@@ -1756,7 +2070,7 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
   },
   trendYearText: {
-    color: COLORS.secondary,
+    color: colors.secondary,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1765,7 +2079,7 @@ const styles = StyleSheet.create({
   },
   trendDescText: {
     fontSize: 13,
-    color: COLORS.muted,
+    color: colors.muted,
     lineHeight: 18,
   },
   stepRow: {
@@ -1783,13 +2097,13 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
   },
   stepNumberText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
   },
   stepText: {
     fontSize: 13,
-    color: COLORS.muted,
+    color: colors.muted,
     fontWeight: '600',
   },
   skillsTagContainer: {
@@ -1806,7 +2120,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   skillTagText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1832,25 +2146,25 @@ const styles = StyleSheet.create({
     marginRight: SPACING.xs,
   },
   companyIconText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '800',
   },
   companyName: {
     flex: 1,
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontSize: 12,
     fontWeight: '600',
   },
   modalCtaBtn: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: RADIUS.lg,
     marginTop: SPACING.md,
-    shadowColor: COLORS.primary,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
@@ -1869,7 +2183,7 @@ const styles = StyleSheet.create({
   },
   modalErrorText: {
     fontSize: 14,
-    color: COLORS.muted,
+    color: colors.muted,
     marginBottom: SPACING.md,
   },
   modalErrorBtn: {
@@ -1879,7 +2193,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   modalErrorBtnText: {
-    color: COLORS.foreground,
+    color: colors.foreground,
     fontWeight: '700',
   },
   careersThreeColumnRow: {
@@ -1918,7 +2232,7 @@ const styles = StyleSheet.create({
   threeColumnCareerTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: COLORS.foreground,
+    color: colors.foreground,
     lineHeight: 16,
     minHeight: 48,
     marginBottom: 4,
@@ -1961,5 +2275,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  
+  // NEW EDIT PROFILE FORM STYLES
+  editProfileModalContent: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    maxHeight: '90%',
+    paddingTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  formInputWrapper: {
+    marginBottom: SPACING.md,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.muted,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  genderSelector: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  genderBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(15, 23, 42, 0.03)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  genderBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  genderText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  genderTextActive: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });
