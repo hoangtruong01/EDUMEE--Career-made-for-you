@@ -1047,12 +1047,10 @@ const Profile = () => {
             </div>
             <div className="space-y-2">
               <label className="text-foreground text-sm font-medium">Thành phố</label>
-              <input
-                type="text"
+              <AddressSelector
                 value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                placeholder="VD: Hà Nội"
-                className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
+                onChange={(city) => setFormData({ ...formData, city })}
+                isModal={true}
               />
             </div>
             <div className="space-y-2">
@@ -1593,13 +1591,11 @@ const Profile = () => {
                   className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-primary"
                 />
               </ProfileField>
-              <ProfileField icon={MapPin} label="Thành phố">
-                <input
-                  type="text"
+              <ProfileField icon={MapPin} label="Thành phố" className="md:col-span-2">
+                <AddressSelector
                   value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  placeholder="VD: Hà Nội"
-                  className="border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-primary"
+                  onChange={(city) => setFormData({ ...formData, city })}
+                  isModal={false}
                 />
               </ProfileField>
               <ProfileField icon={Award} label="Trình độ" className="md:col-span-2">
@@ -3013,6 +3009,338 @@ function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return fallback;
+}
+
+interface Province {
+  code: number;
+  name: string;
+  codename: string;
+  division_type: string;
+}
+
+interface District {
+  code: number;
+  name: string;
+  codename: string;
+  division_type: string;
+  province_code: number;
+}
+
+interface Ward {
+  code: number;
+  name: string;
+  codename: string;
+  division_type: string;
+  district_code: number;
+}
+
+interface AddressSelectorProps {
+  value: string;
+  onChange: (newValue: string) => void;
+  isModal?: boolean;
+}
+
+function AddressSelector({ value, onChange, isModal = false }: AddressSelectorProps) {
+  const [provinces, setProvinces] = useState<Province[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [wards, setWards] = useState<Ward[]>([]);
+
+  const [selProvinceCode, setSelProvinceCode] = useState<number | ''>('');
+  const [selDistrictCode, setSelDistrictCode] = useState<number | ''>('');
+  const [selWardCode, setSelWardCode] = useState<number | ''>('');
+
+  const [isManual, setIsManual] = useState(false);
+  const [manualValue, setManualValue] = useState(value);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch provinces on mount
+  useEffect(() => {
+    let active = true;
+    const fetchProvinces = async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetch('https://provinces.open-api.vn/api/v1/p/');
+        if (!res.ok) throw new Error('Failed to fetch provinces');
+        const data = await res.json();
+        if (active) {
+          setProvinces(data);
+        }
+      } catch (err) {
+        console.error('Error fetching provinces:', err);
+        if (active) setIsManual(true);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void fetchProvinces();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Parse initial value once provinces are loaded
+  useEffect(() => {
+    if (provinces.length === 0 || !value) return;
+
+    // Only parse if we haven't selected anything yet (to avoid overriding user interaction)
+    if (selProvinceCode !== '') return;
+
+    const parts = value.split(',').map((p) => p.trim());
+    
+    // Find matching province
+    let matchedProvince: Province | undefined;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i].toLowerCase();
+      matchedProvince = provinces.find(
+        (p) => p.name.toLowerCase().includes(part) || part.includes(p.name.toLowerCase())
+      );
+      if (matchedProvince) break;
+    }
+
+    if (!matchedProvince) {
+      setIsManual(true);
+      setManualValue(value);
+      return;
+    }
+
+    setSelProvinceCode(matchedProvince.code);
+
+    const loadDistrictsAndMatch = async (provinceCode: number) => {
+      try {
+        const res = await fetch(`https://provinces.open-api.vn/api/v1/p/${provinceCode}?depth=2`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const districtsList = data.districts || [];
+        setDistricts(districtsList);
+
+        let matchedDistrict: District | undefined;
+        for (let i = parts.length - 2; i >= 0; i--) {
+          const part = parts[i].toLowerCase();
+          matchedDistrict = districtsList.find(
+            (d: District) => d.name.toLowerCase().includes(part) || part.includes(d.name.toLowerCase())
+          );
+          if (matchedDistrict) break;
+        }
+
+        if (matchedDistrict) {
+          setSelDistrictCode(matchedDistrict.code);
+
+          const resWards = await fetch(`https://provinces.open-api.vn/api/v1/d/${matchedDistrict.code}?depth=2`);
+          if (!resWards.ok) return;
+          const dataWards = await resWards.json();
+          const wardsList = dataWards.wards || [];
+          setWards(wardsList);
+
+          let matchedWard: Ward | undefined;
+          if (parts.length > 2) {
+            const part = parts[0].toLowerCase();
+            matchedWard = wardsList.find(
+              (w: Ward) => w.name.toLowerCase().includes(part) || part.includes(w.name.toLowerCase())
+            );
+          }
+
+          if (matchedWard) {
+            setSelWardCode(matchedWard.code);
+          }
+        }
+      } catch (err) {
+        console.error('Error matching districts/wards:', err);
+      }
+    };
+
+    void loadDistrictsAndMatch(matchedProvince.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provinces, value]);
+
+  // Load districts when province selection changes
+  const handleProvinceChange = async (provCodeStr: string) => {
+    const provCode = provCodeStr ? Number(provCodeStr) : '';
+    setSelProvinceCode(provCode);
+    setSelDistrictCode('');
+    setSelWardCode('');
+    setDistricts([]);
+    setWards([]);
+
+    if (!provCode) {
+      onChange('');
+      return;
+    }
+
+    const provinceName = provinces.find((p) => p.code === provCode)?.name || '';
+    onChange(provinceName);
+
+    try {
+      const res = await fetch(`https://provinces.open-api.vn/api/v1/p/${provCode}?depth=2`);
+      if (!res.ok) throw new Error('Failed to fetch districts');
+      const data = await res.json();
+      setDistricts(data.districts || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Load wards when district selection changes
+  const handleDistrictChange = async (distCodeStr: string) => {
+    const distCode = distCodeStr ? Number(distCodeStr) : '';
+    setSelDistrictCode(distCode);
+    setSelWardCode('');
+    setWards([]);
+
+    if (!distCode) {
+      const provinceName = provinces.find((p) => p.code === selProvinceCode)?.name || '';
+      onChange(provinceName);
+      return;
+    }
+
+    const provinceName = provinces.find((p) => p.code === selProvinceCode)?.name || '';
+    const districtName = districts.find((d) => d.code === distCode)?.name || '';
+    onChange(`${districtName}, ${provinceName}`);
+
+    try {
+      const res = await fetch(`https://provinces.open-api.vn/api/v1/d/${distCode}?depth=2`);
+      if (!res.ok) throw new Error('Failed to fetch wards');
+      const data = await res.json();
+      setWards(data.wards || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Handle ward changes
+  const handleWardChange = (wardCodeStr: string) => {
+    const wardCode = wardCodeStr ? Number(wardCodeStr) : '';
+    setSelWardCode(wardCode);
+
+    const provinceName = provinces.find((p) => p.code === selProvinceCode)?.name || '';
+    const districtName = districts.find((d) => d.code === selDistrictCode)?.name || '';
+
+    if (!wardCode) {
+      onChange(`${districtName}, ${provinceName}`);
+      return;
+    }
+
+    const wardName = wards.find((w) => w.code === wardCode)?.name || '';
+    onChange(`${wardName}, ${districtName}, ${provinceName}`);
+  };
+
+  const handleManualChange = (val: string) => {
+    setManualValue(val);
+    onChange(val);
+  };
+
+  const toggleManual = () => {
+    const newManual = !isManual;
+    setIsManual(newManual);
+    if (newManual) {
+      setManualValue(value);
+    } else {
+      setSelProvinceCode('');
+      setSelDistrictCode('');
+      setSelWardCode('');
+      setDistricts([]);
+      setWards([]);
+      onChange('');
+    }
+  };
+
+  const selectClassName = isModal
+    ? 'border-input bg-background text-foreground w-full rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600'
+    : 'border-input bg-background text-foreground w-full rounded-xl border px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-primary';
+
+  if (isManual) {
+    return (
+      <div className="space-y-2">
+        <input
+          type="text"
+          value={manualValue}
+          onChange={(e) => handleManualChange(e.target.value)}
+          placeholder="VD: Hà Nội hoặc Nước ngoài..."
+          className={isModal
+            ? "border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-violet-600"
+            : "border-input bg-background text-foreground placeholder:text-muted-foreground w-full rounded-xl border px-4 py-3 text-sm transition-all outline-none focus:ring-2 focus:ring-primary"
+          }
+        />
+        <button
+          type="button"
+          onClick={toggleManual}
+          className="text-violet-600 hover:underline text-xs font-bold dark:text-violet-400"
+        >
+          ← Chọn từ danh sách Tỉnh/Thành phố
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {isLoading && provinces.length === 0 ? (
+        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin text-primary" strokeWidth={3} />
+          Đang tải danh sách tỉnh thành...
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase">Tỉnh / Thành phố</span>
+            <select
+              value={selProvinceCode}
+              onChange={(e) => handleProvinceChange(e.target.value)}
+              className={selectClassName}
+            >
+              <option value="">-- Chọn Tỉnh/Thành --</option>
+              {provinces.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase">Quận / Huyện</span>
+            <select
+              value={selDistrictCode}
+              onChange={(e) => handleDistrictChange(e.target.value)}
+              disabled={!selProvinceCode}
+              className={selectClassName}
+            >
+              <option value="">-- Chọn Quận/Huyện --</option>
+              {districts.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase">Phường / Xã</span>
+            <select
+              value={selWardCode}
+              onChange={(e) => handleWardChange(e.target.value)}
+              disabled={!selDistrictCode}
+              className={selectClassName}
+            >
+              <option value="">-- Chọn Phường/Xã --</option>
+              {wards.map((w) => (
+                <option key={w.code} value={w.code}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={toggleManual}
+        className="text-violet-600 hover:underline text-xs font-bold dark:text-violet-400"
+      >
+        Nhập thủ công địa chỉ khác →
+      </button>
+    </div>
+  );
 }
 
 export default Profile;
