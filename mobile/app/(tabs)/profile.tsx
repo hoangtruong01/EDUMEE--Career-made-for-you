@@ -94,6 +94,32 @@ export default function ProfileScreen() {
   const [editCity, setEditCity] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // Provinces Open API states with premium graceful degradation fallbacks
+  const [provinces, setProvinces] = useState<any[]>([
+    { name: 'Thành phố Hà Nội', code: 1 },
+    { name: 'Thành phố Hồ Chí Minh', code: 79 },
+    { name: 'Thành phố Đà Nẵng', code: 48 },
+    { name: 'Thành phố Hải Phòng', code: 31 },
+    { name: 'Thành phố Cần Thơ', code: 92 },
+  ]);
+  const [searchProvinceQuery, setSearchProvinceQuery] = useState('');
+  const [isProvinceDropdownOpen, setIsProvinceDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    async function fetchProvinces() {
+      try {
+        const response = await fetch('https://provinces.open-api.vn/api/p/');
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setProvinces(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch provinces:', error);
+      }
+    }
+    fetchProvinces();
+  }, []);
+
   // Career Detailed Analysis Modal States
   const [selectedCareer, setSelectedCareer] = useState<string | null>(null);
   const [careerDetail, setCareerDetail] = useState<any>(null);
@@ -1027,14 +1053,55 @@ export default function ProfileScreen() {
 
               {/* Thành phố */}
               <View style={styles.formInputWrapper}>
-                <Text style={styles.formLabel}>Thành phố</Text>
-                <TextInput
-                  style={styles.inputField}
-                  value={editCity}
-                  onChangeText={setEditCity}
-                  placeholder="Nhập tỉnh/thành phố..."
-                  placeholderTextColor={colors.muted}
-                />
+                <Text style={styles.formLabel}>Thành phố / Tỉnh</Text>
+                <TouchableOpacity 
+                  onPress={() => setIsProvinceDropdownOpen(!isProvinceDropdownOpen)}
+                  style={[styles.inputField, { justifyContent: 'center' }]}
+                >
+                  <Text style={{ color: editCity ? colors.foreground : colors.muted, fontSize: 14 }}>
+                    {editCity || 'Chọn tỉnh/thành phố...'}
+                  </Text>
+                </TouchableOpacity>
+
+                {isProvinceDropdownOpen && (
+                  <View style={styles.provinceDropdownCard}>
+                    {/* Search Field */}
+                    <TextInput
+                      style={styles.provinceSearchInput}
+                      value={searchProvinceQuery}
+                      onChangeText={setSearchProvinceQuery}
+                      placeholder="Tìm kiếm tỉnh/thành..."
+                      placeholderTextColor={colors.muted}
+                    />
+                    
+                    <ScrollView 
+                      style={{ maxHeight: 200 }} 
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      {provinces
+                        .filter(p => p.name.toLowerCase().includes(searchProvinceQuery.toLowerCase()))
+                        .map((p) => (
+                          <TouchableOpacity
+                            key={p.code}
+                            onPress={() => {
+                              setEditCity(p.name);
+                              setIsProvinceDropdownOpen(false);
+                              setSearchProvinceQuery('');
+                            }}
+                            style={styles.provinceDropdownItem}
+                          >
+                            <Text style={styles.provinceDropdownItemText}>{p.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      {provinces.filter(p => p.name.toLowerCase().includes(searchProvinceQuery.toLowerCase())).length === 0 && (
+                        <View style={{ padding: 12, alignItems: 'center' }}>
+                          <Text style={{ color: colors.muted, fontSize: 12 }}>Không tìm thấy kết quả</Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
 
               {/* Save & Cancel buttons */}
@@ -2323,5 +2390,41 @@ const getStyles = (colors: any) => StyleSheet.create({
   genderTextActive: {
     color: '#fff',
     fontWeight: '700',
+  },
+  provinceDropdownCard: {
+    backgroundColor: colors.card,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 6,
+    padding: SPACING.sm,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6 },
+      android: { elevation: 3 },
+      web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }
+    })
+  },
+  provinceSearchInput: {
+    backgroundColor: colors.background === '#0F172A' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.03)',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.foreground,
+    paddingHorizontal: SPACING.sm,
+    height: 38,
+    fontSize: 13,
+    marginBottom: SPACING.sm,
+    ...Platform.select({ web: { outlineStyle: 'none' as any } })
+  },
+  provinceDropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  provinceDropdownItemText: {
+    color: colors.foreground,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
