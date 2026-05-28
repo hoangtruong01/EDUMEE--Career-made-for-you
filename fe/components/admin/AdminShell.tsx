@@ -11,7 +11,6 @@ import {
   FileText,
   GraduationCap,
   History,
-  Home,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -38,8 +37,6 @@ const menuItems = [
   { href: '/admin/audit-logs', label: 'Nhật ký', icon: History },
   { href: '/admin/settings', label: 'Cài đặt', icon: Settings },
 ];
-
-const footerItems = [{ href: '/', label: 'Về trang chủ', icon: Home }];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -93,16 +90,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </nav>
 
           <div className="mt-auto border-t border-slate-100 dark:border-slate-800 p-3">
-            {footerItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group mb-1 flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium text-slate-600 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-              >
-                <item.icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </Link>
-            ))}
             <button
               type="button"
               onClick={handleLogout}
