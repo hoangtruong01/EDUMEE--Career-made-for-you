@@ -358,7 +358,7 @@ export class AuthService {
   // =======================================================================
   // 9. GIAO TIẾP VỚI GOOGLE OAUTH
   // =======================================================================
-  getGoogleAuthorizationUrl(): string {
+  getGoogleAuthorizationUrl(state?: string): string {
     const query = new URLSearchParams({
       client_id: this.configService.get<string>('GOOGLE_CLIENT_ID') || '',
       redirect_uri: this.configService.get<string>('GOOGLE_CALLBACK_URL') || '',
@@ -367,6 +367,7 @@ export class AuthService {
       access_type: 'offline',
       prompt: 'consent',
       include_granted_scopes: 'true',
+      ...(state ? { state } : {}),
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${query.toString()}`;

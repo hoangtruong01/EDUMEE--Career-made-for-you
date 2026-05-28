@@ -27,8 +27,9 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useTheme } from 'next-themes';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, useSyncExternalStore, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 
 const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Compass },
@@ -39,15 +40,7 @@ const baseNavItems = [
   { href: '/community', label: 'Cộng đồng', icon: Users },
 ];
 
-const themeSubscribe = (cb: () => void) => {
-  window.addEventListener('storage', cb);
-  return () => window.removeEventListener('storage', cb);
-};
-
-const getThemeSnapshot = () => {
-  const saved = localStorage.getItem('theme');
-  return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
-};
+// Theme helper functions removed, using next-themes
 
 function formatCurrency(amount?: number, currency = 'VND'): string {
   const numericAmount = Number(amount || 0);
@@ -176,18 +169,18 @@ const Navbar = () => {
     setLogoClicks((prev) => prev + 1);
   };
 
-  const darkMode = useSyncExternalStore(themeSubscribe, getThemeSnapshot, () => false);
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
-  if (typeof document !== 'undefined') {
-    document.documentElement.classList.toggle('dark', darkMode);
-  }
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = resolvedTheme === 'dark';
 
   const toggleDarkMode = useCallback(() => {
-    const next = !darkMode;
-    localStorage.setItem('theme', next ? 'dark' : 'light');
-    document.documentElement.classList.toggle('dark', next);
-    window.dispatchEvent(new StorageEvent('storage'));
-  }, [darkMode]);
+    setTheme(isDark ? 'light' : 'dark');
+  }, [isDark, setTheme]);
 
   const showMentorDirectory = role !== 'mentor' && role !== 'admin';
   const profileHref = role === 'mentor' ? '/mentor-dashboard/profile' : '/profile';
@@ -225,7 +218,11 @@ const Navbar = () => {
         <div className="hidden items-center gap-2 lg:flex">
           <NotificationBell />
           <Button variant="ghost" size="icon" aria-label="Chế độ sáng/tối" onClick={toggleDarkMode}>
-            {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {mounted ? (
+              isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />
+            ) : (
+              <div className="h-5 w-5 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+            )}
           </Button>
           <HeaderUserMenu user={displayedUser} wallet={displayedWallet} profileHref={profileHref} />
         </div>
@@ -280,8 +277,17 @@ const Navbar = () => {
                 <NotificationBell />
               </div>
               <Button variant="ghost" className="w-full justify-start gap-2" onClick={toggleDarkMode}>
-                {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {darkMode ? 'Chế độ sáng' : 'Chế độ tối'}
+                {mounted ? (
+                  <>
+                    {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {isDark ? 'Chế độ sáng' : 'Chế độ tối'}
+                  </>
+                ) : (
+                  <>
+                    <div className="h-4 w-4 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                    Đang tải...
+                  </>
+                )}
               </Button>
             </div>
           </motion.div>

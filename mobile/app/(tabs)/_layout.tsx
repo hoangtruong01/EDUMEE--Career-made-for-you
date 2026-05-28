@@ -15,8 +15,8 @@ export default function TabLayout() {
           position: 'absolute',
           borderTopWidth: 0,
           backgroundColor: 'rgba(15, 23, 42, 0.9)',
-          height: 68,
-          paddingBottom: 12,
+          height: Platform.OS === 'ios' ? 88 : 76,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 14,
           paddingTop: 8,
           ...Platform.select({
             ios: {

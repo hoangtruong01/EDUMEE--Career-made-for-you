@@ -52,7 +52,7 @@ export default function AdminSettingsPage() {
       return (
         <AdminPanel title="Cấu hình thông báo" className="px-5 py-4">
           <div className="space-y-3">
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium">
+            <label className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3 text-sm font-medium dark:text-slate-300">
               Email thông báo hệ thống
               <input
                 type="checkbox"
@@ -62,7 +62,7 @@ export default function AdminSettingsPage() {
                 }
               />
             </label>
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium">
+            <label className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3 text-sm font-medium dark:text-slate-300">
               Push notification quản trị
               <input
                 type="checkbox"
@@ -72,7 +72,7 @@ export default function AdminSettingsPage() {
                 }
               />
             </label>
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium">
+            <label className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3 text-sm font-medium dark:text-slate-300">
               Tổng hợp hằng ngày
               <input
                 type="checkbox"
@@ -91,7 +91,7 @@ export default function AdminSettingsPage() {
       return (
         <AdminPanel title="Bảo mật hệ thống" className="px-5 py-4">
           <div className="grid gap-3">
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium">
+            <label className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3 text-sm font-medium dark:text-slate-300">
               Bật xác thực 2 lớp cho admin
               <input
                 type="checkbox"
@@ -103,7 +103,7 @@ export default function AdminSettingsPage() {
             </label>
 
             <div>
-              <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-350">
                 <Lock className="h-4 w-4" />
                 Thời gian hết hạn phiên đăng nhập
               </label>
@@ -112,11 +112,11 @@ export default function AdminSettingsPage() {
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, sessionTimeout: event.target.value }))
                 }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400"
+                className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
               >
-                <option>15 phút</option>
-                <option>30 phút</option>
-                <option>60 phút</option>
+                <option className="dark:bg-slate-900">15 phút</option>
+                <option className="dark:bg-slate-900">30 phút</option>
+                <option className="dark:bg-slate-900">60 phút</option>
               </select>
             </div>
           </div>
@@ -129,28 +129,28 @@ export default function AdminSettingsPage() {
         <AdminPanel title="Tích hợp dịch vụ" className="px-5 py-4">
           <div className="grid gap-3">
             <div>
-              <label className="mb-1 text-sm font-semibold text-slate-700">Nhà cung cấp AI</label>
+              <label className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-350">Nhà cung cấp AI</label>
               <select
                 value={form.apiProvider}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, apiProvider: event.target.value }))
                 }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400"
+                className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
               >
-                <option>OpenAI</option>
-                <option>Azure OpenAI</option>
-                <option>Gemini</option>
+                <option className="dark:bg-slate-900">OpenAI</option>
+                <option className="dark:bg-slate-900">Azure OpenAI</option>
+                <option className="dark:bg-slate-900">Gemini</option>
               </select>
             </div>
 
             <div>
-              <label className="mb-1 text-sm font-semibold text-slate-700">Webhook URL</label>
+              <label className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-350">Webhook URL</label>
               <input
                 value={form.webhookUrl}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, webhookUrl: event.target.value }))
                 }
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
               />
             </div>
           </div>
@@ -162,23 +162,23 @@ export default function AdminSettingsPage() {
       <>
         <AdminPanel title="Thông tin hệ thống" className="px-5 py-4">
           <div className="grid gap-3">
-            <label className="text-sm font-semibold text-slate-700">Tên hệ thống</label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-350">Tên hệ thống</label>
             <input
               value={form.systemName}
               onChange={(event) => setForm((prev) => ({ ...prev, systemName: event.target.value }))}
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+              className="h-11 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
             />
 
-            <label className="text-sm font-semibold text-slate-700">Mô tả</label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-350">Mô tả</label>
             <textarea
               value={form.systemDesc}
               onChange={(event) => setForm((prev) => ({ ...prev, systemDesc: event.target.value }))}
-              className="min-h-24 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400"
+              className="min-h-24 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-400 dark:text-white"
             />
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-350">
                   <SlidersHorizontal className="h-4 w-4" />
                   Ngôn ngữ mặc định
                 </label>
@@ -187,25 +187,25 @@ export default function AdminSettingsPage() {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, language: event.target.value }))
                   }
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400"
+                  className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
                 >
-                  <option>Tiếng Việt</option>
-                  <option>English</option>
+                  <option className="dark:bg-slate-900">Tiếng Việt</option>
+                  <option className="dark:bg-slate-900">English</option>
                 </select>
               </div>
               <div>
-                <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <label className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-350">
                   <Lock className="h-4 w-4" />
                   Theme màu
                 </label>
                 <select
                   value={form.theme}
                   onChange={(event) => setForm((prev) => ({ ...prev, theme: event.target.value }))}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400"
+                  className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
                 >
-                  <option>Indigo và Purple (Mặc định)</option>
-                  <option>Emerald va Cyan</option>
-                  <option>Neutral Gray</option>
+                  <option className="dark:bg-slate-900">Indigo và Purple (Mặc định)</option>
+                  <option className="dark:bg-slate-900">Emerald va Cyan</option>
+                  <option className="dark:bg-slate-900">Neutral Gray</option>
                 </select>
               </div>
             </div>
@@ -214,20 +214,20 @@ export default function AdminSettingsPage() {
 
         <AdminPanel title="Liên hệ và Hỗ trợ" className="px-5 py-4">
           <div className="grid gap-3">
-            <label className="text-sm font-semibold text-slate-700">Email hỗ trợ</label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-350">Email hỗ trợ</label>
             <input
               value={form.supportEmail}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, supportEmail: event.target.value }))
               }
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+              className="h-11 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
             />
 
-            <label className="text-sm font-semibold text-slate-700">Hotline</label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-350">Hotline</label>
             <input
               value={form.hotline}
               onChange={(event) => setForm((prev) => ({ ...prev, hotline: event.target.value }))}
-              className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+              className="h-11 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm outline-none focus:border-violet-400 dark:text-white"
             />
           </div>
         </AdminPanel>
@@ -246,7 +246,7 @@ export default function AdminSettingsPage() {
             <button
               type="button"
               onClick={resetDefaults}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700"
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 text-sm font-semibold text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
               Khôi phục
             </button>
@@ -273,10 +273,10 @@ export default function AdminSettingsPage() {
                 setActiveTab(tab.label as 'Chung' | 'Thông báo' | 'Bảo mật' | 'Tích hợp')
               }
               className={cn(
-                'mb-1 flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold',
+                'mb-1 flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold transition-colors',
                 activeTab === tab.label
-                  ? 'bg-violet-100 text-violet-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-slate-100',
               )}
             >
               <tab.icon className="h-4 w-4" />
@@ -288,7 +288,7 @@ export default function AdminSettingsPage() {
         <div className="space-y-4">{renderMainPanel()}</div>
       </div>
 
-      <p className="mt-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-700">
+      <p className="mt-4 rounded-xl border border-violet-100 dark:border-violet-900/30 bg-violet-50 dark:bg-violet-900/10 px-4 py-3 text-sm font-medium text-violet-700 dark:text-violet-400">
         {message}
       </p>
     </div>

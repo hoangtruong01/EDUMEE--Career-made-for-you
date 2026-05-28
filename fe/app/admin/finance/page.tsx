@@ -289,14 +289,14 @@ export default function AdminFinancePage() {
         title="Quản lý giao dịch và doanh thu"
         subtitle="Sổ cái tài chính là nguồn dữ liệu chính thức cho doanh thu, hoàn tiền, chốt settlement mentor và rút tiền."
         right={
-          <button className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+          <button className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-350 dark:hover:bg-slate-800">
             <Download className="h-4 w-4" /> Xuất báo cáo
           </button>
         }
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+        <div className="flex rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
           {(Object.keys(tabLabels) as FinanceTab[]).map((item) => (
             <button
               key={item}
@@ -304,7 +304,7 @@ export default function AdminFinancePage() {
               onClick={() => setActiveTab(item)}
               className={cn(
                 'rounded-lg px-4 py-2 text-xs font-bold transition',
-                activeTab === item ? 'bg-violet-500 text-white' : 'text-slate-500 hover:bg-slate-50',
+                activeTab === item ? 'bg-violet-500 text-white' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800',
               )}
             >
               {tabLabels[item]}
@@ -327,7 +327,7 @@ export default function AdminFinancePage() {
                 'rounded-xl border px-4 py-2 text-xs font-bold transition',
                 range === item
                   ? 'border-violet-500 bg-violet-500 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800',
               )}
             >
               {rangeLabels[item]}
@@ -337,7 +337,7 @@ export default function AdminFinancePage() {
       </div>
 
       {error ? (
-        <p className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+        <p className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600 dark:border-rose-500/20 dark:bg-rose-950/20 dark:text-rose-400">
           {error}
         </p>
       ) : null}
@@ -484,9 +484,9 @@ function OverviewPanel({
         ))}
       </div>
       <AdminPanel className="p-5">
-        <h2 className="font-display text-xl font-bold text-slate-950">Đối soát doanh thu</h2>
+        <h2 className="font-display text-xl font-bold text-slate-950 dark:text-slate-50">Đối soát doanh thu</h2>
         {isLoading || !summary ? (
-          <p className="mt-4 text-sm font-semibold text-slate-500">Đang tải số liệu sổ cái...</p>
+          <p className="mt-4 text-sm font-semibold text-slate-500 dark:text-slate-400">Đang tải số liệu sổ cái...</p>
         ) : (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <OverviewMetric label="Tổng tiền thu vào" value={formatMoney(summary.grossCashIn, summary.currency)} />
@@ -507,13 +507,13 @@ function OverviewPanel({
 function OverviewMetric({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'emerald' | 'rose' }) {
   const toneClass =
     tone === 'emerald'
-      ? 'text-emerald-700'
+      ? 'text-emerald-700 dark:text-emerald-400'
       : tone === 'rose'
-        ? 'text-rose-700'
-        : 'text-slate-950';
+        ? 'text-rose-700 dark:text-rose-400'
+        : 'text-slate-950 dark:text-slate-50';
   return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+    <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/70">
+      <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">{label}</p>
       <p className={cn('mt-2 text-lg font-black', toneClass)}>{value}</p>
     </div>
   );
@@ -550,8 +550,8 @@ function TransactionPanel({
 
   return (
     <AdminPanel className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
-        <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
+        <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
           {['all', 'ai_plan_revenue', 'payment_paid', 'payment_refunded', 'mentor_settlement_ready', 'withdrawal_paid'].map((item) => (
             <button
               key={item}
@@ -559,7 +559,7 @@ function TransactionPanel({
               onClick={() => onEventTypeChange(item)}
               className={cn(
                 'rounded-lg px-4 py-1.5 text-xs font-bold transition',
-                eventType === item ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                eventType === item ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
               )}
             >
               {item === 'all' ? 'Tất cả' : eventTypeLabel(item)}
@@ -571,7 +571,7 @@ function TransactionPanel({
             value={isAiPlanRevenueFilter ? 'payment' : sourceType}
             disabled={isAiPlanRevenueFilter}
             onChange={(event) => onSourceTypeChange(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none disabled:bg-slate-50 disabled:text-slate-400"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
           >
             <option value="all">Tất cả nguồn</option>
             <option value="payment">Thanh toán</option>
@@ -588,7 +588,7 @@ function TransactionPanel({
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase dark:bg-slate-800/80 dark:text-slate-400">
             <tr>
               <th className="px-6 py-4 text-left">Sự kiện</th>
               <th className="px-6 py-4 text-left">Nguồn</th>
@@ -599,54 +599,54 @@ function TransactionPanel({
               <th className="px-6 py-4 text-left">Dòng sổ</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Đang tải sổ giao dịch...
                 </td>
               </tr>
             ) : transactions.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Chưa có bút toán phù hợp.
                 </td>
               </tr>
             ) : (
               transactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-slate-50/50">
+                <tr key={transaction.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-900">
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
                       {eventTypeLabel(transaction.eventType, metadataString(transaction.metadata, 'purpose'))}
                     </p>
-                    <p className="mt-1 font-mono text-xs font-bold text-slate-500">
+                    <p className="mt-1 font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
                       {String(transaction.metadata?.checkoutReference || transaction.eventKey)}
                     </p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{sourceTypeLabel(transaction.sourceType)}</p>
-                    <p className="font-mono text-xs text-slate-500">{transaction.sourceId}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{sourceTypeLabel(transaction.sourceType)}</p>
+                    <p className="font-mono text-xs text-slate-500 dark:text-slate-400">{transaction.sourceId}</p>
                   </td>
-                  <td className="px-6 py-4 font-semibold text-slate-700">
+                  <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">
                     {transactionPurposeLabel(transaction)}
                   </td>
-                  <td className="px-6 py-4 font-bold text-slate-900">
+                  <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-50">
                     {formatMoney(transaction.debitTotal, transaction.currency)}
                   </td>
-                  <td className="px-6 py-4 font-bold text-slate-900">
+                  <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-50">
                     {formatMoney(transaction.creditTotal, transaction.currency)}
                   </td>
-                  <td className="px-6 py-4 text-slate-500">{formatDate(transaction.occurredAt)}</td>
+                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{formatDate(transaction.occurredAt)}</td>
                   <td className="px-6 py-4">
                     <div className="space-y-1">
                       {transaction.lines.slice(0, 3).map((line, index) => (
-                        <p key={`${line.accountCode}-${index}`} className="text-xs text-slate-600">
+                        <p key={`${line.accountCode}-${index}`} className="text-xs text-slate-600 dark:text-slate-300">
                           <span className="font-semibold">{directionLabel(line.direction)}</span> {accountCodeLabel(line.accountCode)}:{' '}
                           {formatMoney(line.amount, transaction.currency)}
                         </p>
                       ))}
                       {transaction.lines.length > 3 ? (
-                        <p className="text-xs text-slate-400">+{transaction.lines.length - 3} dòng</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">+{transaction.lines.length - 3} dòng</p>
                       ) : null}
                     </div>
                   </td>
@@ -695,10 +695,10 @@ function PaymentTransactionsPanel({
 }) {
   return (
     <AdminPanel className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
         <div>
-          <p className="text-sm font-bold text-slate-900">Giao dịch thanh toán</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Giao dịch thanh toán</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Danh sách tất cả payment để đối soát. Doanh thu chỉ tính từ giao dịch đã thanh toán.
           </p>
         </div>
@@ -706,7 +706,7 @@ function PaymentTransactionsPanel({
           <select
             value={provider}
             onChange={(event) => onProviderChange(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Tất cả nguồn</option>
             <option value="sepay">SePay</option>
@@ -715,7 +715,7 @@ function PaymentTransactionsPanel({
           <select
             value={status}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="pending">Đang chờ</option>
@@ -728,7 +728,7 @@ function PaymentTransactionsPanel({
           <select
             value={purpose}
             onChange={(event) => onPurposeChange(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Tất cả mục đích</option>
             <option value="ai_plan">Gói AI</option>
@@ -745,7 +745,7 @@ function PaymentTransactionsPanel({
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase dark:bg-slate-800/80 dark:text-slate-400">
             <tr>
               <th className="px-6 py-4 text-left">Mã giao dịch</th>
               <th className="px-6 py-4 text-left">Người dùng</th>
@@ -755,39 +755,39 @@ function PaymentTransactionsPanel({
               <th className="px-6 py-4 text-left">Ngày</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Đang tải giao dịch thanh toán...
                 </td>
               </tr>
             ) : payments.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Chưa có giao dịch thanh toán phù hợp.
                 </td>
               </tr>
             ) : (
               payments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-slate-50/50">
+                <tr key={payment.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                   <td className="px-6 py-4">
-                    <p className="font-mono text-xs font-bold text-slate-700">{payment.checkoutReference || payment.id}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{paymentProviderLabel(payment.provider)}</p>
-                    <p className="mt-1 font-mono text-xs text-slate-500">{payment.providerPaymentId || 'Chưa có mã gateway'}</p>
+                    <p className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{payment.checkoutReference || payment.id}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{paymentProviderLabel(payment.provider)}</p>
+                    <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">{payment.providerPaymentId || 'Chưa có mã gateway'}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{payment.userName}</p>
-                    <p className="text-xs text-slate-500">{payment.userEmail}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{payment.userName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{payment.userEmail}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{payment.planName}</p>
-                    <p className="text-xs text-slate-500">{paymentPurposeLabel(payment.purpose)}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{payment.planName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{paymentPurposeLabel(payment.purpose)}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-bold text-slate-900">{formatMoney(payment.totalAmount, payment.currency)}</p>
+                    <p className="font-bold text-slate-900 dark:text-slate-50">{formatMoney(payment.totalAmount, payment.currency)}</p>
                     {Number(payment.creditAppliedAmount || 0) > 0 ? (
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Credit: {formatMoney(payment.creditAppliedAmount || 0, payment.currency)} · {paymentProviderLabel(payment.provider)}:{' '}
                         {formatMoney(payment.amount, payment.currency)}
                       </p>
@@ -796,7 +796,7 @@ function PaymentTransactionsPanel({
                   <td className="px-6 py-4">
                     <PaymentStatusBadge status={payment.status} />
                   </td>
-                  <td className="px-6 py-4 text-slate-500">
+                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
                     {formatDate(payment.eventDate || payment.paidAt || payment.createdAt)}
                   </td>
                 </tr>
@@ -828,8 +828,8 @@ function FeeConfigPanel({
     <AdminPanel className="mb-6 p-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-bold text-slate-900">Tỷ lệ chia phí mentor</p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Tỷ lệ chia phí mentor</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Áp dụng cho giao dịch mentor mới. Giao dịch đã tạo giữ nguyên tỷ lệ snapshot.
           </p>
         </div>
@@ -842,7 +842,7 @@ function FeeConfigPanel({
               step={0.1}
               value={feePercentDraft}
               onChange={(event) => onDraftChange(event.target.value)}
-              className="h-11 w-32 rounded-xl border border-slate-200 bg-white px-3 pr-9 text-right text-sm font-bold text-slate-900 outline-none focus:border-violet-400"
+              className="h-11 w-32 rounded-xl border border-slate-200 bg-white px-3 pr-9 text-right text-sm font-bold text-slate-900 outline-none focus:border-violet-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-50"
             />
             <Percent className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </div>
@@ -859,17 +859,17 @@ function FeeConfigPanel({
       </div>
       {summary ? (
         <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-bold uppercase text-slate-500">Nền tảng</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{summary.config.mentorPlatformFeePercent}%</p>
+          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+            <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Nền tảng</p>
+            <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-50">{summary.config.mentorPlatformFeePercent}%</p>
           </div>
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-bold uppercase text-slate-500">Mentor nhận</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{summary.config.mentorPayoutPercent}%</p>
+          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+            <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Mentor nhận</p>
+            <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-50">{summary.config.mentorPayoutPercent}%</p>
           </div>
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs font-bold uppercase text-slate-500">Settlement sẵn sàng</p>
-            <p className="mt-1 text-lg font-black text-slate-900">{summary.readyCount}</p>
+          <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70">
+            <p className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Settlement sẵn sàng</p>
+            <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-50">{summary.readyCount}</p>
           </div>
         </div>
       ) : null}
@@ -902,16 +902,16 @@ function FeeSettlementPanel({
 }) {
   return (
     <AdminPanel className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
         <div>
-          <p className="text-sm font-bold text-slate-900">Chốt settlement mentor</p>
-          <p className="mt-1 text-xs text-slate-500">Theo dõi phí nền tảng và khoản mentor nhận.</p>
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Chốt settlement mentor</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Theo dõi phí nền tảng và khoản mentor nhận.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={status}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Tất cả settlement</option>
             <option value="pending">Đang chờ</option>
@@ -930,7 +930,7 @@ function FeeSettlementPanel({
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase dark:bg-slate-800/80 dark:text-slate-400">
             <tr>
               <th className="px-6 py-4 text-left">Lịch đặt</th>
               <th className="px-6 py-4 text-left">Mentor</th>
@@ -941,44 +941,44 @@ function FeeSettlementPanel({
               <th className="px-6 py-4 text-left">Trạng thái</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Đang tải settlement mentor...
                 </td>
               </tr>
             ) : settlements.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Chưa có settlement phù hợp.
                 </td>
               </tr>
             ) : (
               settlements.map((settlement) => (
-                <tr key={settlement.paymentId} className="hover:bg-slate-50/50">
+                <tr key={settlement.paymentId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                   <td className="px-6 py-4">
-                    <p className="font-mono text-xs font-bold text-slate-500">
+                    <p className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
                       {settlement.checkoutReference || settlement.paymentId}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">{formatDate(settlement.sessionDate || settlement.paidAt)}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatDate(settlement.sessionDate || settlement.paidAt)}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{settlement.mentorName}</p>
-                    <p className="text-xs text-slate-500">{settlement.mentorEmail}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{settlement.mentorName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{settlement.mentorEmail}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-800">{settlement.menteeName}</p>
-                    <p className="text-xs text-slate-500">{settlement.menteeEmail}</p>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{settlement.menteeName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{settlement.menteeEmail}</p>
                   </td>
-                  <td className="px-6 py-4 font-bold text-slate-900">
+                  <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-50">
                     {formatMoney(settlement.settlementBaseAmount, settlement.currency)}
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-bold text-violet-700">{formatMoney(settlement.platformFeeAmount, settlement.currency)}</p>
-                    <p className="text-xs text-slate-500">{formatPercent(settlement.platformFeeRate)}</p>
+                    <p className="font-bold text-violet-700 dark:text-violet-400">{formatMoney(settlement.platformFeeAmount, settlement.currency)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatPercent(settlement.platformFeeRate)}</p>
                   </td>
-                  <td className="px-6 py-4 font-bold text-emerald-700">
+                  <td className="px-6 py-4 font-bold text-emerald-700 dark:text-emerald-400">
                     {formatMoney(settlement.mentorPayoutAmount, settlement.currency)}
                   </td>
                   <td className="px-6 py-4">
@@ -1016,15 +1016,15 @@ function WithdrawalPanel({
 }) {
   return (
     <AdminPanel className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
         <div>
-          <p className="text-sm font-bold text-slate-900">Yêu cầu rút tiền</p>
-          <p className="mt-1 text-xs text-slate-500">Admin chuyển khoản thủ công rồi đánh dấu đã chuyển.</p>
+          <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Yêu cầu rút tiền</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Admin chuyển khoản thủ công rồi đánh dấu đã chuyển.</p>
         </div>
         <select
           value={status}
           onChange={(event) => onStatusChange(event.target.value)}
-          className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+          className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
         >
           <option value="all">Tất cả</option>
           <option value="requested">Đã yêu cầu</option>
@@ -1036,7 +1036,7 @@ function WithdrawalPanel({
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase">
+          <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase dark:bg-slate-800/80 dark:text-slate-400">
             <tr>
               <th className="px-6 py-4 text-left">Người dùng</th>
               <th className="px-6 py-4 text-left">Loại ví</th>
@@ -1046,16 +1046,16 @@ function WithdrawalPanel({
               <th className="px-6 py-4 text-left">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Đang tải yêu cầu rút tiền...
                 </td>
               </tr>
             ) : withdrawals.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500">
+                <td colSpan={6} className="px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Chưa có yêu cầu rút tiền phù hợp.
                 </td>
               </tr>
@@ -1063,16 +1063,16 @@ function WithdrawalPanel({
               withdrawals.map((withdrawal) => {
                 const bank = withdrawal.bankAccountSnapshot || {};
                 return (
-                  <tr key={withdrawal.id} className="hover:bg-slate-50/50">
+                  <tr key={withdrawal.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-800">{getWithdrawalUserLabel(withdrawal)}</p>
-                      <p className="font-mono text-xs text-slate-500">{getWithdrawalUserId(withdrawal)}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-200">{getWithdrawalUserLabel(withdrawal)}</p>
+                      <p className="font-mono text-xs text-slate-500 dark:text-slate-400">{getWithdrawalUserId(withdrawal)}</p>
                     </td>
-                    <td className="px-6 py-4 font-semibold text-slate-800">{accountTypeLabel(withdrawal.accountType)}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">
+                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200">{accountTypeLabel(withdrawal.accountType)}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-50">
                       {formatMoney(withdrawal.amount, withdrawal.currency)}
                     </td>
-                    <td className="px-6 py-4 text-slate-600">
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
                       <p>{String(bank.bankName || '--')}</p>
                       <p className="text-xs">{String(bank.accountNumber || '--')}</p>
                       <p className="text-xs">{String(bank.accountHolderName || '--')}</p>
@@ -1150,16 +1150,16 @@ function SearchBox({
           onKeyDown={(event) => {
             if (event.key === 'Enter') onSearch();
           }}
-          className="h-10 w-64 rounded-xl border border-slate-200 pl-10 text-sm outline-none focus:border-violet-400"
+          className="h-10 w-64 rounded-xl border border-slate-200 bg-white pl-10 text-sm outline-none focus:border-violet-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-50"
           placeholder={placeholder}
         />
       </div>
       <button
         type="button"
         onClick={onSearch}
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"
+        className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
       >
-        <Filter className="h-4 w-4 text-slate-500" />
+        <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
       </button>
     </>
   );
@@ -1175,7 +1175,7 @@ function Pagination({
   onPageChange: (value: number) => void;
 }) {
   return (
-    <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-xs text-slate-500">
+    <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
       <span>
         Trang {page} / {totalPages}
       </span>
@@ -1184,7 +1184,7 @@ function Pagination({
           type="button"
           disabled={page === 1}
           onClick={() => onPageChange(Math.max(1, page - 1))}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold transition disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-350"
         >
           Trước
         </button>
@@ -1192,7 +1192,7 @@ function Pagination({
           type="button"
           disabled={page === totalPages}
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold transition disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-350"
         >
           Sau
         </button>
@@ -1226,7 +1226,7 @@ function FinanceStatCard({
           <div
             className={cn(
               'flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold',
-              trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600',
+              trend === 'up' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400',
             )}
           >
             {trend === 'up' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -1234,8 +1234,8 @@ function FinanceStatCard({
           </div>
         ) : null}
       </div>
-      <p className="mb-1 text-xs font-bold text-slate-500">{label}</p>
-      <h3 className="text-2xl font-black tracking-tight text-slate-900">{value}</h3>
+      <p className="mb-1 text-xs font-bold text-slate-500 dark:text-slate-400">{label}</p>
+      <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{value}</h3>
     </AdminPanel>
   );
 }
@@ -1259,8 +1259,8 @@ function ActionButton({
       className={cn(
         'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50',
         tone === 'danger'
-          ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-          : 'bg-violet-50 text-violet-700 hover:bg-violet-100',
+          ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:hover:bg-rose-950/30'
+          : 'bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/20 dark:text-violet-400 dark:hover:bg-violet-950/30',
       )}
     >
       {children}
@@ -1270,10 +1270,10 @@ function ActionButton({
 
 function SettlementBadge({ status }: { status: string }) {
   const configs: Record<string, { label: string; className: string }> = {
-    pending: { label: 'Đang chờ', className: 'bg-amber-100 text-amber-700' },
-    ready: { label: 'Sẵn sàng', className: 'bg-emerald-100 text-emerald-700' },
-    withheld: { label: 'Tạm giữ', className: 'bg-rose-100 text-rose-700' },
-    refunded: { label: 'Đã hoàn tiền', className: 'bg-violet-100 text-violet-700' },
+    pending: { label: 'Đang chờ', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' },
+    ready: { label: 'Sẵn sàng', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' },
+    withheld: { label: 'Tạm giữ', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' },
+    refunded: { label: 'Đã hoàn tiền', className: 'bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400' },
   };
   const config = configs[status] || configs.pending;
   return <span className={cn('rounded-full px-3 py-1 text-xs font-bold', config.className)}>{config.label}</span>;
@@ -1281,13 +1281,13 @@ function SettlementBadge({ status }: { status: string }) {
 
 function WithdrawalBadge({ status }: { status: string }) {
   const configs: Record<string, { label: string; className: string }> = {
-    requested: { label: 'Đã yêu cầu', className: 'bg-amber-100 text-amber-700' },
-    approved: { label: 'Đã duyệt', className: 'bg-sky-100 text-sky-700' },
-    processing: { label: 'Đang xử lý', className: 'bg-sky-100 text-sky-700' },
-    paid: { label: 'Đã chuyển', className: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'Từ chối', className: 'bg-rose-100 text-rose-700' },
-    failed: { label: 'Thất bại', className: 'bg-rose-100 text-rose-700' },
-    cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600' },
+    requested: { label: 'Đã yêu cầu', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' },
+    approved: { label: 'Đã duyệt', className: 'bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400' },
+    processing: { label: 'Đang xử lý', className: 'bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400' },
+    paid: { label: 'Đã chuyển', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' },
+    rejected: { label: 'Từ chối', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' },
+    failed: { label: 'Thất bại', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' },
+    cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
   };
   const config = configs[status] || configs.requested;
   return <span className={cn('rounded-full px-3 py-1 text-xs font-bold', config.className)}>{config.label}</span>;
@@ -1295,12 +1295,12 @@ function WithdrawalBadge({ status }: { status: string }) {
 
 function PaymentStatusBadge({ status }: { status: string }) {
   const configs: Record<string, { label: string; className: string }> = {
-    pending: { label: 'Đang chờ', className: 'bg-amber-100 text-amber-700' },
-    paid: { label: 'Đã thanh toán', className: 'bg-emerald-100 text-emerald-700' },
-    failed: { label: 'Thất bại', className: 'bg-rose-100 text-rose-700' },
-    cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600' },
-    refunded: { label: 'Đã hoàn tiền', className: 'bg-violet-100 text-violet-700' },
-    refund_pending: { label: 'Chờ hoàn tiền', className: 'bg-amber-100 text-amber-700' },
+    pending: { label: 'Đang chờ', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' },
+    paid: { label: 'Đã thanh toán', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' },
+    failed: { label: 'Thất bại', className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400' },
+    cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
+    refunded: { label: 'Đã hoàn tiền', className: 'bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400' },
+    refund_pending: { label: 'Chờ hoàn tiền', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' },
   };
   const config = configs[status] || configs.pending;
   return <span className={cn('rounded-full px-3 py-1 text-xs font-bold', config.className)}>{config.label}</span>;

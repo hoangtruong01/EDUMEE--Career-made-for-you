@@ -72,7 +72,7 @@ export default function AdminCommunityPage() {
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="flex rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm">
           <TabButton
             active={activeTab === 'posts'}
             onClick={() => setActiveTab('posts')}
@@ -93,7 +93,7 @@ export default function AdminCommunityPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-violet-400"
+            className="h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pr-3 pl-10 text-sm outline-none focus:border-violet-400 dark:text-white"
             placeholder="Tìm kiếm nội dung..."
           />
         </div>
@@ -126,7 +126,7 @@ function TabButton({
         'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition',
         active
           ? 'bg-violet-500 text-white shadow'
-          : 'text-slate-600 hover:bg-slate-100',
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100',
       )}
     >
       {label}
@@ -136,8 +136,8 @@ function TabButton({
           active
             ? 'bg-white/20 text-white'
             : urgent
-            ? 'bg-rose-100 text-rose-600'
-            : 'bg-slate-100 text-slate-500',
+            ? 'bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-450'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
         )}
       >
         {count}
@@ -192,7 +192,7 @@ function PostsTable() {
   return (
     <AdminPanel className="p-0 overflow-hidden">
       <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
+        <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
           <tr>
             <th className="px-6 py-4">Tác giả & Bài viết</th>
             <th className="px-6 py-4">Chuyên mục</th>
@@ -202,22 +202,22 @@ function PostsTable() {
             <th className="px-6 py-4 text-right">Hành động</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {posts.map((post, index) => (
-            <tr key={post.id || post._id || index} className="hover:bg-slate-50/50 transition">
+            <tr key={post.id || post._id || index} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
               <td className="px-6 py-4">
                 <div className="flex items-start gap-3">
-                  <div className="mt-1 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 font-black text-[10px]">
+                  <div className="mt-1 h-8 w-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400 font-black text-[10px]">
                     {post.authorName?.substring(0, 2).toUpperCase() || 'U'}
                   </div>
                   <div className="max-w-xs">
-                    <p className="font-bold text-slate-900 truncate">{post.title}</p>
-                    <p className="text-xs text-slate-500">Bởi {post.authorName}</p>
+                    <p className="font-bold text-slate-900 dark:text-white truncate">{post.title}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Bởi {post.authorName}</p>
                   </div>
                 </div>
               </td>
               <td className="px-6 py-4">
-                <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 border border-sky-100">
+                <span className="rounded-full bg-sky-50 dark:bg-sky-950/20 px-2.5 py-1 text-xs font-medium text-sky-700 dark:text-sky-400 border border-sky-100 dark:border-sky-900/30">
                   {post.category}
                 </span>
               </td>
@@ -350,28 +350,28 @@ function ReportsTable() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Đối tượng:</span>
           <select 
             value={filterTarget} 
             onChange={(e) => setFilterTarget(e.target.value as 'all' | 'post' | 'comment')}
-            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+            className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-transparent outline-none cursor-pointer dark:bg-slate-900"
           >
-            <option value="all">Tất cả</option>
-            <option value="post">Bài viết</option>
-            <option value="comment">Bình luận</option>
+            <option value="all" className="dark:bg-slate-900">Tất cả</option>
+            <option value="post" className="dark:bg-slate-900">Bài viết</option>
+            <option value="comment" className="dark:bg-slate-900">Bình luận</option>
           </select>
         </div>
 
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lý do:</span>
           <select 
             value={filterReason} 
             onChange={(e) => setFilterReason(e.target.value)}
-            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+            className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-transparent outline-none cursor-pointer dark:bg-slate-900"
           >
             {reportReasons.map(r => (
-              <option key={r} value={r}>{r === 'all' ? 'Tất cả lý do' : r}</option>
+              <option key={r} value={r} className="dark:bg-slate-900">{r === 'all' ? 'Tất cả lý do' : r}</option>
             ))}
           </select>
         </div>
@@ -379,7 +379,7 @@ function ReportsTable() {
 
       <AdminPanel className="p-0 overflow-hidden">
       <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
+        <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
           <tr>
             <th className="px-6 py-4">Người báo cáo</th>
             <th className="px-6 py-4">Đối tượng</th>
@@ -389,34 +389,34 @@ function ReportsTable() {
             <th className="px-6 py-4 text-right">Xử lý</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {filteredReports.map((report, index) => (
-            <tr key={report.id || index} className="hover:bg-slate-50/50 transition">
+            <tr key={report.id || index} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
               <td className="px-6 py-4">
-                <p className="font-bold text-slate-900">{report.reporterId?.name || 'User'}</p>
-                <p className="text-[10px] text-slate-500">{report.reporterId?.email}</p>
+                <p className="font-bold text-slate-900 dark:text-white">{report.reporterId?.name || 'User'}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">{report.reporterId?.email}</p>
               </td>
               <td className="px-6 py-4">
                 <span className={cn(
                   "px-2 py-0.5 rounded text-[10px] font-black uppercase border",
-                  report.targetType === 'post' ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-amber-50 text-amber-600 border-amber-100"
+                  report.targetType === 'post' ? "bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30" : "bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30"
                 )}>
                   {report.targetType === 'post' ? 'Bài viết' : 'Bình luận'}
                 </span>
                 <p className="text-xs text-slate-400 mt-1 truncate max-w-40">ID: {report.targetId}</p>
               </td>
               <td className="px-6 py-4">
-                <span className="flex items-center gap-2 text-rose-600 bg-rose-50 px-3 py-1 rounded-full w-fit text-xs font-bold">
+                <span className="flex items-center gap-2 text-rose-600 dark:text-rose-450 bg-rose-50 dark:bg-rose-950/20 px-3 py-1 rounded-full w-fit text-xs font-bold border border-rose-100/50 dark:border-rose-900/30">
                   <AlertTriangle className="h-3 w-3" /> {report.reason}
                 </span>
-                {report.details && <p className="text-[10px] text-slate-500 mt-1 italic line-clamp-1">{report.details}</p>}
+                {report.details && <p className="text-[10px] text-slate-500 dark:text-slate-450 mt-1 italic line-clamp-1">{report.details}</p>}
               </td>
               <td className="px-6 py-4">
-                 <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-md bg-slate-100 text-slate-600">
+                 <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                    Chờ duyệt
                  </span>
               </td>
-              <td className="px-6 py-4 text-slate-500 text-xs">{new Date(report.createdAt).toLocaleString('vi-VN')}</td>
+              <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">{new Date(report.createdAt).toLocaleString('vi-VN')}</td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end gap-2">
                   <button 
