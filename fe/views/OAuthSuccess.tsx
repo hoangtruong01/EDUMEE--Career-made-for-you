@@ -40,7 +40,7 @@ export default function OAuthSuccessView() {
 
   useEffect(() => {
     if (error) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setErrorMessage('Đăng nhập Google thất bại. Vui lòng thử lại.');
       return;
     }
