@@ -99,13 +99,6 @@ type PlanFormState = {
   features: Record<FeatureKey, boolean>;
 };
 
-type PricingPreviewItem = {
-  cycle: BillingCycle;
-  subtotal: number;
-  discountPercentage: number;
-  total: number;
-};
-
 const BILLING_CYCLE_OPTIONS: Array<{ value: BillingCycle; label: string; months: number }> = [
   { value: 'monthly', label: 'Hàng tháng', months: 1 },
   { value: 'three_months', label: '3 tháng', months: 3 },

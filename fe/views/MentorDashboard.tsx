@@ -2195,10 +2195,6 @@ function parseDateOnlyInput(value: string) {
   return date;
 }
 
-function getWeekRangeLabel(weekStart: Date) {
-  return `${formatScheduleDate(weekStart)} - ${formatScheduleDate(addDays(weekStart, 6))}`;
-}
-
 const bulkSkipReasonLabel: Record<string, string> = {
   past_slot: 'đã qua thời gian nên backend không tạo',
   overlap: 'trùng với lịch đã có',
