@@ -216,8 +216,8 @@ export class AiQuotaService {
       .findOne({
         ...baseFilter,
         $and: [
-          ...(Array.isArray((baseFilter as Record<string, unknown>).$and)
-            ? ((baseFilter as Record<string, unknown>).$and as Record<string, unknown>[])
+          ...(Array.isArray((baseFilter).$and)
+            ? ((baseFilter).$and as Record<string, unknown>[])
             : []),
           { requestCount: { $gt: 0 } },
         ],

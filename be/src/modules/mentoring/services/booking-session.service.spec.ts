@@ -219,7 +219,6 @@ describe('BookingSessionService', () => {
     const slotId = new Types.ObjectId();
     const sourcePlanId = new Types.ObjectId();
     const startAt = new Date(Date.now() + 60 * 60 * 1000);
-    const endAt = new Date(startAt.getTime() + 90 * 60 * 1000);
 
     tutorProfileModel.findById.mockReturnValue(createExecMock(buildTutor(tutorProfileId, mentorId)));
     mentorAvailabilityService.holdSlotForBooking.mockResolvedValue({

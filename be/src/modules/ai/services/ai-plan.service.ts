@@ -421,7 +421,7 @@ export class AiPlanService {
         ...this.buildActiveSubscriptionFilter(new Date()),
       })
       .exec();
-    return activeUserIds as Types.ObjectId[];
+    return activeUserIds;
   }
 
   private buildSubscriptionStatusFilter(

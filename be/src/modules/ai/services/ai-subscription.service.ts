@@ -40,6 +40,12 @@ const IMPORT_ALLOWED_MIME_TYPES = new Set([
 
 type ImportedUserRowStatus = 'created_assigned' | 'existing_assigned' | 'failed';
 
+type ParsedExcelDateCode = {
+  y: number;
+  m: number;
+  d: number;
+};
+
 export type ImportedUserToPlanResultRow = {
   rowNumber: number;
   email?: string;
@@ -521,7 +527,12 @@ export class AiSubscriptionService {
   private stringifyImportCell(value: unknown): string {
     if (value === null || value === undefined) return '';
     if (value instanceof Date) return value.toISOString();
-    return String(value).trim();
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+      return String(value).trim();
+    }
+    const serialized = JSON.stringify(value);
+    return typeof serialized === 'string' ? serialized.trim() : '';
   }
 
   private parseImportDate(value: unknown): Date | null {
@@ -530,7 +541,7 @@ export class AiSubscriptionService {
     }
 
     if (typeof value === 'number' && Number.isFinite(value)) {
-      const parsed = XLSX.SSF.parse_date_code(value);
+      const parsed = this.parseExcelDateCode(value);
       if (!parsed) return null;
       return new Date(parsed.y, parsed.m - 1, parsed.d);
     }
@@ -563,6 +574,30 @@ export class AiSubscriptionService {
       return null;
     }
     return date;
+  }
+
+  private parseExcelDateCode(value: number): ParsedExcelDateCode | null {
+    const xlsx = XLSX as unknown as {
+      SSF?: {
+        parse_date_code?: (serial: number) => unknown;
+      };
+    };
+    const parsed = xlsx.SSF?.parse_date_code?.(value);
+    if (!this.isParsedExcelDateCode(parsed)) return null;
+    return parsed;
+  }
+
+  private isParsedExcelDateCode(value: unknown): value is ParsedExcelDateCode {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Partial<Record<keyof ParsedExcelDateCode, unknown>>;
+    return (
+      typeof candidate.y === 'number' &&
+      Number.isFinite(candidate.y) &&
+      typeof candidate.m === 'number' &&
+      Number.isFinite(candidate.m) &&
+      typeof candidate.d === 'number' &&
+      Number.isFinite(candidate.d)
+    );
   }
 
   private isValidImportEmail(email: string): boolean {
