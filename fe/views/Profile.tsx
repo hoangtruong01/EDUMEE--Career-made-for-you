@@ -113,7 +113,6 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   refund_pending: 'Chờ hoàn tiền',
 };
 
-const purchasablePlanNames = new Set(['plus', 'business']);
 const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const AVATAR_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -291,14 +290,9 @@ const Profile = () => {
       return;
     }
 
-    const visiblePlans = data.catalog.filter((plan) => {
-      const normalizedName = normalizePlanCode(plan.name);
-      return (
-        purchasablePlanNames.has(normalizedName) &&
-        plan.isActive !== false &&
-        Number(plan.price || 0) > 0
-      );
-    });
+    const visiblePlans = data.catalog.filter(
+      (plan) => plan.isActive !== false && !plan.isDefaultPlan && Number(plan.price || 0) > 0,
+    );
 
     setAiPlans(visiblePlans);
     setAiSubscription(data.subscription);
@@ -571,9 +565,9 @@ const Profile = () => {
     }
   };
 
-  const activePaidPlanCode =
-    aiSubscription?.subscriptionStatus === 'active' ? aiSubscription.currentPlan : 'free';
-  const hasActivePaidPlan = activePaidPlanCode === 'plus' || activePaidPlanCode === 'business';
+  const activePaidPlanId =
+    aiSubscription?.subscriptionStatus === 'active' ? aiSubscription.plan?.id : null;
+  const hasActivePaidPlan = Boolean(activePaidPlanId);
   const edumeeCreditAccount = getWalletAccount(wallet, 'edumee_credit');
 
   const currentQuotaSummary = useMemo(() => {
@@ -832,10 +826,7 @@ const Profile = () => {
                     const selectedCycle =
                       selectedBillingCycles[plan.id] || getDefaultBillingCycle(plan);
                     const pricing = getPricingForCycle(plan, selectedCycle);
-                    const planCode = normalizePlanCode(plan.name);
-                    const isCurrentPlan =
-                      aiSubscription?.subscriptionStatus === 'active' &&
-                      activePaidPlanCode === planCode;
+                    const isCurrentPlan = activePaidPlanId === plan.id;
                     const ctaLabel = !hasActivePaidPlan
                       ? 'Mua ngay'
                       : isCurrentPlan
@@ -2811,13 +2802,6 @@ function getInitials(name?: string): string {
     .map((part) => part[0])
     .join('')
     .toUpperCase();
-}
-
-function normalizePlanCode(planName?: string): string {
-  const normalized = planName?.trim().toLowerCase();
-  if (normalized === 'business') return 'business';
-  if (normalized === 'plus') return 'plus';
-  return 'free';
 }
 
 function getAllowedBillingCycles(plan: AiPlanCatalogItem): BillingCycle[] {

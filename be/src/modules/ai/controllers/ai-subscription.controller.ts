@@ -1,5 +1,18 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -7,7 +20,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { getAuthUserId } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
-import { AssignAiSubscriptionDto, UpsertAiSubscriptionDto } from '../dto';
+import { AssignAiSubscriptionDto, ImportAiSubscriptionUsersDto, UpsertAiSubscriptionDto } from '../dto';
 import { AiSubscriptionService } from '../services/ai-subscription.service';
 import { AiQuotaService } from '../services/ai-quota.service';
 import { AiFeature } from '../schema/ai-usage-logs.schema';
@@ -23,6 +36,8 @@ type QuotaView = {
   nextResetAt: Date | null;
   resetPolicy: 'periodic' | 'lifetime' | 'unlimited';
 };
+
+const IMPORT_USERS_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 @ApiTags('ai-subscriptions')
 @ApiBearerAuth('JWT-auth')
@@ -60,6 +75,22 @@ export class AiSubscriptionController {
       billingCycle: dto.billingCycle,
       startDate: dto.startDate ? new Date(dto.startDate) : undefined,
       endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+    });
+  }
+
+  @Post('admin/import-users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMPORT_USERS_MAX_FILE_SIZE_BYTES } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Import users from Excel and assign them to an AI plan (admin)' })
+  importUsers(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() dto: ImportAiSubscriptionUsersDto,
+  ) {
+    return this.aiSubscriptionService.importUsersToPlan(file, {
+      planId: dto.planId,
+      billingCycle: dto.billingCycle,
     });
   }
 

@@ -10,7 +10,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main.js",
     "ngrok:start": "powershell -ExecutionPolicy Bypass -File scripts/start-ngrok.ps1",
     "seed:admin": "ts-node -r tsconfig-paths/register scripts/seed-admin.ts",
     "seed:ai-plans": "ts-node -r tsconfig-paths/register scripts/seed-ai-plans.ts",
@@ -60,7 +60,8 @@
     "rxjs": "^7.8.1",
     "sepay-pg-node": "^1.0.0",
     "streamifier": "^0.1.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

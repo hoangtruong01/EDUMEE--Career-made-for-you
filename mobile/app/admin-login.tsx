@@ -16,6 +16,7 @@ import { COLORS, SPACING, RADIUS } from '../src/theme';
 import { GlassView } from '../src/components/GlassView';
 import { Mail, Lock, ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { api, setAuthToken } from '../src/services/api';
+import { getRoleHomeRoute } from '../src/utils/roleNavigation';
 
 export default function AdminLoginScreen() {
   const router = useRouter();
@@ -36,11 +37,13 @@ export default function AdminLoginScreen() {
       const response = await api.post('/auth/admin-login', { email, password });
       console.log('Admin login response:', JSON.stringify(response.data));
       
-      const token = response.data?.data?.result?.access_token || response.data?.data?.access_token;
+      const result = response.data?.data?.result || response.data?.result || response.data?.data || {};
+      const token = result?.access_token || response.data?.data?.access_token || response.data?.access_token;
+      const role = result?.role || response.data?.data?.role || response.data?.role;
       
       if (token) {
         await setAuthToken(token);
-        router.replace('/(tabs)');
+        router.replace(getRoleHomeRoute(role) as any);
       } else {
         throw new Error('Token không tìm thấy trong phản hồi từ server');
       }

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AiPlan, AiPlanSchema } from './schema/ai-plan.schema';
 import { AiUsageLog, AiUsageLogSchema } from './schema/ai-usage-logs.schema';
@@ -11,10 +12,13 @@ import { AiSubscriptionService } from './services/ai-subscription.service';
 import { AiPlanController } from './controllers/ai-plan.controller';
 import { AiSubscriptionController } from './controllers/ai-subscription.controller';
 import { AuditModule } from '../audit/audit.module';
+import { MailModule } from '../../common/mail/mail.module';
 
 @Module({
   imports: [
     AuditModule,
+    JwtModule.register({}),
+    MailModule,
     MongooseModule.forFeature([
       { name: AiPlan.name, schema: AiPlanSchema },
       { name: AiUsageLog.name, schema: AiUsageLogSchema },

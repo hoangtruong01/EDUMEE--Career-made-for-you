@@ -265,6 +265,13 @@ function getPrimaryRate(profile: TutorProfile) {
   return profile.pricing?.sessionRates?.[0];
 }
 
+function getRateForSessionType(profile: TutorProfile, sessionType: MentorSessionType) {
+  return (
+    profile.pricing?.sessionRates?.find((rate) => rate.sessionType === sessionType) ||
+    getPrimaryRate(profile)
+  );
+}
+
 function getSessionTypes(profile: TutorProfile): MentorSessionType[] {
   const fromAvailability = profile.availability?.sessionPreferences?.sessionTypes || [];
   const fromPricing = profile.pricing?.sessionRates?.map((rate) => rate.sessionType) || [];
@@ -299,6 +306,10 @@ function getBookingStatusClassName(status: string) {
     default:
       return 'border-border bg-muted text-muted-foreground';
   }
+}
+
+function isTrialBooking(booking: BookingSession) {
+  return booking.bookingType === 'trial';
 }
 
 function FilterDropdown({
@@ -910,10 +921,11 @@ function BookingModal({
   onUseEdumeeCreditChange: (value: boolean) => void;
 }) {
   const token = authStorage.getAccessToken();
-  const { ensureFeatureAvailable, handlePlanError } = usePlanGate();
+  const { subscription, ensureFeatureAvailable, handlePlanError } = usePlanGate();
   const sessionTypes = getSessionTypes(mentor);
   const [slots, setSlots] = useState<MentorAvailabilitySlot[]>([]);
   const [sessionType, setSessionType] = useState<MentorSessionType>(sessionTypes[0] || 'general_mentoring');
+  const [bookingType, setBookingType] = useState<'trial' | 'paid'>('paid');
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [topics, setTopics] = useState('');
   const [currentSituation, setCurrentSituation] = useState('');
@@ -922,6 +934,21 @@ function BookingModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(true);
   const edumeeCreditAccount = getWalletAccount(wallet, 'edumee_credit');
+  const trialQuota = subscription?.quotas?.mentorBooking;
+  const hasTrialFeature = subscription?.features?.mentorBooking === true;
+  const hasTrialQuota =
+    hasTrialFeature &&
+    (!trialQuota ||
+      trialQuota.resetPolicy === 'unlimited' ||
+      Math.max(0, Number(trialQuota.remaining || 0)) > 0);
+  const selectedRate = getRateForSessionType(mentor, sessionType);
+  const trialRemainingText = trialQuota?.resetPolicy === 'unlimited'
+    ? 'Không giới hạn'
+    : `${Math.max(0, Number(trialQuota?.remaining || 0))} lượt còn lại`;
+
+  useEffect(() => {
+    setBookingType(hasTrialQuota ? 'trial' : 'paid');
+  }, [hasTrialQuota, mentor.id]);
 
   useEffect(() => {
     let active = true;
@@ -951,13 +978,16 @@ function BookingModal({
       return;
     }
 
-    const allowed = await ensureFeatureAvailable('mentorBooking');
-    if (!allowed) return;
+    if (bookingType === 'trial') {
+      const allowed = await ensureFeatureAvailable('mentorBooking');
+      if (!allowed) return;
+    }
 
     const payload: CreateBookingPayload = {
       tutorProfileId: mentor.id,
       availabilitySlotId: selectedSlotId,
       sessionType,
+      bookingType,
       schedulingDetails: {
         requestedDateTime: new Date().toISOString(),
         duration: 0,
@@ -972,8 +1002,12 @@ function BookingModal({
         isFirstSession: true,
         urgencyLevel: 'medium',
       },
-      paymentReturnUrls: buildMentorPaymentReturnUrls(),
-      useEdumeeCredit,
+      ...(bookingType === 'paid'
+        ? {
+            paymentReturnUrls: buildMentorPaymentReturnUrls(),
+            useEdumeeCredit,
+          }
+        : {}),
     };
 
     setIsSubmitting(true);
@@ -985,7 +1019,11 @@ function BookingModal({
         window.location.href = normalizePaymentCheckoutRedirectUrl(result.payment.redirectUrl);
         return;
       }
-      setMessage('Đặt lịch thành công. Mentor sẽ xác nhận lịch sớm.');
+      setMessage(
+        bookingType === 'trial'
+          ? 'Đã gửi yêu cầu trial 15 phút. Mentor sẽ xác nhận lịch sớm.'
+          : 'Đặt lịch thành công. Mentor sẽ xác nhận lịch sớm.',
+      );
     } catch (error) {
       if (handlePlanError(error, 'mentorBooking')) {
         return;
@@ -1017,6 +1055,43 @@ function BookingModal({
 
         <div className="space-y-4 p-5">
           <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => hasTrialQuota && setBookingType('trial')}
+              disabled={!hasTrialQuota}
+              className={cn(
+                'rounded-xl border p-3 text-left text-sm transition',
+                bookingType === 'trial'
+                  ? 'border-violet-500 bg-violet-50 text-violet-950 dark:bg-violet-500/10 dark:text-violet-100'
+                  : 'border-border hover:bg-muted',
+                !hasTrialQuota && 'cursor-not-allowed opacity-60',
+              )}
+            >
+              <span className="block font-bold">Trial 15 phút miễn phí</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {hasTrialQuota
+                  ? `${trialRemainingText} trong gói AI. Mentor xác nhận trước khi trừ lượt.`
+                  : 'Gói AI hiện tại chưa còn lượt trial.'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBookingType('paid')}
+              className={cn(
+                'rounded-xl border p-3 text-left text-sm transition',
+                bookingType === 'paid'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border hover:bg-muted',
+              )}
+            >
+              <span className="block font-bold">Đặt buổi trả phí</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {formatMoney(selectedRate?.pricePerSession, mentor.pricing?.currency)} · thanh toán rồi chờ mentor xác nhận.
+              </span>
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-sm font-medium">
               Loại buổi
               <select
@@ -1033,7 +1108,11 @@ function BookingModal({
             </label>
             <div className="rounded-xl border border-input bg-muted/30 px-3 py-2 text-sm">
               <p className="font-medium">Quy tắc đặt lịch</p>
-              <p className="text-xs text-muted-foreground">Mỗi khung giờ chỉ có 1 học viên được giữ chỗ.</p>
+              <p className="text-xs text-muted-foreground">
+                {bookingType === 'trial'
+                  ? 'Trial dùng 15 phút đầu của slot và không phát sinh thanh toán.'
+                  : 'Mỗi khung giờ chỉ có 1 học viên được giữ chỗ.'}
+              </p>
             </div>
           </div>
 
@@ -1103,20 +1182,22 @@ function BookingModal({
             />
           </label>
 
-          <label className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
-            <span>
-              <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
-              <span className="text-emerald-700/80 dark:text-emerald-200/80">
-                Khả dụng {formatMoney(edumeeCreditAccount?.availableBalance || 0, wallet?.currency || 'VND')}
+          {bookingType === 'paid' ? (
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
+              <span>
+                <span className="block font-semibold text-emerald-800 dark:text-emerald-200">Dùng Số dư Edumee</span>
+                <span className="text-emerald-700/80 dark:text-emerald-200/80">
+                  Khả dụng {formatMoney(edumeeCreditAccount?.availableBalance || 0, wallet?.currency || 'VND')}
+                </span>
               </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={useEdumeeCredit}
-              onChange={(event) => onUseEdumeeCreditChange(event.target.checked)}
-              className="h-5 w-5 accent-emerald-600"
-            />
-          </label>
+              <input
+                type="checkbox"
+                checked={useEdumeeCredit}
+                onChange={(event) => onUseEdumeeCreditChange(event.target.checked)}
+                className="h-5 w-5 accent-emerald-600"
+              />
+            </label>
+          ) : null}
 
           {message && <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{message}</p>}
 
@@ -1126,7 +1207,7 @@ function BookingModal({
             </Button>
             <Button className="flex-1" variant="hero" onClick={submit} disabled={isSubmitting || !selectedSlotId}>
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Xác nhận và thanh toán
+              {bookingType === 'trial' ? 'Gửi yêu cầu trial' : 'Xác nhận và thanh toán'}
             </Button>
           </div>
         </div>
@@ -1624,14 +1705,21 @@ function BookingList({
                       )}
                     </div>
                   </div>
-                  <span
-                    className={cn(
-                      'w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-bold',
-                      getBookingStatusClassName(booking.status),
-                    )}
-                  >
-                    {statusLabel[booking.status] || booking.status}
-                  </span>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {isTrialBooking(booking) ? (
+                      <span className="w-fit rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
+                        Trial 15 phút
+                      </span>
+                    ) : null}
+                    <span
+                      className={cn(
+                        'w-fit rounded-full border px-3 py-1 text-xs font-bold',
+                        getBookingStatusClassName(booking.status),
+                      )}
+                    >
+                      {statusLabel[booking.status] || booking.status}
+                    </span>
+                  </div>
                 </div>
 
                 {pendingProposal && (

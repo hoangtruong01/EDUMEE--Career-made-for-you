@@ -97,6 +97,61 @@ export interface AssignedAiPlanSubscription {
   status: string;
 }
 
+export type ImportAiPlanUserStatus = 'created_assigned' | 'existing_assigned' | 'failed';
+
+export interface ImportAiPlanUserResultRow {
+  rowNumber: number;
+  email?: string;
+  name?: string;
+  userId?: string;
+  subscriptionId?: string;
+  status: ImportAiPlanUserStatus;
+  message: string;
+  warnings?: string[];
+}
+
+export interface ImportAiPlanUsersResult {
+  totalRows: number;
+  createdUsers: number;
+  assignedExistingUsers: number;
+  failedRows: number;
+  emailWarningRows: number;
+  rows: ImportAiPlanUserResultRow[];
+}
+
+export type AdminAiPlanSubscriberStatusFilter = 'active' | 'all' | 'cancelled' | 'expired';
+
+export interface AdminAiPlanSubscriber {
+  userId: string;
+  name: string;
+  email: string;
+  phone_number?: string;
+  role: string;
+  userStatus: string;
+  subscriptionId?: string;
+  subscriptionStatus: string;
+  billingCycle?: BillingCycle;
+  startDate?: string;
+  endDate?: string;
+  isCurrentPlanUser: boolean;
+}
+
+export interface AdminAiPlanSubscribersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: AdminAiPlanSubscriberStatusFilter;
+}
+
+export interface AdminAiPlanSubscribersResponse {
+  subscribers: AdminAiPlanSubscriber[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  stats: AiPlanSubscriberStats;
+}
+
 export const adminAiPlanService = {
   getAdminAiPlans(token: string) {
     return apiClient.get<AdminAiPlan[]>('/ai-plans/admin', token);
@@ -104,6 +159,23 @@ export const adminAiPlanService = {
 
   getAdminAiPlanById(token: string, id: string) {
     return apiClient.get<AdminAiPlan>(`/ai-plans/${id}`, token);
+  },
+
+  getPlanSubscribers(
+    token: string,
+    planId: string,
+    params: AdminAiPlanSubscribersParams = {},
+  ) {
+    const search = new URLSearchParams();
+    if (params.page) search.set('page', String(params.page));
+    if (params.limit) search.set('limit', String(params.limit));
+    if (params.search?.trim()) search.set('search', params.search.trim());
+    if (params.status) search.set('status', params.status);
+    const query = search.toString();
+    return apiClient.get<AdminAiPlanSubscribersResponse>(
+      `/ai-plans/${planId}/subscribers${query ? `?${query}` : ''}`,
+      token,
+    );
   },
 
   createAdminAiPlan(token: string, payload: AdminAiPlanPayload) {
@@ -120,5 +192,24 @@ export const adminAiPlanService = {
 
   assignUserToPlan(token: string, payload: AssignAiPlanUserPayload) {
     return apiClient.post<AssignedAiPlanSubscription>('/ai-subscriptions/admin/assign', payload, token);
+  },
+
+  importUsersToPlan(
+    token: string,
+    payload: {
+      file: File;
+      planId: string;
+      billingCycle: BillingCycle;
+    },
+  ) {
+    const formData = new FormData();
+    formData.append('file', payload.file);
+    formData.append('planId', payload.planId);
+    formData.append('billingCycle', payload.billingCycle);
+    return apiClient.uploadPost<ImportAiPlanUsersResult>(
+      '/ai-subscriptions/admin/import-users',
+      formData,
+      token,
+    );
   },
 };

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -47,6 +47,26 @@ export class AiPlanController {
   @ApiOperation({ summary: 'Get AI plan by id (admin)' })
   findOne(@Param('id') id: string) {
     return this.aiPlanService.findOne(id);
+  }
+
+  @Get(':id/subscribers')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'List subscribers for an AI plan (admin)' })
+  subscribers(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.aiPlanService.listSubscribers(id, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      search,
+      status,
+    });
   }
 
   @Post()

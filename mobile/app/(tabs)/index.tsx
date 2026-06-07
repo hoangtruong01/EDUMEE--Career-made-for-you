@@ -33,6 +33,7 @@ import {
 import { useRouter } from 'expo-router';
 import React, { useState, useEffect } from 'react';
 import { api, setAuthToken } from '../../src/services/api';
+import { getRoleHomeRoute } from '../../src/utils/roleNavigation';
 
 const QUICK_ACTIONS = [
   {
@@ -88,6 +89,11 @@ export default function TabOneScreen() {
       const response = await api.get('/users/me');
       const profile = response.data?.data || response.data;
       setUserProfile(profile);
+
+      if (profile?.role === 'mentor') {
+        router.replace(getRoleHomeRoute(profile.role) as any);
+        return;
+      }
       
       if (profile && profile.role === 'admin') {
         await fetchAdminStats();

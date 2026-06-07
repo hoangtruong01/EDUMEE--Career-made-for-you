@@ -2,13 +2,14 @@ import { ConflictException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
-import { BookingSession, BookingStatus, SessionType } from '../schemas/booking-session.schema';
+import { BookingSession, BookingStatus, BookingType, SessionType } from '../schemas/booking-session.schema';
 import { TutorProfile, TutorStatus } from '../schemas/tutor-profile.schema';
 import { TutoringSession } from '../schemas/tutoring-session.schema';
 import { BookingSessionService } from './booking-session.service';
 import { MentorAvailabilityService } from './mentor-availability.service';
 import { NotificationService } from '../../notifications/services';
 import { PaymentService } from '../../payment/services';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
 
 const createExecMock = <T>(value: T) => ({
   exec: jest.fn().mockResolvedValue(value),
@@ -111,6 +112,12 @@ describe('BookingSessionService', () => {
     handleMentorBookingCancellation: jest.fn(),
     settleMentorBookingPayment: jest.fn(),
   };
+  const aiQuotaService = {
+    checkQuota: jest.fn(),
+    consumeQuota: jest.fn(),
+    refundQuota: jest.fn(),
+    getPlanForUserOrFree: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -122,6 +129,10 @@ describe('BookingSessionService', () => {
     tutoringSessionModel.findByIdAndUpdate.mockReturnValue(createExecMock(null));
     paymentService.handleMentorBookingCancellation.mockResolvedValue({ status: 'none' });
     paymentService.settleMentorBookingPayment.mockResolvedValue(null);
+    aiQuotaService.checkQuota.mockResolvedValue(undefined);
+    aiQuotaService.consumeQuota.mockResolvedValue(undefined);
+    aiQuotaService.refundQuota.mockResolvedValue(undefined);
+    aiQuotaService.getPlanForUserOrFree.mockResolvedValue({ _id: new Types.ObjectId() });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -132,6 +143,7 @@ describe('BookingSessionService', () => {
         { provide: MentorAvailabilityService, useValue: mentorAvailabilityService },
         { provide: NotificationService, useValue: notificationService },
         { provide: PaymentService, useValue: paymentService },
+        { provide: AiQuotaService, useValue: aiQuotaService },
       ],
     }).compile();
 
@@ -198,6 +210,55 @@ describe('BookingSessionService', () => {
     );
     const createdPayload = bookingSessionModel.mock.calls[0][0];
     expect(createdPayload.mentorId.toString()).toBe(mentorId.toString());
+  });
+
+  it('creates trial mentor bookings as free pending intro calls without consuming quota', async () => {
+    const menteeId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const tutorProfileId = new Types.ObjectId();
+    const slotId = new Types.ObjectId();
+    const sourcePlanId = new Types.ObjectId();
+    const startAt = new Date(Date.now() + 60 * 60 * 1000);
+    const endAt = new Date(startAt.getTime() + 90 * 60 * 1000);
+
+    tutorProfileModel.findById.mockReturnValue(createExecMock(buildTutor(tutorProfileId, mentorId)));
+    mentorAvailabilityService.holdSlotForBooking.mockResolvedValue({
+      _id: slotId,
+      tutorProfileId,
+      mentorId,
+      startAt,
+      endAt: new Date(startAt.getTime() + 15 * 60 * 1000),
+    });
+    aiQuotaService.getPlanForUserOrFree.mockResolvedValue({ _id: sourcePlanId });
+
+    await service.createForMentee(menteeId.toString(), {
+      ...buildCreateDto(tutorProfileId, slotId),
+      bookingType: BookingType.TRIAL,
+    });
+
+    expect(aiQuotaService.checkQuota).toHaveBeenCalledWith(menteeId.toString(), 'mentor_booking');
+    expect(aiQuotaService.consumeQuota).not.toHaveBeenCalled();
+    expect(mentorAvailabilityService.holdSlotForBooking).toHaveBeenCalledWith(
+      slotId.toString(),
+      tutorProfileId.toString(),
+      menteeId.toString(),
+      { durationMinutes: 15 },
+    );
+    expect(bookingSessionModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingType: BookingType.TRIAL,
+        status: BookingStatus.PENDING,
+        paymentInfo: expect.objectContaining({
+          sessionPrice: 0,
+          paymentMethod: 'free_session',
+          paymentStatus: 'free',
+        }),
+        trialInfo: expect.objectContaining({
+          durationMinutes: 15,
+          sourcePlanId,
+        }),
+      }),
+    );
   });
 
   it('reuses an existing awaiting payment booking for the same mentee and slot', async () => {
@@ -309,6 +370,7 @@ describe('BookingSessionService', () => {
       slotId.toString(),
       tutorProfileId.toString(),
       menteeId.toString(),
+      undefined,
     );
     expect(bookingSessionModel).toHaveBeenCalled();
   });
@@ -582,6 +644,127 @@ describe('BookingSessionService', () => {
       { tutoringSessionId },
       { new: true },
     );
+  });
+
+  it('consumes trial quota when a mentor confirms a trial booking', async () => {
+    const menteeId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const bookingId = new Types.ObjectId();
+    const tutoringSessionId = new Types.ObjectId();
+    const confirmedAt = new Date(Date.now() + 24 * 60 * 60_000);
+    const booking = {
+      _id: bookingId,
+      menteeId,
+      mentorId,
+      bookingType: BookingType.TRIAL,
+      trialInfo: { durationMinutes: 15 },
+      status: BookingStatus.PENDING,
+      sessionType: SessionType.CAREER_GUIDANCE,
+      availabilitySlotId: new Types.ObjectId(),
+      schedulingDetails: {
+        requestedDateTime: confirmedAt,
+        duration: 15,
+        timeZone: 'Asia/Ho_Chi_Minh',
+        meetingPlatform: 'platform_built_in',
+      },
+      bookingRequest: { topicsToDiscuss: ['Intro'] },
+    } as unknown as BookingSession;
+    const confirmedBooking = {
+      ...booking,
+      status: BookingStatus.CONFIRMED,
+      schedulingDetails: {
+        ...booking.schedulingDetails,
+        confirmedDateTime: confirmedAt,
+      },
+    } as unknown as BookingSession;
+    const bookingWithSession = {
+      ...confirmedBooking,
+      tutoringSessionId,
+    } as unknown as BookingSession;
+    const bookingWithQuota = {
+      ...bookingWithSession,
+      trialInfo: {
+        durationMinutes: 15,
+        quotaConsumedAt: new Date(),
+      },
+    } as unknown as BookingSession;
+
+    bookingSessionModel.findById.mockReturnValue(createExecMock(booking));
+    bookingSessionModel.find.mockReturnValue(createExecMock([]));
+    bookingSessionModel.findByIdAndUpdate
+      .mockReturnValueOnce(createExecMock(confirmedBooking))
+      .mockReturnValueOnce(createExecMock(bookingWithSession))
+      .mockReturnValueOnce(createExecMock(bookingWithQuota));
+    tutoringSessionModel.mockImplementationOnce((data: Record<string, unknown>) => ({
+      _id: tutoringSessionId,
+      ...data,
+      save: jest.fn().mockResolvedValue({ _id: tutoringSessionId, ...data }),
+    }));
+
+    await expect(
+      service.confirmBooking(bookingId.toString(), { userId: mentorId.toString(), role: 'mentor' }),
+    ).resolves.toBe(bookingWithQuota);
+
+    expect(aiQuotaService.checkQuota).toHaveBeenCalledWith(menteeId.toString(), 'mentor_booking');
+    expect(aiQuotaService.consumeQuota).toHaveBeenCalledWith(
+      menteeId.toString(),
+      'mentor_booking',
+      { requestCount: 1, tokensUsed: 0 },
+    );
+    expect(bookingSessionModel.findByIdAndUpdate).toHaveBeenLastCalledWith(
+      bookingId.toString(),
+      expect.objectContaining({ 'trialInfo.quotaConsumedAt': expect.any(Date) }),
+      { new: true },
+    );
+  });
+
+  it('refunds consumed trial quota when the mentor cancels before the trial starts', async () => {
+    const menteeId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const bookingId = new Types.ObjectId();
+    const quotaConsumedAt = new Date();
+    const startAt = new Date(Date.now() + 24 * 60 * 60_000);
+    const booking = {
+      _id: bookingId,
+      menteeId,
+      mentorId,
+      bookingType: BookingType.TRIAL,
+      trialInfo: { durationMinutes: 15, quotaConsumedAt },
+      status: BookingStatus.CONFIRMED,
+      sessionType: SessionType.CAREER_GUIDANCE,
+      schedulingDetails: {
+        requestedDateTime: startAt,
+        confirmedDateTime: startAt,
+        duration: 15,
+        timeZone: 'Asia/Ho_Chi_Minh',
+      },
+      bookingRequest: { topicsToDiscuss: ['Intro'] },
+    } as unknown as BookingSession;
+    const cancelledBooking = {
+      ...booking,
+      status: BookingStatus.CANCELLED_BY_MENTOR,
+    } as unknown as BookingSession;
+    const refundedBooking = {
+      ...cancelledBooking,
+      trialInfo: { ...booking.trialInfo, quotaRefundedAt: new Date() },
+    } as unknown as BookingSession;
+
+    bookingSessionModel.findById.mockReturnValue(createExecMock(booking));
+    bookingSessionModel.findByIdAndUpdate
+      .mockReturnValueOnce(createExecMock(cancelledBooking))
+      .mockReturnValueOnce(createExecMock(refundedBooking));
+
+    await expect(
+      service.cancelBooking(bookingId.toString(), { userId: mentorId.toString(), role: 'mentor' }),
+    ).resolves.toBe(refundedBooking);
+
+    expect(aiQuotaService.refundQuota).toHaveBeenCalledWith(
+      menteeId.toString(),
+      'mentor_booking',
+      { requestCount: 1, tokensUsed: 0 },
+      quotaConsumedAt,
+    );
+    expect(paymentService.handleMentorBookingCancellation).not.toHaveBeenCalled();
   });
 
   it('completes a confirmed booking and its tutoring session', async () => {

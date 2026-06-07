@@ -28,6 +28,11 @@ export enum BookingStatus {
   NO_SHOW_MENTOR = 'no_show_mentor',
 }
 
+export enum BookingType {
+  PAID = 'paid',
+  TRIAL = 'trial',
+}
+
 export const ACTIVE_SLOT_BOOKING_STATUSES = [
   BookingStatus.AWAITING_PAYMENT,
   BookingStatus.PENDING,
@@ -80,6 +85,9 @@ export class BookingSession {
 
   @Prop({ type: String, enum: BookingStatus, default: BookingStatus.PENDING })
   status!: BookingStatus;
+
+  @Prop({ type: String, enum: BookingType, default: BookingType.PAID })
+  bookingType!: BookingType;
 
   // Session scheduling details
   @Prop({ required: true, type: Object })
@@ -226,6 +234,14 @@ export class BookingSession {
     // Package/credit usage
     packageId?: Types.ObjectId;
     creditsUsed?: number;
+  };
+
+  @Prop({ type: Object })
+  trialInfo?: {
+    durationMinutes: number;
+    sourcePlanId?: Types.ObjectId;
+    quotaConsumedAt?: Date;
+    quotaRefundedAt?: Date;
   };
 
   // Automated reminders and notifications

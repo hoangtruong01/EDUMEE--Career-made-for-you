@@ -13,8 +13,16 @@ export interface CareerFitResult {
   rank?: number;
   strengths?: string[] | null;
   developmentAreas?: string[] | null;
+  improvementSuggestions?: string[] | null;
+  dimensionScores?: Record<string, number> | null;
+  personalityMatch?: {
+    big5Score?: number;
+    riasecScore?: number;
+    overallPersonalityFit?: number;
+  } | null;
   aiExplanation?: string | null;
   confidence?: number | null;
+  personalityProfile?: unknown | null;
   isLocked?: boolean;
   lockedReason?: 'plan_limit';
   requiredPlan?: string;

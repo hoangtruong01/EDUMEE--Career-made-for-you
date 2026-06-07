@@ -19,8 +19,6 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
-import { useRouter } from 'expo-router';
-
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     PlusJakartaSans_400Regular,
@@ -55,18 +53,17 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const router = useRouter();
-
-
   return (
     <Stack initialRouteName="index">
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="admin-login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
+      <Stack.Screen name="mentor-dashboard" options={{ headerShown: false }} />
       <Stack.Screen name="holland-test" options={{ headerShown: false }} />
       <Stack.Screen name="test-result" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(mentor-tabs)" options={{ headerShown: false }} />
     </Stack>
   );
 }

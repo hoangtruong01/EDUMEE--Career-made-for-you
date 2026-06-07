@@ -9,13 +9,13 @@ interface GlassViewProps extends ViewProps {
   borderRadius?: number;
 }
 
-export const GlassView: React.FC<GlassViewProps> = ({ 
-  children, 
-  intensity = 40, 
-  tint = 'dark', 
+export const GlassView: React.FC<GlassViewProps> = ({
+  children,
+  intensity = 40,
+  tint = 'dark',
   borderRadius = RADIUS.lg,
   style,
-  ...props 
+  ...props
 }) => {
   const flattenedStyle = StyleSheet.flatten(style) || {};
 
@@ -30,7 +30,7 @@ export const GlassView: React.FC<GlassViewProps> = ({
     gap,
     rowGap,
     columnGap,
-    
+
     // Padding properties
     padding,
     paddingHorizontal,
@@ -44,8 +44,10 @@ export const GlassView: React.FC<GlassViewProps> = ({
     ...containerStyle
   } = flattenedStyle as any;
 
+  const shouldFillContent = flattenedStyle.height != null || flattenedStyle.minHeight != null;
+
   const contentStyle = {
-    flex: 1,
+    ...(shouldFillContent ? { flex: 1 } : null),
     flexDirection,
     alignItems,
     justifyContent,
@@ -65,14 +67,12 @@ export const GlassView: React.FC<GlassViewProps> = ({
 
   return (
     <View style={[styles.container, { borderRadius }, containerStyle]} {...props}>
-      <BlurView 
-        intensity={intensity} 
-        tint={tint} 
-        style={[StyleSheet.absoluteFill, { borderRadius }]} 
+      <BlurView
+        intensity={intensity}
+        tint={tint}
+        style={[StyleSheet.absoluteFill, { borderRadius }]}
       />
-      <View style={[styles.content, { borderRadius }, contentStyle]}>
-        {children}
-      </View>
+      <View style={[styles.content, { borderRadius }, contentStyle]}>{children}</View>
     </View>
   );
 };
@@ -84,7 +84,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  content: {
-    flex: 1,
-  },
+  content: {},
 });

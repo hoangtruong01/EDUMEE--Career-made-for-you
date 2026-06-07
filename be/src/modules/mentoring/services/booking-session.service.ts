@@ -15,6 +15,7 @@ import {
   BookingSession,
   BookingSessionDocument,
   BookingStatus,
+  BookingType,
 } from '../schemas/booking-session.schema';
 import { TutorProfile, TutorProfileDocument, TutorStatus } from '../schemas/tutor-profile.schema';
 import {
@@ -29,6 +30,8 @@ import { MentorAvailabilitySlotDocument } from '../schemas/mentor-availability-s
 import { NotificationService } from '../../notifications/services';
 import { NotificationType } from '../../notifications/schemas';
 import { PaymentService } from '../../payment/services';
+import { AiQuotaService } from '../../ai/services/ai-quota.service';
+import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 
 interface CreateBookingInput {
   tutorProfileId: string;
@@ -41,6 +44,7 @@ const SAME_MENTEE_BLOCKING_STATUSES = [
   BookingStatus.CONFIRMED,
   BookingStatus.RESCHEDULED,
 ];
+const TRIAL_BOOKING_DURATION_MINUTES = 15;
 const SESSION_COMPLETE_GRACE_MINUTES = 30;
 const SESSION_COMPLETION_SWEEP_INTERVAL_MS = 5 * 60_000;
 
@@ -74,6 +78,7 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     private readonly mentorAvailabilityService: MentorAvailabilityService,
     private readonly notificationService: NotificationService,
     private readonly paymentService: PaymentService,
+    private readonly aiQuotaService: AiQuotaService,
   ) { }
 
   onModuleInit(): void {
@@ -123,6 +128,11 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Tutor is not active');
     }
 
+    const bookingType = createDto.bookingType === BookingType.TRIAL ? BookingType.TRIAL : BookingType.PAID;
+    const trialSourcePlan = bookingType === BookingType.TRIAL
+      ? await this.resolveTrialSourcePlan(menteeId)
+      : null;
+
     const existingBooking = await this.resolveExistingSlotBooking(createDto.availabilitySlotId, menteeId);
     if (existingBooking) return existingBooking;
 
@@ -130,18 +140,28 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       createDto.availabilitySlotId,
       createDto.tutorProfileId,
       menteeId,
+      bookingType === BookingType.TRIAL ? { durationMinutes: TRIAL_BOOKING_DURATION_MINUTES } : undefined,
     );
 
     try {
       const booking = new this.bookingSessionModel({
         ...createDto,
+        bookingType,
         schedulingDetails: this.buildSchedulingDetailsFromSlot(slot, createDto),
         availabilitySlotId: slot._id,
         menteeId: new Types.ObjectId(menteeId),
         tutorProfileId: tutor._id,
         mentorId: this.toObjectId(tutor.userId.toString()),
-        status: BookingStatus.AWAITING_PAYMENT,
-        paymentInfo: this.buildInitialPaymentInfo(tutor, createDto, slot),
+        status: bookingType === BookingType.TRIAL ? BookingStatus.PENDING : BookingStatus.AWAITING_PAYMENT,
+        paymentInfo: bookingType === BookingType.TRIAL
+          ? this.buildTrialPaymentInfo(tutor)
+          : this.buildInitialPaymentInfo(tutor, createDto, slot),
+        trialInfo: bookingType === BookingType.TRIAL
+          ? {
+              durationMinutes: TRIAL_BOOKING_DURATION_MINUTES,
+              ...(trialSourcePlan?._id ? { sourcePlanId: trialSourcePlan._id } : {}),
+            }
+          : undefined,
       });
       const saved = await booking.save();
       await this.mentorAvailabilityService.attachBooking(slot._id.toString(), saved._id.toString());
@@ -231,6 +251,11 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     const isMentor = booking.mentorId.toString() === actorId;
     if (!isMentor && !isAdmin(actor)) throw new ForbiddenException('Forbidden');
 
+    const shouldConsumeTrialQuota = this.isTrialBooking(booking) && !booking.trialInfo?.quotaConsumedAt;
+    if (shouldConsumeTrialQuota) {
+      await this.aiQuotaService.checkQuota(booking.menteeId.toString(), AiFeature.MENTOR_BOOKING);
+    }
+
     // overlap check for mentor at confirmed time
     const requestedAt = new Date(booking.schedulingDetails.requestedDateTime);
     const candidateConfirmedAt = confirmedDateTime && !Number.isNaN(confirmedDateTime.getTime())
@@ -250,7 +275,17 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     if (booking.availabilitySlotId) {
       await this.mentorAvailabilityService.markBooked(booking.availabilitySlotId.toString(), booking._id.toString());
     }
-    const bookingWithSession = await this.ensureTutoringSessionForBooking(updated);
+    let bookingWithSession = await this.ensureTutoringSessionForBooking(updated);
+    if (shouldConsumeTrialQuota) {
+      await this.aiQuotaService.consumeQuota(
+        booking.menteeId.toString(),
+        AiFeature.MENTOR_BOOKING,
+        { requestCount: 1, tokensUsed: 0 },
+      );
+      bookingWithSession = await this.update(id, {
+        'trialInfo.quotaConsumedAt': new Date(),
+      });
+    }
     await this.notifyBookingParticipants(bookingWithSession, NotificationType.MENTOR_BOOKING_CONFIRMED);
     return bookingWithSession;
   }
@@ -269,9 +304,22 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     if (!isMentee && !isMentor && !isAdmin(actor)) throw new ForbiddenException('Forbidden');
 
     const status = isMentor ? BookingStatus.CANCELLED_BY_MENTOR : BookingStatus.CANCELLED_BY_MENTEE;
-    const updated = await this.update(id, { status, ...(reason ? { 'cancellationDetails.reason': reason } : {}) });
+    const shouldRefundTrialQuota = this.shouldRefundTrialQuotaOnMentorCancel(booking, isMentor);
+    let updated = await this.update(id, { status, ...(reason ? { 'cancellationDetails.reason': reason } : {}) });
     await this.mentorAvailabilityService.releaseSlotForBooking(id);
-    await this.paymentService.handleMentorBookingCancellation(booking, isMentor ? 'mentor' : 'mentee', reason);
+    if (this.isTrialBooking(booking)) {
+      if (shouldRefundTrialQuota) {
+        await this.aiQuotaService.refundQuota(
+          booking.menteeId.toString(),
+          AiFeature.MENTOR_BOOKING,
+          { requestCount: 1, tokensUsed: 0 },
+          booking.trialInfo?.quotaConsumedAt,
+        );
+        updated = await this.update(id, { 'trialInfo.quotaRefundedAt': new Date() });
+      }
+    } else {
+      await this.paymentService.handleMentorBookingCancellation(booking, isMentor ? 'mentor' : 'mentee', reason);
+    }
     await this.notifyBookingParticipants(updated, NotificationType.MENTOR_BOOKING_CANCELLED);
     return updated;
   }
@@ -878,6 +926,37 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     return (ACTIVE_SLOT_BOOKING_STATUSES as readonly BookingStatus[]).includes(status);
   }
 
+  private async resolveTrialSourcePlan(menteeId: string) {
+    await this.aiQuotaService.checkQuota(menteeId, AiFeature.MENTOR_BOOKING);
+    return this.aiQuotaService.getPlanForUserOrFree(menteeId);
+  }
+
+  private isTrialBooking(booking: Pick<BookingSession, 'bookingType'>): boolean {
+    return booking.bookingType === BookingType.TRIAL;
+  }
+
+  private shouldRefundTrialQuotaOnMentorCancel(
+    booking: BookingSessionDocument,
+    isMentorCancellation: boolean,
+  ): boolean {
+    if (!isMentorCancellation || !this.isTrialBooking(booking)) return false;
+    if (!booking.trialInfo?.quotaConsumedAt || booking.trialInfo?.quotaRefundedAt) return false;
+
+    const start = new Date(
+      booking.schedulingDetails.confirmedDateTime || booking.schedulingDetails.requestedDateTime,
+    );
+    return !Number.isNaN(start.getTime()) && start.getTime() > Date.now();
+  }
+
+  private buildTrialPaymentInfo(tutor: TutorProfileDocument): BookingSession['paymentInfo'] {
+    return {
+      sessionPrice: 0,
+      currency: tutor.pricing?.currency || 'VND',
+      paymentMethod: 'free_session',
+      paymentStatus: 'free',
+    };
+  }
+
   private buildInitialPaymentInfo(
     tutor: TutorProfileDocument,
     createDto: CreateBookingInput,
@@ -1113,6 +1192,7 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       bookingId: booking._id.toString(),
       tutoringSessionId: booking.tutoringSessionId?.toString(),
       status: booking.status,
+      bookingType: booking.bookingType || BookingType.PAID,
       sessionType: booking.sessionType,
       meetingLink: booking.schedulingDetails.meetingLink,
       requestedDateTime: booking.schedulingDetails.requestedDateTime,

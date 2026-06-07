@@ -37,10 +37,12 @@ describe('AiPlanService', () => {
     countDocuments: jest.fn(),
     aggregate: jest.fn(),
     distinct: jest.fn(),
+    deleteMany: jest.fn(),
   };
 
   const userModel = {
     countDocuments: jest.fn(),
+    find: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -188,10 +190,23 @@ describe('AiPlanService', () => {
     await service.findAll();
 
     const totalAggregatePipeline = userSubscriptionModel.aggregate.mock.calls[0][0];
-    expect(totalAggregatePipeline[1]).toEqual({
+    expect(totalAggregatePipeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          $lookup: expect.objectContaining({
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'user',
+          }),
+        }),
+        { $match: { 'user.0': { $exists: true } } },
+      ]),
+    );
+    expect(totalAggregatePipeline[3]).toEqual({
       $group: { _id: '$planId', userIds: { $addToSet: '$userId' } },
     });
-    expect(totalAggregatePipeline[2]).toEqual({ $project: { count: { $size: '$userIds' } } });
+    expect(totalAggregatePipeline[4]).toEqual({ $project: { count: { $size: '$userIds' } } });
   });
 
   it('forces default plans to stay active on create', async () => {
@@ -404,20 +419,240 @@ describe('AiPlanService', () => {
 
   it('still blocks deleting plans with active subscriptions', async () => {
     const planId = '507f1f77bcf86cd799439011';
+    const planObjectId = new Types.ObjectId(planId);
     aiPlanModel.findById.mockReturnValue(
       createExecMock({
+        _id: planObjectId,
         id: planId,
         isDefaultPlan: false,
       }),
     );
-    userSubscriptionModel.countDocuments.mockReturnValue(
-      createExecMock(1),
-    );
+    userSubscriptionModel.aggregate
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([{ _id: planObjectId, count: 1 }]));
 
     await expect(service.remove(planId)).rejects.toThrow('Cannot delete plan with active subscriptions');
-    expect(userSubscriptionModel.countDocuments).toHaveBeenCalledWith({
-      planId: expect.anything(),
-      status: SubscriptionStatus.ACTIVE,
+    expect(userSubscriptionModel.aggregate.mock.calls[1][0][0].$match).toEqual(
+      expect.objectContaining({
+        planId: planObjectId,
+        status: SubscriptionStatus.ACTIVE,
+      }),
+    );
+    expect(aiPlanModel.deleteOne).not.toHaveBeenCalled();
+  });
+
+  it('cleans orphan subscriptions before deleting a plan', async () => {
+    const planId = '507f1f77bcf86cd799439011';
+    const planObjectId = new Types.ObjectId(planId);
+    const orphanSubscriptionId = new Types.ObjectId('507f1f77bcf86cd799439012');
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        _id: planObjectId,
+        id: planId,
+        isDefaultPlan: false,
+      }),
+    );
+    userSubscriptionModel.aggregate
+      .mockReturnValueOnce(createExecMock([{ _id: orphanSubscriptionId }]))
+      .mockReturnValueOnce(createExecMock([]));
+    userSubscriptionModel.deleteMany.mockReturnValue(createExecMock({ deletedCount: 1 }));
+    aiPlanModel.deleteOne.mockReturnValue(createExecMock({ deletedCount: 1 }));
+
+    await service.remove(planId);
+
+    expect(userSubscriptionModel.deleteMany).toHaveBeenCalledWith({
+      _id: { $in: [orphanSubscriptionId] },
     });
+    expect(aiPlanModel.deleteOne).toHaveBeenCalledWith({ _id: planObjectId });
+  });
+
+  it('lists active subscribers for a paid plan', async () => {
+    const planId = '507f1f77bcf86cd799439201';
+    const userId = new Types.ObjectId('507f1f77bcf86cd799439202');
+    const subscriptionId = new Types.ObjectId('507f1f77bcf86cd799439203');
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        _id: new Types.ObjectId(planId),
+        name: 'Plus',
+        price: 10000,
+        isDefaultPlan: false,
+      }),
+    );
+    userModel.countDocuments.mockReturnValue(createExecMock(0));
+    userSubscriptionModel.distinct.mockReturnValue(createExecMock([]));
+    userSubscriptionModel.aggregate
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(
+        createExecMock([
+          {
+            rows: [
+              {
+                _id: subscriptionId,
+                userId,
+                status: SubscriptionStatus.ACTIVE,
+                billingCycle: BillingCycle.MONTHLY,
+                startDate: new Date('2026-05-01T00:00:00.000Z'),
+                endDate: new Date('2099-06-01T00:00:00.000Z'),
+                user: {
+                  _id: userId,
+                  name: 'Subscriber One',
+                  email: 'subscriber@example.com',
+                  phone_number: '0901234567',
+                  role: 'user',
+                  verify: 1,
+                },
+              },
+            ],
+            total: [{ count: 1 }],
+          },
+        ]),
+      );
+
+    const result = await service.listSubscribers(planId, { status: 'active' });
+
+    expect(result.total).toBe(1);
+    expect(result.subscribers[0]).toEqual(
+      expect.objectContaining({
+        userId: userId.toString(),
+        name: 'Subscriber One',
+        email: 'subscriber@example.com',
+        phone_number: '0901234567',
+        subscriptionId: subscriptionId.toString(),
+        subscriptionStatus: SubscriptionStatus.ACTIVE,
+        billingCycle: BillingCycle.MONTHLY,
+        isCurrentPlanUser: true,
+      }),
+    );
+    const listPipeline = userSubscriptionModel.aggregate.mock.calls[4][0];
+    expect(listPipeline[0].$match).toEqual(
+      expect.objectContaining({
+        planId: expect.any(Types.ObjectId),
+        status: SubscriptionStatus.ACTIVE,
+      }),
+    );
+    expect(listPipeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          $group: { _id: '$userId', subscription: { $first: '$$ROOT' } },
+        }),
+      ]),
+    );
+  });
+
+  it('filters paid plan subscribers by cancelled status and search', async () => {
+    const planId = '507f1f77bcf86cd799439211';
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        _id: new Types.ObjectId(planId),
+        name: 'Plus',
+        price: 10000,
+        isDefaultPlan: false,
+      }),
+    );
+    userModel.countDocuments.mockReturnValue(createExecMock(0));
+    userSubscriptionModel.distinct.mockReturnValue(createExecMock([]));
+    userSubscriptionModel.aggregate
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([]))
+      .mockReturnValueOnce(createExecMock([{ rows: [], total: [] }]));
+
+    await service.listSubscribers(planId, {
+      status: 'cancelled',
+      search: 'subscriber@example.com',
+    });
+
+    const listPipeline = userSubscriptionModel.aggregate.mock.calls[4][0];
+    expect(listPipeline[0].$match).toEqual(
+      expect.objectContaining({ status: SubscriptionStatus.CANCELLED }),
+    );
+    expect(listPipeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          $match: expect.objectContaining({
+            $or: expect.arrayContaining([
+              expect.objectContaining({ 'user.email': expect.any(RegExp) }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('lists current Free users by excluding users with active paid plans', async () => {
+    const planId = '507f1f77bcf86cd799439221';
+    const freeUserId = new Types.ObjectId('507f1f77bcf86cd799439222');
+    const paidUserId = new Types.ObjectId('507f1f77bcf86cd799439223');
+    const paidPlanId = new Types.ObjectId('507f1f77bcf86cd799439224');
+    aiPlanModel.findById.mockReturnValue(
+      createExecMock({
+        _id: new Types.ObjectId(planId),
+        name: 'Free',
+        price: 0,
+        isDefaultPlan: true,
+      }),
+    );
+    userSubscriptionModel.aggregate.mockReturnValue(createExecMock([]));
+    userModel.countDocuments
+      .mockReturnValueOnce(createExecMock(5))
+      .mockReturnValueOnce(createExecMock(1));
+    userSubscriptionModel.distinct
+      .mockReturnValueOnce(createExecMock([paidUserId]))
+      .mockReturnValueOnce(createExecMock([paidUserId]));
+    aiPlanModel.find.mockReturnValue({
+      select: jest.fn().mockReturnValue(createExecMock([{ _id: paidPlanId }])),
+    });
+    userModel.find.mockReturnValue(createUserFindQuery([
+      {
+        _id: freeUserId,
+        name: 'Free User',
+        email: 'free@example.com',
+        phone_number: '',
+        role: 'user',
+        verify: 1,
+      },
+    ]));
+
+    const result = await service.listSubscribers(planId, {
+      status: 'active',
+      search: 'free@example.com',
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.subscribers[0]).toEqual(
+      expect.objectContaining({
+        userId: freeUserId.toString(),
+        email: 'free@example.com',
+        subscriptionStatus: 'active',
+        billingCycle: BillingCycle.MONTHLY,
+        isCurrentPlanUser: true,
+      }),
+    );
+    const userQuery = userModel.find.mock.calls[0][0];
+    expect(userQuery._id.$nin).toEqual([paidUserId]);
+    expect(userQuery.$or).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ email: expect.any(RegExp) }),
+      ]),
+    );
+  });
+
+  it('rejects list subscribers for invalid plan ids', async () => {
+    await expect(service.listSubscribers('not-a-plan-id')).rejects.toThrow('Invalid plan id');
+    expect(aiPlanModel.findById).not.toHaveBeenCalled();
   });
 });
+
+function createUserFindQuery<T>(value: T) {
+  return {
+    select: jest.fn().mockReturnThis(),
+    sort: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue(value),
+  };
+}

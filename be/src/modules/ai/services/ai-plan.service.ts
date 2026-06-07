@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, PipelineStage, Types } from 'mongoose';
 import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
 import { CreateAiPlanDto, UpdateAiPlanDto } from '../dto';
 import { SubscriptionStatus, UserSubscription, UserSubscriptionDocument } from '../../users/schemas/user-subscriptions';
 import { BillingCycle } from '../../users/schemas/user-subscriptions';
 import { User, UserDocument } from '../../users/schemas/user.schema';
+import { UserVerifyStatus } from '../../../common/enums';
 
 export type AiPlanPricingSummary = {
   billingCycle: BillingCycle;
@@ -36,6 +37,56 @@ export type AiPlanSubscriberStats = {
 
 export type AiPlanAdminItem = AiPlan & {
   subscriberStats: AiPlanSubscriberStats;
+};
+
+export type AiPlanSubscriberStatusFilter = 'active' | 'all' | 'cancelled' | 'expired';
+
+export type AiPlanSubscribersParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+};
+
+export type AiPlanSubscriberItem = {
+  userId: string;
+  name: string;
+  email: string;
+  phone_number?: string;
+  role: string;
+  userStatus: string;
+  subscriptionId?: string;
+  subscriptionStatus: SubscriptionStatus | 'active';
+  billingCycle?: BillingCycle;
+  startDate?: Date;
+  endDate?: Date;
+  isCurrentPlanUser: boolean;
+};
+
+export type AiPlanSubscribersResponse = {
+  subscribers: AiPlanSubscriberItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  stats: AiPlanSubscriberStats;
+};
+
+type SubscriberAggregateRow = {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  billingCycle?: BillingCycle;
+  startDate?: Date;
+  endDate?: Date;
+  status: SubscriptionStatus;
+  user?: {
+    _id: Types.ObjectId;
+    name?: string;
+    email?: string;
+    phone_number?: string;
+    role?: string;
+    verify?: UserVerifyStatus;
+  };
 };
 
 @Injectable()
@@ -90,6 +141,36 @@ export class AiPlanService {
     return plan;
   }
 
+  async listSubscribers(id: string, params: AiPlanSubscribersParams = {}): Promise<AiPlanSubscribersResponse> {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid plan id');
+    const plan = await this.aiPlanModel.findById(id).exec();
+    if (!plan) throw new NotFoundException('AI plan not found');
+
+    const page = this.toPositiveInteger(params.page, 1);
+    const limit = Math.min(this.toPositiveInteger(params.limit, 10), 100);
+    const status = this.normalizeSubscriberStatus(params.status);
+    const search = params.search?.trim();
+    const statsByPlanId = await this.buildSubscriberStats([plan]);
+    const stats = statsByPlanId.get(this.getPlanId(plan)) || this.emptySubscriberStats();
+
+    if (plan.isDefaultPlan && status === 'active') {
+      return this.listDefaultPlanCurrentUsers(plan, {
+        page,
+        limit,
+        search,
+        stats,
+      });
+    }
+
+    return this.listSubscriptionUsersForPlan(plan, {
+      page,
+      limit,
+      search,
+      status,
+      stats,
+    });
+  }
+
   async update(id: string, dto: UpdateAiPlanDto): Promise<AiPlanDocument> {
     if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid plan id');
     const currentPlan = await this.aiPlanModel.findById(id).exec();
@@ -128,13 +209,16 @@ export class AiPlanService {
       throw new BadRequestException('Cannot delete default plan');
     }
 
-    const activeSubs = await this.userSubscriptionModel
-      .countDocuments({ planId: new Types.ObjectId(id), status: SubscriptionStatus.ACTIVE })
-      .exec();
-    if (activeSubs > 0) {
+    const planObjectId = new Types.ObjectId(id);
+    await this.cleanupOrphanSubscriptionsForPlan(planObjectId);
+    const activeByPlan = await this.countDistinctSubscribersByPlan({
+      planId: planObjectId,
+      ...this.buildActiveSubscriptionFilter(new Date()),
+    });
+    if ((activeByPlan.get(id) || 0) > 0) {
       throw new BadRequestException('Cannot delete plan with active subscriptions');
     }
-    const res = await this.aiPlanModel.deleteOne({ _id: new Types.ObjectId(id) }).exec();
+    const res = await this.aiPlanModel.deleteOne({ _id: planObjectId }).exec();
     if (res.deletedCount === 0) throw new NotFoundException('AI plan not found');
   }
 
@@ -230,6 +314,219 @@ export class AiPlanService {
     ];
   }
 
+  private async listDefaultPlanCurrentUsers(
+    plan: AiPlanDocument,
+    params: {
+      page: number;
+      limit: number;
+      search?: string;
+      stats: AiPlanSubscriberStats;
+    },
+  ): Promise<AiPlanSubscribersResponse> {
+    const skip = (params.page - 1) * params.limit;
+    const activePaidUserIds = await this.getActivePaidPlanUserIds();
+    const query = {
+      _id: { $nin: activePaidUserIds },
+      ...this.buildUserSearchQuery(params.search),
+    };
+
+    const [users, total] = await Promise.all([
+      this.userModel
+        .find(query)
+        .select('name email phone_number role verify')
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(params.limit)
+        .exec(),
+      this.userModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      subscribers: users.map((user) => this.serializeDefaultPlanSubscriber(user)),
+      total,
+      page: params.page,
+      limit: params.limit,
+      totalPages: Math.max(1, Math.ceil(total / params.limit)),
+      stats: params.stats,
+    };
+  }
+
+  private async listSubscriptionUsersForPlan(
+    plan: AiPlanDocument,
+    params: {
+      page: number;
+      limit: number;
+      search?: string;
+      status: AiPlanSubscriberStatusFilter;
+      stats: AiPlanSubscriberStats;
+    },
+  ): Promise<AiPlanSubscribersResponse> {
+    const now = new Date();
+    const skip = (params.page - 1) * params.limit;
+    const match: Record<string, unknown> = {
+      planId: this.getPlanObjectId(plan),
+      ...this.buildSubscriptionStatusFilter(params.status, now),
+    };
+    const searchMatch = this.buildSubscriberSearchMatch(params.search);
+    const pipeline: PipelineStage[] = [
+      { $match: match },
+      { $sort: { startDate: -1, createdAt: -1, _id: -1 } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      ...(searchMatch ? [{ $match: searchMatch }] : []),
+      { $group: { _id: '$userId', subscription: { $first: '$$ROOT' } } },
+      { $replaceRoot: { newRoot: '$subscription' } },
+      {
+        $facet: {
+          rows: [{ $skip: skip }, { $limit: params.limit }],
+          total: [{ $count: 'count' }],
+        },
+      },
+    ];
+
+    const [result] = await this.userSubscriptionModel
+      .aggregate<{ rows: SubscriberAggregateRow[]; total: Array<{ count: number }> }>(pipeline)
+      .exec();
+    const rows = result?.rows || [];
+    const total = result?.total?.[0]?.count || 0;
+
+    return {
+      subscribers: rows.map((row) => this.serializeSubscriptionSubscriber(row, now)),
+      total,
+      page: params.page,
+      limit: params.limit,
+      totalPages: Math.max(1, Math.ceil(total / params.limit)),
+      stats: params.stats,
+    };
+  }
+
+  private async getActivePaidPlanUserIds(): Promise<Types.ObjectId[]> {
+    const paidPlans = await this.aiPlanModel
+      .find({ isDefaultPlan: { $ne: true }, price: { $gt: 0 } })
+      .select('_id')
+      .exec();
+    const paidPlanIds = paidPlans.map((plan) => this.getPlanObjectId(plan));
+    if (paidPlanIds.length === 0) return [];
+
+    const activeUserIds = await this.userSubscriptionModel
+      .distinct('userId', {
+        planId: { $in: paidPlanIds },
+        ...this.buildActiveSubscriptionFilter(new Date()),
+      })
+      .exec();
+    return activeUserIds as Types.ObjectId[];
+  }
+
+  private buildSubscriptionStatusFilter(
+    status: AiPlanSubscriberStatusFilter,
+    now: Date,
+  ): Record<string, unknown> {
+    if (status === 'active') {
+      return this.buildActiveSubscriptionFilter(now);
+    }
+    if (status === 'cancelled') {
+      return { status: SubscriptionStatus.CANCELLED };
+    }
+    if (status === 'expired') {
+      return { status: SubscriptionStatus.EXPIRED };
+    }
+    return {};
+  }
+
+  private buildActiveSubscriptionFilter(now: Date): Record<string, unknown> {
+    return {
+      status: SubscriptionStatus.ACTIVE,
+      $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gt: now } }],
+    };
+  }
+
+  private buildUserSearchQuery(search?: string): Record<string, unknown> {
+    const normalized = search?.trim();
+    if (!normalized) return {};
+
+    const regex = new RegExp(this.escapeRegex(normalized), 'i');
+    return {
+      $or: [{ name: regex }, { email: regex }, { phone_number: regex }],
+    };
+  }
+
+  private buildSubscriberSearchMatch(search?: string): Record<string, unknown> | null {
+    const normalized = search?.trim();
+    if (!normalized) return null;
+
+    const regex = new RegExp(this.escapeRegex(normalized), 'i');
+    return {
+      $or: [{ 'user.name': regex }, { 'user.email': regex }, { 'user.phone_number': regex }],
+    };
+  }
+
+  private serializeDefaultPlanSubscriber(user: UserDocument): AiPlanSubscriberItem {
+    return {
+      userId: user._id.toString(),
+      name: user.name || '',
+      email: user.email || '',
+      phone_number: user.phone_number || '',
+      role: user.role || 'user',
+      userStatus: this.formatUserStatus(user.verify),
+      subscriptionStatus: 'active',
+      billingCycle: BillingCycle.MONTHLY,
+      isCurrentPlanUser: true,
+    };
+  }
+
+  private serializeSubscriptionSubscriber(row: SubscriberAggregateRow, now: Date): AiPlanSubscriberItem {
+    const user = row.user;
+    return {
+      userId: row.userId.toString(),
+      name: user?.name || '',
+      email: user?.email || '',
+      phone_number: user?.phone_number || '',
+      role: user?.role || 'user',
+      userStatus: this.formatUserStatus(user?.verify),
+      subscriptionId: row._id.toString(),
+      subscriptionStatus: row.status,
+      billingCycle: row.billingCycle,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      isCurrentPlanUser: this.isActiveSubscription(row, now),
+    };
+  }
+
+  private isActiveSubscription(
+    subscription: Pick<SubscriberAggregateRow, 'status' | 'endDate'>,
+    now: Date,
+  ): boolean {
+    return (
+      subscription.status === SubscriptionStatus.ACTIVE &&
+      (!subscription.endDate || subscription.endDate.getTime() > now.getTime())
+    );
+  }
+
+  private formatUserStatus(verify?: UserVerifyStatus): string {
+    return verify === UserVerifyStatus.Banned ? 'Bị khóa' : 'Hoạt động';
+  }
+
+  private normalizeSubscriberStatus(status?: string): AiPlanSubscriberStatusFilter {
+    const normalized = status?.trim().toLowerCase();
+    if (normalized === 'all' || normalized === 'cancelled' || normalized === 'expired') {
+      return normalized;
+    }
+    return 'active';
+  }
+
+  private toPositiveInteger(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return Math.floor(parsed);
+  }
+
   private async buildSubscriberStats(plans: AiPlanDocument[]): Promise<Map<string, AiPlanSubscriberStats>> {
     const statsByPlanId = new Map<string, AiPlanSubscriberStats>();
     if (plans.length === 0) return statsByPlanId;
@@ -297,6 +594,15 @@ export class AiPlanService {
     const rows = await this.userSubscriptionModel
       .aggregate<{ _id: Types.ObjectId; count: number }>([
         { $match: filter },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        { $match: { 'user.0': { $exists: true } } },
         { $group: { _id: '$planId', userIds: { $addToSet: '$userId' } } },
         { $project: { count: { $size: '$userIds' } } },
       ])
@@ -306,6 +612,33 @@ export class AiPlanService {
       acc.set(row._id.toString(), row.count || 0);
       return acc;
     }, new Map<string, number>());
+  }
+
+  private async cleanupOrphanSubscriptionsForPlan(planId: Types.ObjectId): Promise<void> {
+    const rows = await this.userSubscriptionModel
+      .aggregate<{ _id: Types.ObjectId }>([
+        { $match: { planId } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        { $match: { 'user.0': { $exists: false } } },
+        { $project: { _id: 1 } },
+      ])
+      .exec();
+
+    const orphanIds = rows.map((row) => row._id).filter(Boolean);
+    if (orphanIds.length === 0) return;
+
+    await this.userSubscriptionModel.deleteMany({ _id: { $in: orphanIds } }).exec();
+  }
+
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private emptySubscriberStats(): AiPlanSubscriberStats {

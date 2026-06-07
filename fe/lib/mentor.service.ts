@@ -39,6 +39,7 @@ export type BookingStatus =
   | 'completed'
   | 'no_show_mentee'
   | 'no_show_mentor';
+export type BookingType = 'paid' | 'trial';
 export type MentorAvailabilitySlotStatus = 'available' | 'held' | 'booked' | 'blocked';
 
 export interface TutorProfile {
@@ -129,6 +130,7 @@ export interface BookingSession {
   availabilitySlotId: string;
   sessionType: string;
   status: BookingStatus;
+  bookingType?: BookingType;
   schedulingDetails: {
     requestedDateTime: string;
     confirmedDateTime?: string;
@@ -165,6 +167,12 @@ export interface BookingSession {
       refundReason?: string;
       refundStatus?: string;
     };
+  };
+  trialInfo?: {
+    durationMinutes?: number;
+    sourcePlanId?: string;
+    quotaConsumedAt?: string;
+    quotaRefundedAt?: string;
   };
   communicationThread?: {
     messageId: string;
@@ -317,6 +325,7 @@ export interface CreateBookingPayload {
   tutorProfileId: string;
   availabilitySlotId: string;
   sessionType: string;
+  bookingType?: BookingType;
   schedulingDetails?: {
     requestedDateTime: string;
     duration: number;

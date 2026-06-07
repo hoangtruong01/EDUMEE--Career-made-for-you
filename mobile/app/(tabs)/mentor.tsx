@@ -1,258 +1,463 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
-  TextInput,
-  Modal,
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
   ActivityIndicator,
-  RefreshControl,
+  Alert,
+  Image,
+  Modal,
   Platform,
-  Alert
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { COLORS, SPACING, RADIUS } from '../../src/theme';
+import { Calendar, CheckCircle2, Search, Send, Star, X } from 'lucide-react-native';
 import { GlassView } from '../../src/components/GlassView';
-import { 
-  Heart, 
-  MessageSquare, 
-  Star, 
-  Calendar, 
-  MessageCircle, 
-  ArrowRight, 
-  UserCheck, 
-  Send, 
-  Sparkles,
-  Search,
-  Filter,
-  X,
-  CreditCard,
-  Briefcase
-} from 'lucide-react-native';
+import { COLORS, RADIUS, SPACING } from '../../src/theme';
 import { api } from '../../src/services/api';
 
+type BookingStep = 'form' | 'success';
+
+interface MentorCardData {
+  id: string;
+  profileId: string;
+  mentorUserId: string;
+  name: string;
+  title: string;
+  skills: string[];
+  rating: number;
+  reviews: number;
+  price: string;
+  rawPrice: number;
+  avatar: string;
+  bio: string;
+}
+
+interface AvailabilitySlot {
+  id?: string;
+  _id?: string;
+  startAt: string;
+  endAt: string;
+  status: string;
+}
+
+interface TutorProfileLike {
+  id?: string;
+  _id?: string;
+  userId?: string;
+  status?: string;
+  mentorUser?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+    avatar?: string;
+  };
+  professionalBackground?: {
+    currentPosition?: string;
+    company?: string;
+  };
+  mentoringExpertise?: {
+    specializations?: string[];
+    skillExpertise?: { skillName?: string }[];
+  };
+  pricing?: {
+    currency?: string;
+    sessionRates?: { pricePerSession?: number; duration?: number; sessionType?: string }[];
+  };
+  performanceMetrics?: {
+    ratings?: {
+      averageRating?: number;
+      totalReviews?: number;
+    };
+  };
+}
+
+const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop';
+
+function unpackResponseData(response: any) {
+  const payload = response?.data ?? response;
+  if (payload && typeof payload === 'object' && 'success' in payload && 'data' in payload) {
+    const inner = payload.data;
+    if (inner && typeof inner === 'object' && 'data' in inner) return inner.data;
+    return inner;
+  }
+  if (payload && typeof payload === 'object' && 'data' in payload) return payload.data;
+  return payload;
+}
+
+function getEntityId(value: any) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value.id || value._id || '';
+}
+
+function formatCurrency(amount?: number, currency = 'VND') {
+  const value = Number(amount || 0);
+  if (!value) return 'Miễn phí';
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatTimeRange(slot?: AvailabilitySlot | null) {
+  if (!slot) return '--';
+  return `${formatDateTime(slot.startAt)} - ${new Date(slot.endAt).toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
+
+function getSlotId(slot: AvailabilitySlot) {
+  return slot.id || slot._id || `${slot.startAt}-${slot.endAt}`;
+}
+
+function notify(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    alert(`${title}\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
+function parseMentor(item: TutorProfileLike): MentorCardData {
+  const profileId = getEntityId(item);
+  const mentorUserId = getEntityId(item.userId) || getEntityId(item.mentorUser);
+  const rate = item.pricing?.sessionRates?.[0];
+  const price = Number(rate?.pricePerSession || 0);
+  const currentPosition = item.professionalBackground?.currentPosition || 'Mentor định hướng';
+  const company = item.professionalBackground?.company;
+  const skills =
+    item.mentoringExpertise?.skillExpertise
+      ?.map((skill) => skill.skillName)
+      .filter(Boolean)
+      .slice(0, 4) || item.mentoringExpertise?.specializations?.slice(0, 4) || ['Mentoring'];
+
+  return {
+    id: profileId,
+    profileId,
+    mentorUserId,
+    name: item.mentorUser?.name || 'Mentor EDUMEE',
+    title: company ? `${currentPosition} tại ${company}` : currentPosition,
+    skills: skills as string[],
+    rating: Number(item.performanceMetrics?.ratings?.averageRating || 5),
+    reviews: Number(item.performanceMetrics?.ratings?.totalReviews || 0),
+    price: formatCurrency(price, item.pricing?.currency),
+    rawPrice: price,
+    avatar: item.mentorUser?.avatar || DEFAULT_AVATAR,
+    bio:
+      item.mentoringExpertise?.specializations?.join(', ') ||
+      'Tư vấn định hướng, chia sẻ kinh nghiệm thực chiến và hỗ trợ học viên chuẩn bị bước tiếp theo.',
+  };
+}
+
+function getFallbackMentors(): MentorCardData[] {
+  return [
+    {
+      id: 'fallback-1',
+      profileId: 'fallback-1',
+      mentorUserId: 'fallback-1',
+      name: 'Lê Hoài Nam',
+      title: 'AI Architect tại VinAI',
+      skills: ['Machine Learning', 'Career path', 'Interview'],
+      rating: 4.9,
+      reviews: 24,
+      price: '200.000 ₫',
+      rawPrice: 200000,
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop',
+      bio: 'Hỗ trợ học viên xây dựng lộ trình AI, chuẩn bị portfolio và luyện phỏng vấn kỹ thuật.',
+    },
+    {
+      id: 'fallback-2',
+      profileId: 'fallback-2',
+      mentorUserId: 'fallback-2',
+      name: 'Hoàng Thu Thủy',
+      title: 'Senior Product Designer tại Grab',
+      skills: ['Product Design', 'UX Research', 'Portfolio'],
+      rating: 4.8,
+      reviews: 18,
+      price: '150.000 ₫',
+      rawPrice: 150000,
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop',
+      bio: 'Mentor về thiết kế sản phẩm, nghiên cứu người dùng và cách kể câu chuyện qua case study.',
+    },
+  ];
+}
+
 export default function MentorTabScreen() {
-  const [mentors, setMentors] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [mentors, setMentors] = useState<MentorCardData[]>([]);
+  const [isLoadingMentors, setIsLoadingMentors] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSkill, setSelectedSkill] = useState<string>('All');
-  
-  // Booking flow
-  const [bookingModalVisible, setBookingModalVisible] = useState(false);
-  const [selectedMentor, setSelectedMentor] = useState<any>(null);
-  const [bookingStep, setBookingStep] = useState(1);
-  const [bookingReason, setBookingReason] = useState('');
-  const [bookingDate, setBookingDate] = useState('Ngày mai, 14:00 - 15:00');
-  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState('Tất cả');
 
-  const fetchMentors = useCallback(async (showRefreshing = false) => {
+  const [bookingModalVisible, setBookingModalVisible] = useState(false);
+  const [selectedMentor, setSelectedMentor] = useState<MentorCardData | null>(null);
+  const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([]);
+  const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [bookingReason, setBookingReason] = useState('');
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingStep, setBookingStep] = useState<BookingStep>('form');
+
+  const fetchMentors = useCallback(async (refreshing = false) => {
     try {
-      if (showRefreshing) setIsRefreshing(true); else setIsLoading(true);
+      if (refreshing) setIsRefreshing(true);
+      else setIsLoadingMentors(true);
+
       const response = await api.get('/tutor-profiles/active');
-      const list = response.data?.data || response.data || [];
-      
-      // Parse active mentors to match UI
-      const parsed = list.map((item: any) => {
-        const name = item.mentorUser?.name || 'Mentor Edumee';
-        const avatar = item.mentorUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150';
-        const title = item.professionalBackground?.currentPosition 
-          ? `${item.professionalBackground.currentPosition} tại ${item.professionalBackground.company || 'Doanh nghiệp'}`
-          : 'Chuyên gia Định hướng';
-        const rating = item.performanceMetrics?.ratings?.averageRating || 5.0;
-        const reviews = item.performanceMetrics?.ratings?.totalReviews || 12;
-        const priceVal = item.pricing?.sessionRates?.[0]?.pricePerSession || 150000;
-        const skills = item.mentoringExpertise?.skillExpertise?.map((s: any) => s.skillName) || ['Mentoring', 'Soft skills'];
-        const bio = item.pricing?.sessionRates?.[0]?.sessionType 
-          ? `Tư vấn chuyên sâu về ${item.pricing.sessionRates[0].sessionType}`
-          : 'Học hỏi kinh nghiệm thực chiến từ chuyên gia hàng đầu trong ngành.';
-        
-        return {
-          id: item._id || item.id,
-          name,
-          title,
-          skills,
-          rating,
-          reviews,
-          price: `${priceVal / 1000}k / phiên`,
-          rawPrice: priceVal,
-          avatar,
-          bio
-        };
-      });
-      
-      setMentors(parsed.length > 0 ? parsed : getFallbackMentors());
-    } catch (e) {
-      console.log('Failed to fetch mentors from server:', e);
+      const data = unpackResponseData(response);
+      const list = Array.isArray(data) ? data : [];
+      const parsed = list.map(parseMentor).filter((mentor) => mentor.profileId);
+      setMentors(parsed.length ? parsed : getFallbackMentors());
+    } catch (error) {
+      console.log('Failed to fetch mentors:', error);
       setMentors(getFallbackMentors());
     } finally {
-      setIsLoading(false);
+      setIsLoadingMentors(false);
       setIsRefreshing(false);
     }
   }, []);
-
-  const getFallbackMentors = () => {
-    return [
-      {
-        id: '1',
-        name: 'Dr. Lê Hoài Nam',
-        title: 'AI Architect tại VinAI',
-        skills: ['Machine Learning', 'Deep Learning', 'Computer Vision'],
-        rating: 4.9,
-        reviews: 24,
-        price: '200k / phiên',
-        rawPrice: 200000,
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150',
-        bio: 'Hơn 10 năm nghiên cứu và triển khai các hệ thống AI quy mô lớn. Cựu kỹ sư Google.'
-      },
-      {
-        id: '2',
-        name: 'Ms. Hoàng Thu Thủy',
-        title: 'Senior Product Designer tại Grab',
-        skills: ['Product Design', 'User Research', 'Design System'],
-        rating: 4.8,
-        reviews: 18,
-        price: '150k / phiên',
-        rawPrice: 150000,
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150',
-        bio: 'Đam mê xây dựng trải nghiệm tối giản và hiệu quả. Đã dẫn dắt hơn 50 bạn trẻ vào nghề.'
-      }
-    ];
-  };
 
   useEffect(() => {
     fetchMentors();
   }, [fetchMentors]);
 
-  const handleOpenBooking = (mentor: any) => {
+  const allSkills = useMemo(() => {
+    const skills = Array.from(new Set(mentors.flatMap((mentor) => mentor.skills)));
+    return ['Tất cả', ...skills.slice(0, 10)];
+  }, [mentors]);
+
+  const filteredMentors = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return mentors.filter((mentor) => {
+      const matchesQuery =
+        !query ||
+        mentor.name.toLowerCase().includes(query) ||
+        mentor.title.toLowerCase().includes(query) ||
+        mentor.skills.some((skill) => skill.toLowerCase().includes(query));
+      const matchesSkill = selectedSkill === 'Tất cả' || mentor.skills.includes(selectedSkill);
+      return matchesQuery && matchesSkill;
+    });
+  }, [mentors, searchQuery, selectedSkill]);
+
+  const openBooking = async (mentor: MentorCardData) => {
     setSelectedMentor(mentor);
     setBookingReason('');
-    setBookingStep(1);
+    setBookingStep('form');
+    setAvailableSlots([]);
+    setSelectedSlotId('');
     setBookingModalVisible(true);
+    setIsLoadingSlots(true);
+
+    try {
+      const mentorId = mentor.mentorUserId || mentor.id;
+      const response = await api.get(`/mentor-availability/mentor/${encodeURIComponent(mentorId)}/available`);
+      const data = unpackResponseData(response);
+      const slots = Array.isArray(data) ? data : [];
+      setAvailableSlots(slots);
+      setSelectedSlotId(slots[0] ? getSlotId(slots[0]) : '');
+    } catch (error) {
+      console.log('Failed to fetch available slots:', error);
+      setAvailableSlots([]);
+    } finally {
+      setIsLoadingSlots(false);
+    }
   };
 
   const handleBookingSubmit = async () => {
-    if (!bookingReason.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập nội dung trao đổi.');
+    if (!selectedMentor) return;
+    const selectedSlot = availableSlots.find((slot) => getSlotId(slot) === selectedSlotId);
+
+    if (!selectedSlot) {
+      notify('Chưa chọn lịch', 'Vui lòng chọn một khung giờ trống của mentor.');
       return;
     }
+
+    if (!bookingReason.trim()) {
+      notify('Thiếu nội dung', 'Vui lòng nhập nội dung bạn muốn trao đổi.');
+      return;
+    }
+
+    const durationMs = new Date(selectedSlot.endAt).getTime() - new Date(selectedSlot.startAt).getTime();
+    const duration = Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs / 60000) : 60;
+
     setBookingSubmitting(true);
     try {
-      // Simulate booking delay for high-fidelity experience
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Call booking session API if available
-      try {
-        await api.post('/booking-sessions', {
-          tutorProfileId: selectedMentor.id,
-          sessionType: 'general_mentoring',
-          bookingRequest: {
-            topicsToDiscuss: [bookingReason],
-            currentSituation: 'Học viên cần tư vấn lộ trình học',
-            desiredOutcomes: ['Có mục tiêu rõ ràng'],
-            isFirstSession: true
-          }
-        });
-      } catch {}
-      setBookingStep(2); // Success step
-    } catch (err) {
-      setBookingStep(2);
+      await api.post('/booking-sessions', {
+        tutorProfileId: selectedMentor.profileId,
+        availabilitySlotId: selectedSlotId,
+        sessionType: 'general_mentoring',
+        schedulingDetails: {
+          requestedDateTime: selectedSlot.startAt,
+          duration,
+          timeZone: 'Asia/Ho_Chi_Minh',
+          meetingPlatform: 'video',
+        },
+        bookingRequest: {
+          topicsToDiscuss: [bookingReason.trim()],
+          currentSituation: 'Học viên cần tư vấn lộ trình học và nghề nghiệp.',
+          desiredOutcomes: ['Có mục tiêu rõ ràng sau buổi tư vấn'],
+          isFirstSession: true,
+        },
+      });
+      setBookingStep('success');
+    } catch (error: any) {
+      notify('Không thể đặt lịch', error?.response?.data?.message || 'Vui lòng thử lại sau.');
     } finally {
       setBookingSubmitting(false);
     }
   };
 
-  const filteredMentors = mentors.filter(m => {
-    const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          m.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesSkill = selectedSkill === 'All' || m.skills.includes(selectedSkill);
-    return matchesSearch && matchesSkill;
-  });
-
-  const allSkills = ['All', ...Array.from(new Set(mentors.flatMap(m => m.skills)))];
-
-  if (isLoading && mentors.length === 0) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Gặp gỡ Mentors</Text>
-        <Text style={styles.subtitle}>Nhận tư vấn 1-1 trực tiếp từ chuyên gia thực chiến</Text>
+        <Text style={styles.kicker}>Mentor</Text>
+        <Text style={styles.title}>Tìm mentor phù hợp</Text>
+        <Text style={styles.subtitle}>Chọn chuyên gia đã được duyệt và gửi yêu cầu đặt lịch tư vấn.</Text>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => fetchMentors(true)} tintColor={COLORS.primary} colors={[COLORS.primary]} />}
-      >
-        {/* Search and Filters */}
-        <GlassView style={styles.searchRow}>
-          <Search size={18} color={COLORS.muted} style={{ marginRight: 8 }} />
-          <TextInput 
-            placeholder="Tìm kiếm mentor theo tên, vị trí..." 
-            placeholderTextColor={COLORS.muted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.searchInput}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => fetchMentors(true)}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
-        </GlassView>
+        }
+      >
+        <DiscoverView
+          mentors={filteredMentors}
+          allSkills={allSkills}
+          selectedSkill={selectedSkill}
+          searchQuery={searchQuery}
+          isLoading={isLoadingMentors}
+          onSearchChange={setSearchQuery}
+          onSkillChange={setSelectedSkill}
+          onBook={openBooking}
+        />
+      </ScrollView>
 
-        {/* Skill tags scroll */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.skillFilterRow}>
-          {allSkills.slice(0, 7).map((skill, idx) => {
-            const isSelected = selectedSkill === skill;
-            return (
-              <TouchableOpacity
-                key={idx}
-                onPress={() => setSelectedSkill(skill)}
-                style={[styles.skillPill, isSelected && styles.skillPillActive]}
-              >
-                <Text style={[styles.skillPillText, isSelected && styles.skillPillTextActive]}>
-                  {skill === 'All' ? 'Tất cả lĩnh vực' : skill}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      <BookingModal
+        visible={bookingModalVisible}
+        mentor={selectedMentor}
+        step={bookingStep}
+        slots={availableSlots}
+        selectedSlotId={selectedSlotId}
+        isLoadingSlots={isLoadingSlots}
+        bookingReason={bookingReason}
+        isSubmitting={bookingSubmitting}
+        onSelectSlot={setSelectedSlotId}
+        onReasonChange={setBookingReason}
+        onSubmit={handleBookingSubmit}
+        onClose={() => setBookingModalVisible(false)}
+      />
+    </View>
+  );
+}
 
-        {/* Info Banner */}
-        <GlassView style={styles.mentorNotice}>
-          <Sparkles size={16} color={COLORS.secondary} />
-          <Text style={styles.noticeText}>
-            Tất cả Mentors tại EDUMEE đều đã qua xác minh hồ sơ nghề nghiệp & bằng cấp thực tế.
-          </Text>
-        </GlassView>
+function DiscoverView({
+  mentors,
+  allSkills,
+  selectedSkill,
+  searchQuery,
+  isLoading,
+  onSearchChange,
+  onSkillChange,
+  onBook,
+}: {
+  mentors: MentorCardData[];
+  allSkills: string[];
+  selectedSkill: string;
+  searchQuery: string;
+  isLoading: boolean;
+  onSearchChange: (value: string) => void;
+  onSkillChange: (value: string) => void;
+  onBook: (mentor: MentorCardData) => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <GlassView style={styles.searchBox}>
+        <Search size={18} color={COLORS.muted} />
+        <TextInput
+          value={searchQuery}
+          onChangeText={onSearchChange}
+          placeholder="Tìm theo tên, vị trí, kỹ năng..."
+          placeholderTextColor={COLORS.muted}
+          style={styles.searchInput}
+        />
+      </GlassView>
 
-        {/* Mentor list */}
-        <View style={styles.mentorsContainer}>
-          {filteredMentors.map((mentor) => (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.skillRow}>
+        {allSkills.map((skill) => {
+          const active = selectedSkill === skill;
+          return (
+            <TouchableOpacity
+              key={skill}
+              onPress={() => onSkillChange(skill)}
+              style={[styles.skillPill, active && styles.skillPillActive]}
+            >
+              <Text style={[styles.skillPillText, active && styles.skillPillTextActive]}>{skill}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <GlassView style={styles.noticeCard}>
+        <UserCheckIcon />
+        <Text style={styles.noticeText}>Mentor active đã được duyệt hồ sơ, kinh nghiệm và lĩnh vực tư vấn.</Text>
+      </GlassView>
+
+      {isLoading ? (
+        <View style={styles.loadingBlock}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.loadingText}>Đang tải danh sách mentor...</Text>
+        </View>
+      ) : mentors.length === 0 ? (
+        <EmptyState title="Chưa tìm thấy mentor" description="Thử đổi từ khóa hoặc chọn lĩnh vực khác." />
+      ) : (
+        <View style={styles.cardList}>
+          {mentors.map((mentor) => (
             <GlassView key={mentor.id} style={styles.mentorCard}>
-              <View style={styles.mentorHeader}>
+              <View style={styles.mentorTop}>
                 <Image source={{ uri: mentor.avatar }} style={styles.mentorAvatar} />
                 <View style={styles.mentorInfo}>
                   <Text style={styles.mentorName}>{mentor.name}</Text>
-                  <Text style={styles.mentorTitle}>{mentor.title}</Text>
-                  
-                  <View style={styles.ratingContainer}>
-                    <Star size={14} color="#F59E0B" fill="#F59E0B" />
-                    <Text style={styles.ratingText}>{mentor.rating} ({mentor.reviews} đánh giá)</Text>
+                  <Text style={styles.mentorTitle} numberOfLines={2}>
+                    {mentor.title}
+                  </Text>
+                  <View style={styles.ratingRow}>
+                    <Star size={13} color="#F59E0B" fill="#F59E0B" />
+                    <Text style={styles.ratingText}>
+                      {mentor.rating.toFixed(1)} · {mentor.reviews} đánh giá
+                    </Text>
                   </View>
                 </View>
               </View>
 
               <Text style={styles.mentorBio}>{mentor.bio}</Text>
 
-              <View style={styles.skillsTagContainer}>
-                {mentor.skills.map((skill: string, idx: number) => (
-                  <View key={idx} style={styles.skillTag}>
+              <View style={styles.tagWrap}>
+                {mentor.skills.map((skill) => (
+                  <View key={`${mentor.id}-${skill}`} style={styles.skillTag}>
                     <Text style={styles.skillTagText}>{skill}</Text>
                   </View>
                 ))}
@@ -260,104 +465,161 @@ export default function MentorTabScreen() {
 
               <View style={styles.mentorFooter}>
                 <View>
-                  <Text style={styles.priceLabel}>Phí tư vấn</Text>
-                  <Text style={styles.priceValue}>{mentor.price}</Text>
+                  <Text style={styles.smallLabel}>Phí tư vấn</Text>
+                  <Text style={styles.priceText}>{mentor.price}</Text>
                 </View>
-                
-                <TouchableOpacity 
-                  onPress={() => handleOpenBooking(mentor)}
-                  style={styles.bookingBtn}
-                >
-                  <Calendar size={15} color="#fff" style={{ marginRight: 6 }} />
-                  <Text style={styles.bookingBtnText}>Đặt lịch hẹn</Text>
+                <TouchableOpacity onPress={() => onBook(mentor)} style={styles.primaryButton}>
+                  <Calendar size={16} color="#fff" />
+                  <Text style={styles.primaryButtonText}>Đặt lịch</Text>
                 </TouchableOpacity>
               </View>
             </GlassView>
           ))}
         </View>
+      )}
+    </View>
+  );
+}
 
-        <View style={styles.footerSpace} />
-      </ScrollView>
+function UserCheckIcon() {
+  return (
+    <View style={styles.noticeIcon}>
+      <CheckCircle2 size={16} color="#22C55E" />
+    </View>
+  );
+}
 
-      {/* Booking Modal */}
-      <Modal
-        visible={bookingModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setBookingModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <GlassView style={styles.modalContent}>
-            {bookingStep === 1 ? (
-              <View>
-                <Text style={styles.modalTitle}>🚀 Thiết lập lịch hẹn</Text>
-                {selectedMentor && (
-                  <View style={styles.modalMentorHeader}>
-                    <Image source={{ uri: selectedMentor.avatar }} style={styles.modalMentorAvatar} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.modalMentorName}>{selectedMentor.name}</Text>
-                      <Text style={styles.modalMentorTitle} numberOfLines={1}>{selectedMentor.title}</Text>
-                    </View>
+function BookingModal({
+  visible,
+  mentor,
+  step,
+  slots,
+  selectedSlotId,
+  isLoadingSlots,
+  bookingReason,
+  isSubmitting,
+  onSelectSlot,
+  onReasonChange,
+  onSubmit,
+  onClose,
+}: {
+  visible: boolean;
+  mentor: MentorCardData | null;
+  step: BookingStep;
+  slots: AvailabilitySlot[];
+  selectedSlotId: string;
+  isLoadingSlots: boolean;
+  bookingReason: string;
+  isSubmitting: boolean;
+  onSelectSlot: (value: string) => void;
+  onReasonChange: (value: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <GlassView style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{step === 'success' ? 'Đặt lịch thành công' : 'Đặt lịch tư vấn'}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.iconButton}>
+              <X size={18} color={COLORS.foreground} />
+            </TouchableOpacity>
+          </View>
+
+          {step === 'success' ? (
+            <View style={styles.successBlock}>
+              <View style={styles.successIcon}>
+                <CheckCircle2 size={34} color="#22C55E" />
+              </View>
+              <Text style={styles.successTitle}>Yêu cầu đã được gửi</Text>
+              <Text style={styles.successText}>
+                Mentor {mentor?.name} sẽ xác nhận booking. Link phòng call sẽ xuất hiện khi lịch được duyệt.
+              </Text>
+              <TouchableOpacity onPress={onClose} style={styles.primaryButtonWide}>
+                <Text style={styles.primaryButtonText}>Xong</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {mentor && (
+                <View style={styles.modalMentor}>
+                  <Image source={{ uri: mentor.avatar }} style={styles.modalAvatar} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalMentorName}>{mentor.name}</Text>
+                    <Text style={styles.modalMentorTitle} numberOfLines={1}>
+                      {mentor.title}
+                    </Text>
                   </View>
-                )}
-
-                <Text style={styles.inputLabel}>Thời gian tư vấn gợi ý</Text>
-                <View style={styles.timeSelector}>
-                  <Calendar size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
-                  <Text style={styles.timeText}>{bookingDate}</Text>
                 </View>
+              )}
 
-                <Text style={styles.inputLabel}>Nội dung bạn muốn trao đổi</Text>
-                <TextInput
-                  placeholder="Ví dụ: Định hướng học Python, cần review hồ sơ CV..."
-                  placeholderTextColor={COLORS.muted}
-                  style={styles.textArea}
-                  multiline={true}
-                  numberOfLines={4}
-                  value={bookingReason}
-                  onChangeText={setBookingReason}
-                />
+              <Text style={styles.inputLabel}>Chọn khung giờ</Text>
+              {isLoadingSlots ? (
+                <View style={styles.slotLoading}>
+                  <ActivityIndicator color={COLORS.primary} />
+                  <Text style={styles.loadingText}>Đang tải lịch trống...</Text>
+                </View>
+              ) : slots.length === 0 ? (
+                <View style={styles.noSlotBox}>
+                  <Calendar size={18} color={COLORS.muted} />
+                  <Text style={styles.noSlotText}>Mentor chưa có slot trống. Hãy thử lại sau.</Text>
+                </View>
+              ) : (
+                <View style={styles.slotList}>
+                  {slots.slice(0, 8).map((slot) => {
+                    const slotId = getSlotId(slot);
+                    const selected = selectedSlotId === slotId;
+                    return (
+                      <TouchableOpacity
+                        key={slotId}
+                        onPress={() => onSelectSlot(slotId)}
+                        style={[styles.slotChoice, selected && styles.slotChoiceActive]}
+                      >
+                        <Text style={[styles.slotChoiceText, selected && styles.slotChoiceTextActive]}>
+                          {formatTimeRange(slot)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
-                <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    onPress={() => setBookingModalVisible(false)}
-                    style={styles.cancelBtn}
-                  >
-                    <Text style={styles.cancelText}>Hủy</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={handleBookingSubmit}
-                    disabled={bookingSubmitting}
-                    style={styles.submitBtn}
-                  >
-                    {bookingSubmitting ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.submitText}>Xác nhận đặt</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.successContainer}>
-                <View style={styles.successIconWrapper}>
-                  <UserCheck size={36} color={COLORS.primary} />
-                </View>
-                <Text style={styles.successTitle}>Đặt lịch thành công!</Text>
-                <Text style={styles.successDesc}>
-                  Yêu cầu đặt lịch đã được gửi đến Mentor **{selectedMentor?.name}**. Bạn sẽ nhận được link Zoom/Meet ngay sau khi Mentor xác nhận.
-                </Text>
-                <TouchableOpacity 
-                  onPress={() => setBookingModalVisible(false)}
-                  style={styles.closeSuccessBtn}
-                >
-                  <Text style={styles.closeSuccessText}>Xong</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </GlassView>
-        </View>
-      </Modal>
+              <Text style={styles.inputLabel}>Bạn muốn trao đổi gì?</Text>
+              <TextInput
+                value={bookingReason}
+                onChangeText={onReasonChange}
+                placeholder="Ví dụ: Em cần định hướng lộ trình học backend và review CV..."
+                placeholderTextColor={COLORS.muted}
+                multiline
+                textAlignVertical="top"
+                style={styles.reasonInput}
+              />
+
+              <TouchableOpacity
+                onPress={onSubmit}
+                disabled={isSubmitting || isLoadingSlots || slots.length === 0}
+                style={[
+                  styles.primaryButtonWide,
+                  (isSubmitting || isLoadingSlots || slots.length === 0) && styles.disabledButton,
+                ]}
+              >
+                {isSubmitting ? <ActivityIndicator color="#fff" /> : <Send size={16} color="#fff" />}
+                <Text style={styles.primaryButtonText}>Gửi yêu cầu đặt lịch</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </GlassView>
+      </View>
+    </Modal>
+  );
+}
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyDescription}>{description}</Text>
     </View>
   );
 }
@@ -367,326 +629,392 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flex: 1,
-  },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 45,
+    paddingTop: Platform.OS === 'ios' ? 60 : 44,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.68)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  kicker: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
     color: COLORS.foreground,
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 3,
   },
   subtitle: {
-    fontSize: 12,
     color: COLORS.muted,
-    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
   },
   scrollContent: {
     padding: SPACING.lg,
+    paddingBottom: 120,
   },
-  searchRow: {
+  section: {
+    gap: SPACING.md,
+  },
+  searchBox: {
+    height: 48,
+    paddingHorizontal: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     color: COLORS.foreground,
     fontSize: 14,
-    height: 38,
+    height: 48,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none' as any,
+      },
+    }),
   },
-  skillFilterRow: {
-    marginBottom: SPACING.md,
+  skillRow: {
+    gap: SPACING.sm,
+    paddingVertical: 2,
   },
   skillPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    marginRight: 6,
+    borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   skillPillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: 'rgba(59,130,246,0.18)',
+    borderColor: 'rgba(59,130,246,0.38)',
   },
   skillPillText: {
     color: COLORS.muted,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
   skillPillTextActive: {
     color: COLORS.foreground,
   },
-  mentorNotice: {
-    flexDirection: 'row',
+  noticeCard: {
     padding: SPACING.md,
-    backgroundColor: 'rgba(59, 130, 246, 0.03)',
-    borderColor: 'rgba(59, 130, 246, 0.12)',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    backgroundColor: 'rgba(34,197,94,0.06)',
+    borderColor: 'rgba(34,197,94,0.15)',
+  },
+  noticeIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noticeText: {
     flex: 1,
+    color: 'rgba(255,255,255,0.82)',
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 18,
+    fontWeight: '600',
   },
-  mentorsContainer: {
+  cardList: {
     gap: SPACING.md,
   },
   mentorCard: {
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
   },
-  mentorHeader: {
+  mentorTop: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
+    gap: SPACING.md,
   },
   mentorAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: SPACING.md,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   mentorInfo: {
     flex: 1,
+    minWidth: 0,
   },
   mentorName: {
-    fontSize: 15,
-    fontWeight: '800',
     color: COLORS.foreground,
+    fontSize: 16,
+    fontWeight: '900',
   },
   mentorTitle: {
-    fontSize: 12,
     color: COLORS.muted,
-    marginTop: 1,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    fontSize: 12,
+    lineHeight: 17,
     marginTop: 2,
   },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 5,
+  },
   ratingText: {
-    fontSize: 11,
     color: COLORS.muted,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
   },
   mentorBio: {
+    color: 'rgba(255,255,255,0.82)',
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 18,
-    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
   },
-  skillsTagContainer: {
+  tagWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
   },
   skillTag: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: RADIUS.sm,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    borderColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   skillTagText: {
-    fontSize: 10,
     color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: '700',
   },
   mentorFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    paddingTop: SPACING.sm,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
   },
-  priceLabel: {
-    fontSize: 10,
+  smallLabel: {
     color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: '700',
   },
-  priceValue: {
-    fontSize: 14,
-    fontWeight: '800',
+  priceText: {
     color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
   },
-  bookingBtn: {
+  primaryButton: {
+    height: 42,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryButtonWide: {
+    height: 48,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: SPACING.md,
   },
-  bookingBtnText: {
+  disabledButton: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
     color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  loadingBlock: {
+    minHeight: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  loadingText: {
+    color: COLORS.muted,
     fontSize: 12,
     fontWeight: '700',
   },
-  footerSpace: {
-    height: 100,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 42,
+    paddingHorizontal: SPACING.lg,
+  },
+  emptyTitle: {
+    color: COLORS.foreground,
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    padding: SPACING.lg,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+    padding: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.72)',
   },
   modalContent: {
     padding: SPACING.lg,
     borderRadius: RADIUS.xl,
+    maxHeight: '88%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
     color: COLORS.foreground,
-    marginBottom: SPACING.md,
+    fontSize: 18,
+    fontWeight: '900',
   },
-  modalMentorHeader: {
+  modalMentor: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
-  modalMentorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  modalAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
   },
   modalMentorName: {
-    fontSize: 14,
-    fontWeight: '800',
     color: COLORS.foreground,
+    fontSize: 14,
+    fontWeight: '900',
   },
   modalMentorTitle: {
-    fontSize: 11,
     color: COLORS.muted,
+    fontSize: 11,
+    marginTop: 2,
   },
   inputLabel: {
+    color: COLORS.foreground,
     fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.foreground,
-    marginBottom: 4,
+    fontWeight: '900',
     marginTop: SPACING.md,
+    marginBottom: 6,
   },
-  timeSelector: {
-    flexDirection: 'row',
+  slotLoading: {
+    minHeight: 72,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  timeText: {
-    color: COLORS.foreground,
-    fontSize: 13,
-  },
-  textArea: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    padding: SPACING.md,
-    color: COLORS.foreground,
-    fontSize: 13,
-    height: 70,
-    textAlignVertical: 'top',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.xl,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  cancelText: {
+  noSlotBox: {
+    minHeight: 70,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: SPACING.md,
+  },
+  noSlotText: {
     color: COLORS.muted,
-    fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
+    textAlign: 'center',
   },
-  submitBtn: {
-    flex: 1.5,
-    height: 44,
+  slotList: {
+    gap: SPACING.sm,
+  },
+  slotChoice: {
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: SPACING.md,
   },
-  submitText: {
-    color: '#fff',
-    fontWeight: '700',
+  slotChoiceActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: 'rgba(59,130,246,0.16)',
+  },
+  slotChoiceText: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  slotChoiceTextActive: {
+    color: COLORS.foreground,
+  },
+  reasonInput: {
+    height: 92,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: SPACING.md,
+    color: COLORS.foreground,
     fontSize: 13,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none' as any,
+      },
+    }),
   },
-  successContainer: {
+  successBlock: {
     alignItems: 'center',
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.lg,
   },
-  successIconWrapper: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  successIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 24,
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
   },
   successTitle: {
-    fontSize: 20,
-    fontWeight: '800',
     color: COLORS.foreground,
-    marginBottom: SPACING.sm,
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: SPACING.md,
   },
-  successDesc: {
-    fontSize: 13,
+  successText: {
     color: COLORS.muted,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: SPACING.xl,
-  },
-  closeSuccessBtn: {
-    backgroundColor: COLORS.primary,
-    height: 42,
-    width: 120,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeSuccessText: {
-    color: '#fff',
-    fontWeight: '700',
     fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
   },
 });

@@ -3,10 +3,11 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { setAuthToken } from '../src/services/api';
+import { getRoleHomeRoute } from '../src/utils/roleNavigation';
 
 export default function OAuthSuccessScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ access_token?: string; refresh_token?: string }>();
+  const params = useLocalSearchParams<{ access_token?: string; refresh_token?: string; role?: string }>();
 
   useEffect(() => {
     const handleComplete = async () => {
@@ -25,7 +26,8 @@ export default function OAuthSuccessScreen() {
         await setAuthToken(access_token);
         
         // Chuyển hướng người dùng về trang chủ Dashboard
-        router.replace('/(tabs)');
+        const role = Array.isArray(params.role) ? params.role[0] : params.role;
+        router.replace(getRoleHomeRoute(role) as any);
       } else {
         console.warn('OAuth Success Web - Không tìm thấy token trong tham số URL:', params);
         // Nếu không có token, quay trở lại màn hình đăng nhập

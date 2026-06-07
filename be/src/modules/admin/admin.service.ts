@@ -473,11 +473,25 @@ export class AdminService {
   }
 
   async deleteUser(id: string) {
-    return this.userModel.findByIdAndDelete(id);
+    const result = await this.userModel.findByIdAndDelete(id).exec();
+    await this.deleteUserSubscriptions([id]);
+    return result;
   }
 
   async bulkDeleteUsers(ids: string[]) {
-    return this.userModel.deleteMany({ _id: { $in: ids } });
+    const result = await this.userModel.deleteMany({ _id: { $in: ids } }).exec();
+    await this.deleteUserSubscriptions(ids);
+    return result;
+  }
+
+  private async deleteUserSubscriptions(userIds: string[]): Promise<void> {
+    const objectIds = userIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+
+    if (objectIds.length === 0) return;
+
+    await this.userSubscriptionModel.deleteMany({ userId: { $in: objectIds } }).exec();
   }
 
   async getDashboardStats() {

@@ -197,7 +197,7 @@ const Navbar = () => {
     <nav className="glass-card sticky top-0 z-50 border-b">
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="font-display flex items-center gap-2 text-xl font-bold" onClick={handleLogoClick}>
-          <Image src="/edumee-logo-icon.svg" alt="Edumee logo" width={32} height={30} className="flex-shrink-0" />
+          <Image src="/edumee-logo-icon.svg" alt="Edumee logo" width={32} height={30} className="shrink-0" />
           <span className="text-gradient-hero">Edumee</span>
         </Link>
 

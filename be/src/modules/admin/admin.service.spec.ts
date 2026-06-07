@@ -3,11 +3,20 @@ import { AdminService } from './admin.service';
 
 describe('AdminService finance', () => {
   let service: AdminService;
+  let userModel: any;
+  let userSubscriptionModel: any;
   let paymentModel: any;
   let financialLedgerService: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    userModel = {
+      findByIdAndDelete: jest.fn().mockReturnValue(createQuery({ id: 'user-id' })),
+      deleteMany: jest.fn().mockReturnValue(createQuery({ deletedCount: 1 })),
+    };
+    userSubscriptionModel = {
+      deleteMany: jest.fn().mockReturnValue(createQuery({ deletedCount: 1 })),
+    };
     paymentModel = {
       aggregate: jest.fn(),
       countDocuments: jest.fn().mockReturnValue(createQuery(0)),
@@ -18,7 +27,7 @@ describe('AdminService finance', () => {
     };
 
     service = new AdminService(
-      {},
+      userModel,
       {},
       {},
       {},
@@ -27,12 +36,37 @@ describe('AdminService finance', () => {
       paymentModel,
       {},
       {},
-      {},
+      userSubscriptionModel,
       {},
       {},
       {},
       financialLedgerService,
     );
+  });
+
+  it('deletes user subscriptions when deleting a user', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+
+    await service.deleteUser(userId);
+
+    expect(userModel.findByIdAndDelete).toHaveBeenCalledWith(userId);
+    expect(userSubscriptionModel.deleteMany).toHaveBeenCalledWith({
+      userId: { $in: [expect.anything()] },
+    });
+  });
+
+  it('deletes user subscriptions when bulk deleting users', async () => {
+    const userIds = [
+      '507f1f77bcf86cd799439011',
+      '507f1f77bcf86cd799439012',
+    ];
+
+    await service.bulkDeleteUsers(userIds);
+
+    expect(userModel.deleteMany).toHaveBeenCalledWith({ _id: { $in: userIds } });
+    expect(userSubscriptionModel.deleteMany).toHaveBeenCalledWith({
+      userId: { $in: [expect.anything(), expect.anything()] },
+    });
   });
 
   it('returns all payment providers and statuses by default', async () => {

@@ -1,12 +1,16 @@
 import { getModelToken } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
+import * as XLSX from 'xlsx';
 import {
   BillingCycle,
   SubscriptionStatus,
   UserSubscription,
 } from '../../users/schemas/user-subscriptions';
 import { User } from '../../users/schemas/user.schema';
+import { MailService } from '../../../common/mail/mail.service';
 import { AiPlan } from '../schema/ai-plan.schema';
 import { AiSubscriptionService } from './ai-subscription.service';
 
@@ -14,12 +18,28 @@ describe('AiSubscriptionService', () => {
   let service: AiSubscriptionService;
   let userSubscriptionModel: any;
   let userModel: any;
+  const jwtService = {
+    signAsync: jest.fn(),
+  };
+  const configService = {
+    get: jest.fn(),
+  };
+  const mailService = {
+    sendForgotPasswordEmail: jest.fn(),
+  };
   const aiPlanModel = {
     findById: jest.fn(),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    jwtService.signAsync.mockResolvedValue('password-setup-token');
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'jwt.forgotPasswordSecret') return 'forgot-secret';
+      if (key === 'jwt.forgotPasswordExpiresIn') return '1d';
+      return undefined;
+    });
+    mailService.sendForgotPasswordEmail.mockResolvedValue(undefined);
     userSubscriptionModel = jest.fn().mockImplementation(function createSubscription(
       this: any,
       payload: Record<string, unknown>,
@@ -37,6 +57,7 @@ describe('AiSubscriptionService', () => {
       findOne: jest.fn(),
       findById: jest.fn(),
       find: jest.fn(),
+      create: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -45,6 +66,9 @@ describe('AiSubscriptionService', () => {
         { provide: getModelToken(UserSubscription.name), useValue: userSubscriptionModel },
         { provide: getModelToken(AiPlan.name), useValue: aiPlanModel },
         { provide: getModelToken(User.name), useValue: userModel },
+        { provide: JwtService, useValue: jwtService },
+        { provide: ConfigService, useValue: configService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -268,6 +292,170 @@ describe('AiSubscriptionService', () => {
     expect(aiPlanModel.findById).not.toHaveBeenCalled();
   });
 
+  it('imports new users and assigns existing users from Excel', async () => {
+    const planId = '507f1f77bcf86cd799439081';
+    const newUserId = '507f1f77bcf86cd799439082';
+    const existingUserId = '507f1f77bcf86cd799439083';
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({ id: planId, allowedBillingCycles: [BillingCycle.THREE_MONTHS] }),
+    );
+    userModel.findOne
+      .mockReturnValueOnce(createQuery(null))
+      .mockReturnValueOnce(createQuery(createUserDocument(existingUserId)));
+    userModel.create.mockResolvedValue(createUserDocument(newUserId));
+
+    const result = await service.importUsersToPlan(
+      createExcelFile([
+        {
+          name: 'New User',
+          email: 'NEW@Example.com',
+          gender: 'Nam',
+          date_of_birth: '2000-01-02',
+          phone_number: '0901234567',
+          city: 'TP HCM',
+        },
+        {
+          name: 'Existing User',
+          email: 'existing@example.com',
+          gender: 'Nu',
+          date_of_birth: '02/03/2001',
+        },
+      ]),
+      { planId, billingCycle: BillingCycle.THREE_MONTHS },
+    );
+
+    expect(result.totalRows).toBe(2);
+    expect(result.createdUsers).toBe(1);
+    expect(result.assignedExistingUsers).toBe(1);
+    expect(result.failedRows).toBe(0);
+    expect(userModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'New User',
+        email: 'new@example.com',
+        phone_number: '0901234567',
+        role: 'user',
+        login_type: 'password',
+        forgot_password_token: 'password-setup-token',
+      }),
+    );
+    expect(mailService.sendForgotPasswordEmail).toHaveBeenCalledWith(
+      'new@example.com',
+      'New User',
+      'password-setup-token',
+    );
+    expect(userSubscriptionModel).toHaveBeenCalledTimes(2);
+    expect(userSubscriptionModel.mock.calls[0][0].userId.toString()).toBe(newUserId);
+    expect(userSubscriptionModel.mock.calls[1][0].userId.toString()).toBe(existingUserId);
+  });
+
+  it('marks duplicate emails in the same import file as row failures', async () => {
+    const planId = '507f1f77bcf86cd799439091';
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({ id: planId, allowedBillingCycles: [BillingCycle.MONTHLY] }),
+    );
+    userModel.findOne.mockReturnValue(createQuery(null));
+    userModel.create.mockResolvedValue(createUserDocument('507f1f77bcf86cd799439092'));
+
+    const result = await service.importUsersToPlan(
+      createExcelFile([
+        {
+          name: 'First User',
+          email: 'duplicate@example.com',
+          gender: 'Nam',
+          date_of_birth: '2000-01-02',
+        },
+        {
+          name: 'Second User',
+          email: 'DUPLICATE@example.com',
+          gender: 'Nu',
+          date_of_birth: '2001-02-03',
+        },
+      ]),
+      { planId, billingCycle: BillingCycle.MONTHLY },
+    );
+
+    expect(result.createdUsers).toBe(1);
+    expect(result.failedRows).toBe(1);
+    expect(result.rows[1].status).toBe('failed');
+    expect(result.rows[1].message).toContain('duplicated');
+    expect(userModel.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports invalid import rows without creating users', async () => {
+    const planId = '507f1f77bcf86cd799439101';
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({ id: planId, allowedBillingCycles: [BillingCycle.MONTHLY] }),
+    );
+
+    const result = await service.importUsersToPlan(
+      createExcelFile([
+        {
+          name: 'Invalid User',
+          email: 'not-an-email',
+          gender: '',
+          date_of_birth: '31/02/2001',
+        },
+      ]),
+      { planId, billingCycle: BillingCycle.MONTHLY },
+    );
+
+    expect(result.failedRows).toBe(1);
+    expect(result.rows[0].message).toContain('email is invalid');
+    expect(result.rows[0].message).toContain('gender is required');
+    expect(userModel.findOne).not.toHaveBeenCalled();
+    expect(userModel.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects import when billing cycle is not supported by the plan', async () => {
+    const planId = '507f1f77bcf86cd799439111';
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({ id: planId, allowedBillingCycles: [BillingCycle.MONTHLY] }),
+    );
+
+    await expect(
+      service.importUsersToPlan(
+        createExcelFile([
+          {
+            name: 'Unsupported Cycle',
+            email: 'unsupported@example.com',
+            gender: 'Nam',
+            date_of_birth: '2000-01-02',
+          },
+        ]),
+        { planId, billingCycle: BillingCycle.THREE_MONTHS },
+      ),
+    ).rejects.toThrow('Billing cycle is not supported by this plan');
+    expect(userModel.findOne).not.toHaveBeenCalled();
+    expect(userModel.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps imported user success when password setup email fails', async () => {
+    const planId = '507f1f77bcf86cd799439121';
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({ id: planId, allowedBillingCycles: [BillingCycle.MONTHLY] }),
+    );
+    userModel.findOne.mockReturnValue(createQuery(null));
+    userModel.create.mockResolvedValue(createUserDocument('507f1f77bcf86cd799439122'));
+    mailService.sendForgotPasswordEmail.mockRejectedValue(new Error('SMTP down'));
+
+    const result = await service.importUsersToPlan(
+      createExcelFile([
+        {
+          name: 'Mail Warning',
+          email: 'warning@example.com',
+          gender: 'Nam',
+          date_of_birth: '2000-01-02',
+        },
+      ]),
+      { planId, billingCycle: BillingCycle.MONTHLY },
+    );
+
+    expect(result.createdUsers).toBe(1);
+    expect(result.failedRows).toBe(0);
+    expect(result.emailWarningRows).toBe(1);
+    expect(result.rows[0].warnings?.[0]).toContain('email could not be sent');
+  });
+
   it('returns the active subscription when the payment was already linked', async () => {
     const linkedSubscription = createSubscriptionDocument({
       userId: '507f1f77bcf86cd799439011',
@@ -311,6 +499,19 @@ describe('AiSubscriptionService', () => {
     expect(filter.$or[1].paymentIds.toString()).toBe(paymentId);
   });
 });
+
+function createExcelFile(rows: Record<string, unknown>[]): Express.Multer.File {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Users');
+  const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+  return {
+    originalname: 'users.xlsx',
+    mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer,
+    size: buffer.length,
+  } as Express.Multer.File;
+}
 
 function createQuery<T>(value: T) {
   return {

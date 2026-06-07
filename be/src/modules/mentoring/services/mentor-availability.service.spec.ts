@@ -25,6 +25,7 @@ describe('MentorAvailabilityService', () => {
   slotModel.findById = jest.fn();
   slotModel.findByIdAndUpdate = jest.fn();
   slotModel.findByIdAndDelete = jest.fn();
+  slotModel.findOne = jest.fn();
   slotModel.findOneAndUpdate = jest.fn();
   slotModel.updateMany = jest.fn();
   slotModel.exists = jest.fn();
@@ -52,6 +53,7 @@ describe('MentorAvailabilityService', () => {
     slotModel.findById.mockReturnValue(createExecMock(null));
     slotModel.findByIdAndUpdate.mockReturnValue(createExecMock(null));
     slotModel.findByIdAndDelete.mockReturnValue(createExecMock(null));
+    slotModel.findOne.mockReturnValue(createExecMock(null));
     slotModel.find.mockReturnValue(createFindMock([]));
     notificationService.create.mockResolvedValue({});
 
@@ -76,6 +78,16 @@ describe('MentorAvailabilityService', () => {
       tutorProfileId,
       status: MentorAvailabilitySlotStatus.HELD,
     };
+    const startAt = new Date(Date.now() + 60 * 60_000);
+    const endAt = new Date(startAt.getTime() + 60 * 60_000);
+    slotModel.findOne.mockReturnValue(createExecMock({
+      _id: slotId,
+      tutorProfileId,
+      mentorId: new Types.ObjectId(),
+      startAt,
+      endAt,
+      status: MentorAvailabilitySlotStatus.AVAILABLE,
+    }));
     slotModel.findOneAndUpdate.mockReturnValue(createExecMock(heldSlot));
 
     const result = await service.holdSlotForBooking(
@@ -99,8 +111,56 @@ describe('MentorAvailabilityService', () => {
     );
   });
 
+  it('splits the remaining time when holding a shorter trial slot', async () => {
+    const slotId = new Types.ObjectId();
+    const tutorProfileId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const menteeId = new Types.ObjectId();
+    const startAt = new Date(Date.now() + 60 * 60_000);
+    const endAt = new Date(startAt.getTime() + 90 * 60_000);
+    const trialEndAt = new Date(startAt.getTime() + 15 * 60_000);
+    const availableSlot = {
+      _id: slotId,
+      tutorProfileId,
+      mentorId,
+      startAt,
+      endAt,
+      status: MentorAvailabilitySlotStatus.AVAILABLE,
+    };
+    const heldSlot = {
+      ...availableSlot,
+      endAt: trialEndAt,
+      status: MentorAvailabilitySlotStatus.HELD,
+    };
+    slotModel.findOne.mockReturnValue(createExecMock(availableSlot));
+    slotModel.findOneAndUpdate.mockReturnValue(createExecMock(heldSlot));
+
+    const result = await service.holdSlotForBooking(
+      slotId.toString(),
+      tutorProfileId.toString(),
+      menteeId.toString(),
+      { durationMinutes: 15 },
+    );
+
+    expect(result).toBe(heldSlot);
+    expect(slotModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ endAt: trialEndAt }),
+      { new: true },
+    );
+    expect(slotModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tutorProfileId,
+        mentorId,
+        startAt: trialEndAt,
+        endAt,
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+      }),
+    );
+  });
+
   it('rejects a slot that is no longer available', async () => {
-    slotModel.findOneAndUpdate.mockReturnValue(createExecMock(null));
+    slotModel.findOne.mockReturnValue(createExecMock(null));
 
     await expect(
       service.holdSlotForBooking(

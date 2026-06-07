@@ -6,7 +6,18 @@ import { ApiError } from '@/lib/api-client';
 import { mentorCallService, type MentorCallSummary } from '@/lib/mentor-call.service';
 import { cn } from '@/lib/utils';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
-import { AlertTriangle, CalendarClock, Loader2, LogOut, RotateCcw, ShieldAlert, Video } from 'lucide-react';
+import {
+  AlertTriangle,
+  BadgeCheck,
+  CalendarClock,
+  Clock3,
+  Loader2,
+  LogOut,
+  MonitorUp,
+  RotateCcw,
+  ShieldAlert,
+  Video,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { CSSProperties } from 'react';
@@ -82,6 +93,30 @@ function formatDateTime(value: string) {
   });
 }
 
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatCallRange(summary: MentorCallSummary) {
+  return `${formatTime(summary.startsAt)} - ${formatTime(summary.endsAt)}`;
+}
+
 function getSessionTypeLabel(value: string) {
   return sessionTypeLabel[value] || value.replace(/_/g, ' ');
 }
@@ -124,18 +159,19 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 text-slate-950">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/70">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
-            <ShieldAlert className="h-5 w-5" />
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
+      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+            <ShieldAlert className="h-6 w-6" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold">{title}</h1>
-            <p className="mt-2 text-sm text-slate-600">{description}</p>
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wide text-rose-600">Không thể tham gia</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">{title}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
           </div>
         </div>
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Button type="button" onClick={onRetry} className="bg-sky-600 hover:bg-sky-700">
             <RotateCcw className="h-4 w-4" />
             Thử lại
@@ -151,10 +187,10 @@ function ErrorState({
 
 function LoadingState() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-950">
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4 text-slate-950">
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium text-slate-600 shadow-sm">
         <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
-        Đang tải phòng mentor call...
+        Đang chuẩn bị phòng mentor call...
       </div>
     </div>
   );
@@ -174,73 +210,109 @@ function ReadyState({
   const disabledReason = !summary.livekitConfigured
     ? 'LiveKit chưa được cấu hình. Hãy thêm LIVEKIT_URL, LIVEKIT_API_KEY và LIVEKIT_API_SECRET ở backend.'
     : getJoinWindowMessage(summary);
+  const canJoin = summary.joinWindow.canJoin && summary.livekitConfigured;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
-      <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-4 py-8">
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-center">
-          <section>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
+    <div className="min-h-screen bg-slate-100 text-slate-950">
+      <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-4 py-8 sm:px-6">
+        <div className="grid overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm lg:grid-cols-[1fr_380px]">
+          <section className="p-6 sm:p-8 lg:p-10">
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
               <Video className="h-4 w-4" />
               EDUMEE Mentor Call
             </div>
-            <h1 className="max-w-3xl text-4xl font-bold tracking-tight md:text-5xl">
-              {getSessionTypeLabel(summary.sessionType)}
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
-              Phòng video nội bộ cho booking #{summary.bookingId}. Bạn đang tham gia với vai trò{' '}
-              <span className="font-semibold text-slate-950">{getRoleLabel(summary.userRole)}</span>.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button
-                type="button"
-                onClick={onJoin}
-                disabled={isJoining || !summary.joinWindow.canJoin || !summary.livekitConfigured}
-                className="bg-sky-600 hover:bg-sky-700"
-              >
-                {isJoining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                Vào phòng call
-              </Button>
-              <Button asChild type="button" variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
-                <Link href={getReturnPath(summary)}>Quay lại</Link>
-              </Button>
+
+            <div className="mt-8 max-w-3xl">
+              <p className="text-sm font-semibold text-slate-500">Phiên tư vấn</p>
+              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+                {getSessionTypeLabel(summary.sessionType)}
+              </h1>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                Phòng gọi nội bộ cho booking #{summary.bookingId}. Bạn đang tham gia với vai trò{' '}
+                <span className="font-semibold text-slate-950">{getRoleLabel(summary.userRole)}</span>.
+              </p>
             </div>
+
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <CalendarClock className="h-5 w-5 text-sky-600" />
+                <p className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Ngày</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">{formatDate(summary.startsAt)}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <Clock3 className="h-5 w-5 text-emerald-600" />
+                <p className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Khung giờ</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">{formatCallRange(summary)}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <BadgeCheck className="h-5 w-5 text-violet-600" />
+                <p className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Trạng thái</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">{getBookingStatusLabel(summary.status)}</p>
+              </div>
+            </div>
+
             {(disabledReason || error) && (
-              <div className="mt-5 flex max-w-2xl gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div
+                className={cn(
+                  'mt-6 flex max-w-2xl gap-3 rounded-2xl border p-4 text-sm leading-6',
+                  error
+                    ? 'border-rose-200 bg-rose-50 text-rose-900'
+                    : 'border-amber-200 bg-amber-50 text-amber-900',
+                )}
+              >
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>{error || disabledReason}</p>
               </div>
             )}
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button
+                type="button"
+                onClick={onJoin}
+                disabled={isJoining || !canJoin}
+                className="h-11 rounded-xl bg-sky-600 px-5 hover:bg-sky-700"
+              >
+                {isJoining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                Vào phòng call
+              </Button>
+              <Button asChild type="button" variant="outline" className="h-11 rounded-xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                <Link href={getReturnPath(summary)}>Quay lại lịch hẹn</Link>
+              </Button>
+            </div>
           </section>
 
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-700 ring-1 ring-sky-100">
-                <CalendarClock className="h-5 w-5" />
+          <aside className="border-t border-slate-200 bg-slate-50 p-6 lg:border-l lg:border-t-0">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-700 ring-1 ring-sky-100">
+                  <MonitorUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Thông tin phòng</p>
+                  <p className="font-bold text-slate-950">{summary.meetingCode}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lịch call</p>
-                <p className="font-bold text-slate-950">{formatDateTime(summary.startsAt)}</p>
-              </div>
+              <dl className="mt-5 space-y-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Thời lượng</dt>
+                  <dd className="font-medium">{summary.durationMinutes} phút</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Mở phòng</dt>
+                  <dd className="text-right font-medium">{formatDateTime(summary.joinWindow.opensAt)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Đóng phòng</dt>
+                  <dd className="text-right font-medium">{formatDateTime(summary.joinWindow.closesAt)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">LiveKit</dt>
+                  <dd className={cn('font-medium', summary.livekitConfigured ? 'text-emerald-600' : 'text-amber-600')}>
+                    {summary.livekitConfigured ? 'Sẵn sàng' : 'Chưa cấu hình'}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <dl className="mt-5 space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Thời lượng</dt>
-                <dd className="font-medium">{summary.durationMinutes} phút</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Mã phòng</dt>
-                <dd className="font-medium">{summary.meetingCode}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Trạng thái</dt>
-                <dd className="font-medium">{getBookingStatusLabel(summary.status)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Mở phòng</dt>
-                <dd className="text-right font-medium">{formatDateTime(summary.joinWindow.opensAt)}</dd>
-              </div>
-            </dl>
           </aside>
         </div>
       </main>
@@ -320,38 +392,72 @@ export default function MentorCallRoom({ meetingCode }: { meetingCode: string })
 
   if (token && serverUrl) {
     return (
-      <div className="h-screen overflow-hidden bg-slate-50 text-slate-950">
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm">
+      <div className="flex h-screen flex-col overflow-hidden bg-slate-100 text-slate-950">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm sm:px-6">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{getSessionTypeLabel(summary.sessionType)}</p>
-            <p className="truncate text-xs text-slate-500">Mã phòng: {summary.meetingCode}</p>
+            <p className="truncate text-sm font-bold">{getSessionTypeLabel(summary.sessionType)}</p>
+            <p className="truncate text-xs text-slate-500">
+              {formatCallRange(summary)} · Mã phòng: {summary.meetingCode}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              onClick={() => router.push(returnPath)}
-            >
-              <LogOut className="h-4 w-4" />
-              Rời phòng
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 rounded-xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            onClick={() => router.push(returnPath)}
+          >
+            <LogOut className="h-4 w-4" />
+            Rời phòng
+          </Button>
         </header>
-        <LiveKitRoom
-          token={token}
-          serverUrl={serverUrl}
-          connect
-          video
-          audio
-          onDisconnected={() => router.push(returnPath)}
-          onError={(roomError) => setError(roomError.message)}
-          data-lk-theme="default"
-          style={liveKitLightTheme}
-          className={cn('h-[calc(100vh-4rem)] bg-slate-50')}
-        >
-          <VideoConference />
-        </LiveKitRoom>
+
+        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1fr_320px]">
+          <section className="min-h-0 p-3 sm:p-4">
+            <LiveKitRoom
+              token={token}
+              serverUrl={serverUrl}
+              connect
+              video
+              audio
+              onDisconnected={() => router.push(returnPath)}
+              onError={(roomError) => setError(roomError.message)}
+              data-lk-theme="default"
+              style={liveKitLightTheme}
+              className={cn('h-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm')}
+            >
+              <VideoConference />
+            </LiveKitRoom>
+          </section>
+
+          <aside className="hidden min-h-0 border-l border-slate-200 bg-white p-5 lg:block">
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Phiên tư vấn</p>
+                <h2 className="mt-2 text-lg font-bold leading-tight">{getSessionTypeLabel(summary.sessionType)}</h2>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Vai trò</dt>
+                    <dd className="mt-1 font-semibold">{getRoleLabel(summary.userRole)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Thời gian</dt>
+                    <dd className="mt-1 font-semibold">{formatDate(summary.startsAt)}</dd>
+                    <dd className="text-slate-500">{formatCallRange(summary)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Trạng thái booking</dt>
+                    <dd className="mt-1 font-semibold">{getBookingStatusLabel(summary.status)}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
+                Hãy kiểm tra micro, camera và tài liệu cần chia sẻ trước khi bắt đầu nội dung chính.
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     );
   }

@@ -21,8 +21,6 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import { getAuthUserId, isAdmin } from '../../../common/auth';
 import type { AuthUserLike } from '../../../common/auth';
 import { CreateBookingSessionDto } from '../dto/booking-session.dto';
-import { AiQuotaService } from '../../ai/services/ai-quota.service';
-import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
 import { PaymentService } from '../../payment/services';
 import { PaymentProvider, PaymentPurpose } from '../../payment/schema/payment.schema';
 
@@ -33,7 +31,6 @@ import { PaymentProvider, PaymentPurpose } from '../../payment/schema/payment.sc
 export class BookingSessionController {
   constructor(
     private readonly bookingSessionService: BookingSessionService,
-    private readonly aiQuotaService: AiQuotaService,
     private readonly paymentService: PaymentService,
   ) { }
 
@@ -43,32 +40,25 @@ export class BookingSessionController {
   async create(@Body() createDto: CreateBookingSessionDto, @CurrentUser() user: AuthUserLike) {
     const userId = getAuthUserId(user);
     const { paymentReturnUrls, useEdumeeCredit, ...bookingDto } = createDto;
-    return this.aiQuotaService.runWithQuota(
+    const booking = await this.bookingSessionService.createForMentee(
       userId,
-      AiFeature.MENTOR_BOOKING,
-      async () => {
-        const booking = await this.bookingSessionService.createForMentee(
-          userId,
-          bookingDto as unknown as { tutorProfileId: string; [key: string]: unknown },
-        );
-
-        const sessionPrice = Number(booking.paymentInfo?.sessionPrice ?? 0);
-        if (sessionPrice <= 0) {
-          const freeBooking = await this.bookingSessionService.markFreeBookingPending(booking._id.toString());
-          return { booking: freeBooking, payment: null };
-        }
-
-        const payment = await this.paymentService.createPaymentPurchase(userId, {
-          purpose: PaymentPurpose.MENTOR_BOOKING,
-          targetId: booking._id.toString(),
-          provider: PaymentProvider.SEPAY,
-          returnUrls: paymentReturnUrls,
-          useEdumeeCredit,
-        });
-        return { booking, payment };
-      },
-      { requestCount: 1, tokensUsed: 0 },
+      bookingDto as unknown as { tutorProfileId: string; [key: string]: unknown },
     );
+
+    const sessionPrice = Number(booking.paymentInfo?.sessionPrice ?? 0);
+    if (sessionPrice <= 0) {
+      const freeBooking = await this.bookingSessionService.markFreeBookingPending(booking._id.toString());
+      return { booking: freeBooking, payment: null };
+    }
+
+    const payment = await this.paymentService.createPaymentPurchase(userId, {
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      targetId: booking._id.toString(),
+      provider: PaymentProvider.SEPAY,
+      returnUrls: paymentReturnUrls,
+      useEdumeeCredit,
+    });
+    return { booking, payment };
   }
 
   @Get()

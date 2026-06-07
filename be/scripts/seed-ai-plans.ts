@@ -52,6 +52,18 @@ type PlanSeed = {
   };
 };
 
+const PLUS_LIMITS: PlanSeed['limits'] = {
+  assessmentsPerMonth: 3,
+  maxCareerRecommendationsPerRun: 5,
+  visibleCareerRecommendationsPerRun: 5,
+  chatMessagesPerMonth: 200,
+  careerComparisonsPerMonth: 5,
+  maxCareersPerComparison: 3,
+  personalizedRoadmapsPerMonth: 20,
+  simulationsPerMonth: 20,
+  mentorBookingsPerMonth: 5,
+};
+
 const PLAN_SEEDS: PlanSeed[] = [
   {
     name: 'Free',
@@ -100,17 +112,7 @@ const PLAN_SEEDS: PlanSeed[] = [
       [BillingCycle.THREE_MONTHS]: 7,
       [BillingCycle.SIX_MONTHS]: 12,
     },
-    limits: {
-      assessmentsPerMonth: 3,
-      maxCareerRecommendationsPerRun: 5,
-      visibleCareerRecommendationsPerRun: 5,
-      chatMessagesPerMonth: 200,
-      careerComparisonsPerMonth: 5,
-      maxCareersPerComparison: 3,
-      personalizedRoadmapsPerMonth: 20,
-      simulationsPerMonth: 20,
-      mentorBookingsPerMonth: 5,
-    },
+    limits: { ...PLUS_LIMITS },
     features: {
       careerRecommendation: true,
       careerComparison: true,
@@ -130,17 +132,7 @@ const PLAN_SEEDS: PlanSeed[] = [
     displayOrder: 2,
     allowedBillingCycles: [BillingCycle.MONTHLY],
     seatLimit: 200,
-    limits: {
-      assessmentsPerMonth: 5,
-      maxCareerRecommendationsPerRun: 5,
-      visibleCareerRecommendationsPerRun: 5,
-      chatMessagesPerMonth: 200,
-      careerComparisonsPerMonth: 10,
-      maxCareersPerComparison: 5,
-      personalizedRoadmapsPerMonth: 20,
-      simulationsPerMonth: 20,
-      mentorBookingsPerMonth: 5,
-    },
+    limits: { ...PLUS_LIMITS },
     features: {
       careerRecommendation: true,
       careerComparison: true,

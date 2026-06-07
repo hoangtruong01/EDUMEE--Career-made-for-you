@@ -140,9 +140,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   return (payload ?? ({} as T)) as T;
 }
 
-export async function apiUpload<T>(path: string, formData: FormData, token?: string): Promise<T> {
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  token?: string,
+  method: 'POST' | 'PATCH' = 'PATCH',
+): Promise<T> {
   const response = await safeFetch(`${API_BASE_URL}${path}`, {
-    method: 'PATCH', // Usually avatar upload is PATCH in our case
+    method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -188,5 +193,7 @@ export const apiClient = {
     apiRequest<T>(path, { method: 'DELETE', token, body }),
   upload: <T>(path: string, formData: FormData, token?: string) =>
     apiUpload<T>(path, formData, token),
+  uploadPost: <T>(path: string, formData: FormData, token?: string) =>
+    apiUpload<T>(path, formData, token, 'POST'),
 };
 

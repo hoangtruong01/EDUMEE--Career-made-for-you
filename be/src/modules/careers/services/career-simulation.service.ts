@@ -4,16 +4,17 @@ import { Model, Types } from 'mongoose';
 import { CareerSimulation, CareerSimulationDocument, CareerSimulationData } from '../schemas/career-simulation.schema';
 import { AIService } from '../../../common/services/ai.service';
 import { CareerFitResultService } from '../../assessment/services/career-fit-result.service';
+import type { CareerFitResultVisibilityView } from '../../assessment/services/career-fit-result.service';
 
 interface PersonalityProfile {
   dominantTraits: string[];
    RIASEC?: any;
 }
 
-interface CareerFitResultLike {
-  careerTitle: string;
-  overallFitScore: number;
-  strengths: string[];
+interface CareerFitResultLike extends CareerFitResultVisibilityView {
+  careerTitle?: string;
+  overallFitScore?: number;
+  strengths?: string[];
   personalityProfile?: PersonalityProfile;
 }
 
@@ -28,14 +29,24 @@ export class CareerSimulationService {
     private readonly careerFitResultService: CareerFitResultService,
   ) {}
 
-  async getTopCareers(userId: string): Promise<{ title: string; fitScore: number; strengths: string[]; personalityTraits: string[] }[]> {
-    const results = await this.careerFitResultService.getTopCareerMatches(userId, 3) as unknown as CareerFitResultLike[];
-    return results.map(r => ({
-      title: r.careerTitle,
-      fitScore: r.overallFitScore,
-      strengths: r.strengths,
-      personalityTraits: r.personalityProfile?.dominantTraits || [],
-    }));
+  async getTopCareers(
+    userId: string,
+  ): Promise<{ title: string; fitScore: number; strengths: string[]; personalityTraits: string[] }[]> {
+    const results = await this.careerFitResultService.getTopCareerMatchesVisible(
+      userId,
+      3,
+    ) as CareerFitResultLike[];
+
+    return results
+      .filter((r): r is CareerFitResultLike & { careerTitle: string } => (
+        r.isLocked !== true && typeof r.careerTitle === 'string' && Boolean(r.careerTitle.trim())
+      ))
+      .map(r => ({
+        title: r.careerTitle,
+        fitScore: typeof r.overallFitScore === 'number' ? r.overallFitScore : 0,
+        strengths: Array.isArray(r.strengths) ? r.strengths : [],
+        personalityTraits: r.personalityProfile?.dominantTraits || [],
+      }));
   }
 
   async hasCachedSimulation(userId: string, careerTitle: string): Promise<boolean> {

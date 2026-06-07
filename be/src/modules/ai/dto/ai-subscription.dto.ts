@@ -63,3 +63,17 @@ export class AssignAiSubscriptionDto {
   @IsDateString()
   endDate?: string;
 }
+
+export class ImportAiSubscriptionUsersDto {
+  @ApiProperty()
+  @IsMongoId()
+  planId!: string;
+
+  @ApiPropertyOptional({
+    enum: BillingCycle,
+    description: 'Billing cycle to assign to every imported user.',
+  })
+  @IsOptional()
+  @IsEnum(BillingCycle)
+  billingCycle?: BillingCycle;
+}

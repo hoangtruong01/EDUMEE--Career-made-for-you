@@ -73,7 +73,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 interface MappedCareer {
   title: string;
-  match: number;
+  match: number | null;
   icon: string;
   insight: string;
   growth: string;
@@ -141,12 +141,14 @@ const CareerCard = ({
                 <div className="bg-muted h-1.5 w-24 overflow-hidden rounded-full border border-border/30">
                   <motion.div 
                     initial={{ width: 0 }}
-                    animate={{ width: `${career.match}%` }}
+                    animate={{ width: `${isLocked || career.match === null ? 100 : career.match}%` }}
                     transition={{ duration: 1, delay: 0.5 }}
                     className={`h-full bg-linear-to-r ${career.gradient}`} 
                   />
                 </div>
-                <span className="text-primary text-[10px] font-bold">{career.match}% match</span>
+                <span className="text-primary text-[10px] font-bold">
+                  {isLocked || career.match === null ? 'Đã khóa' : `${career.match}% match`}
+                </span>
               </div>
             </div>
           </div>
@@ -486,14 +488,15 @@ const AssessmentResult = () => {
         const style = palette[idx] || palette[0];
         const rank = Number(item.rank || item.recommendationRank || idx + 1);
         const isLocked = item.isLocked === true;
+        const fallbackTitle = `Nghề #${rank}`;
         return {
-          title: item.careerTitle || `Nghề #${rank}`,
-          match: Math.round(Number(item.overallFitScore || 0)),
+          title: isLocked ? fallbackTitle : item.careerTitle || fallbackTitle,
+          match: isLocked ? null : Math.round(Number(item.overallFitScore || 0)),
           icon: style.icon,
-          insight: item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
+          insight: isLocked ? '' : item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
           growth: 'Tăng trưởng mạnh',
           demandLabel: 'Rất cao',
-          skills: (item.strengths || []).slice(0, 3),
+          skills: isLocked ? [] : (item.strengths || []).slice(0, 3),
           gradient: style.gradient,
           rank,
           isLocked,

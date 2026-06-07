@@ -32,6 +32,7 @@ import {
 import { useBookingRealtimeSync } from '@/hooks/useBookingRealtimeSync';
 import { authStorage } from '@/lib/auth-storage';
 import { careerTagsService, type CareerTag, type SkillTag } from '@/lib/career-tags.service';
+import { communityService, type CommunityComment, type CommunityPost } from '@/lib/community.service';
 import {
   BookingSession,
   ApplyTutorProfilePayload,
@@ -48,17 +49,20 @@ import {
   Calendar,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   ChevronsUpDown,
   Clock,
+  Flag,
   HandCoins,
+  Heart,
   Loader2,
   MessageSquare,
   Percent,
   Plus,
   Repeat,
   ReceiptText,
+  Save,
+  Search,
+  Send,
   Star,
   Trash2,
   UserCheck,
@@ -68,7 +72,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const statusLabel: Record<string, string> = {
@@ -104,6 +108,16 @@ const statusTone: Record<string, string> = {
 const EMPTY_MENTOR_BOOKINGS: BookingSession[] = [];
 const EMPTY_MENTOR_SLOTS: MentorAvailabilitySlot[] = [];
 const EMPTY_MENTOR_REVIEWS: SessionReview[] = [];
+const EMPTY_COMMUNITY_POSTS: CommunityPost[] = [];
+
+const MENTOR_COMMUNITY_CATEGORIES = [
+  'Tất cả',
+  'Hỏi đáp',
+  'Chia sẻ kinh nghiệm',
+  'Review ngành',
+  'Tài nguyên',
+  'Tuyển dụng',
+];
 
 const mentorIncomeQueryKey = (accessToken: string) => ['mentorIncome', accessToken] as const;
 
@@ -122,6 +136,123 @@ function getMentorName(profile?: TutorProfile | null) {
 
 function getPrimaryRate(profile?: TutorProfile | null) {
   return profile?.pricing?.sessionRates?.[0];
+}
+
+function isTrialBooking(booking?: BookingSession | null) {
+  return booking?.bookingType === 'trial';
+}
+
+function getTrialDuration(booking?: BookingSession | null) {
+  return booking?.trialInfo?.durationMinutes || booking?.schedulingDetails.duration || 15;
+}
+
+function getBookingDuration(booking: BookingSession) {
+  return isTrialBooking(booking) ? getTrialDuration(booking) : booking.schedulingDetails.duration;
+}
+
+function getBookingPriceLabel(booking: BookingSession) {
+  if (isTrialBooking(booking)) return 'Miễn phí';
+  return formatMoney(booking.paymentInfo?.sessionPrice, booking.paymentInfo?.currency);
+}
+
+function getBookingPaymentSummary(booking: BookingSession) {
+  if (isTrialBooking(booking)) return 'Miễn phí · Không phát sinh doanh thu mentor';
+  return `${getBookingPriceLabel(booking)} · ${booking.paymentInfo?.paymentStatus || 'chờ thanh toán'}`;
+}
+
+function getTrialQuotaNote(booking: BookingSession) {
+  if (!isTrialBooking(booking)) return '';
+  if (booking.trialInfo?.quotaRefundedAt) {
+    return 'Quota trial của học viên đã được hoàn lại vì mentor hủy trước giờ hẹn.';
+  }
+  if (booking.trialInfo?.quotaConsumedAt) {
+    return 'Quota trial của học viên đã được trừ khi booking được mentor xác nhận.';
+  }
+  if (booking.status === 'pending') {
+    return 'Mentor xác nhận thì hệ thống mới trừ 1 lượt mentor booking trong gói AI của học viên.';
+  }
+  return 'Trial miễn phí theo quota gói AI của học viên.';
+}
+
+function TrialBookingBadge({
+  booking,
+  className,
+}: {
+  booking?: BookingSession | null;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex w-fit items-center rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+        className,
+      )}
+    >
+      Trial {getTrialDuration(booking)} phút
+    </span>
+  );
+}
+
+function getPostId(post: CommunityPost) {
+  return post.id || post._id || '';
+}
+
+function getMentorAuthorName(profile?: TutorProfile | null) {
+  return profile?.mentorUser?.name?.trim() || 'Mentor EDUMEE';
+}
+
+function getMentorAuthorTitle(profile?: TutorProfile | null) {
+  const position = profile?.professionalBackground?.currentPosition?.trim();
+  const company = profile?.professionalBackground?.company?.trim();
+  if (position && company) return `${position} tại ${company}`;
+  if (position) return position;
+  return 'Mentor EDUMEE';
+}
+
+function formatCommunityDate(value?: string) {
+  if (!value) return 'Vừa xong';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Vừa xong';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function getCommunityInitials(name?: string) {
+  const normalized = name?.trim();
+  if (!normalized) return 'E';
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0] || ''}${words[words.length - 1][0] || ''}`.toUpperCase();
+}
+
+function CommunityAvatar({
+  name,
+  avatarUrl,
+  className,
+}: {
+  name?: string;
+  avatarUrl?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-sky-600 text-sm font-bold text-white shadow-sm shadow-sky-600/15',
+        className,
+      )}
+    >
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt={name || 'Avatar'} className="h-full w-full object-cover" />
+      ) : (
+        <span>{getCommunityInitials(name)}</span>
+      )}
+    </div>
+  );
 }
 
 function useMentorIncome(enabled: boolean) {
@@ -174,7 +305,7 @@ function PortalPanel({
     <section
       id={id}
       className={cn(
-        'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900',
+        'rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5',
         className,
       )}
     >
@@ -201,14 +332,16 @@ function StatCard({
   tone: string;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-4 flex items-center justify-between">
-        <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl text-white', tone)}>
-          <Icon className="h-5 w-5" />
+    <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>
+          <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">{value}</p>
+        </div>
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tone)}>
+          <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="text-sm text-slate-500 dark:text-slate-400">{title}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-slate-50">{value}</p>
     </article>
   );
 }
@@ -678,7 +811,7 @@ function ProfileStatusCard({ profile, onSubmitted }: { profile: TutorProfile; on
   const [isEditingRejectedProfile, setIsEditingRejectedProfile] = useState(false);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PortalPanel id="profile" title="Trạng thái xét duyệt" description="Portal mentor sẽ mở sau khi admin duyệt hồ sơ của bạn.">
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-start">
           <div
@@ -1696,6 +1829,15 @@ export function MentorAvailabilityManager({
   );
 }
 
+type MentorBookingFilter = 'all' | 'trial' | 'paid' | 'pending';
+
+const MENTOR_BOOKING_FILTERS: Array<{ value: MentorBookingFilter; label: string }> = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'paid', label: 'Trả phí' },
+  { value: 'pending', label: 'Chờ xác nhận' },
+];
+
 function MentorBookingList({
   bookings,
   onChanged,
@@ -1710,8 +1852,28 @@ function MentorBookingList({
   const token = authStorage.getAccessToken();
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [activeFilter, setActiveFilter] = useState<MentorBookingFilter>('all');
   const [actionDialog, setActionDialog] = useState<BookingActionDialogState | null>(null);
   const [actionReason, setActionReason] = useState('');
+  const filteredBookings = useMemo(
+    () =>
+      bookings.filter((booking) => {
+        if (activeFilter === 'trial') return isTrialBooking(booking);
+        if (activeFilter === 'paid') return !isTrialBooking(booking);
+        if (activeFilter === 'pending') return booking.status === 'pending';
+        return true;
+      }),
+    [activeFilter, bookings],
+  );
+  const filterCounts = useMemo(
+    () => ({
+      all: bookings.length,
+      trial: bookings.filter((booking) => isTrialBooking(booking)).length,
+      paid: bookings.filter((booking) => !isTrialBooking(booking)).length,
+      pending: bookings.filter((booking) => booking.status === 'pending').length,
+    }),
+    [bookings],
+  );
 
   const confirmBooking = async (booking: BookingSession) => {
     setBusyId(booking.id);
@@ -1787,15 +1949,50 @@ function MentorBookingList({
           Chưa có booking nào.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-          <div className="hidden grid-cols-[1fr_160px_150px_260px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400 lg:grid">
-            <span>Nội dung</span>
-            <span>Thời gian</span>
-            <span>Trạng thái</span>
-            <span className="text-right">Thao tác</span>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {MENTOR_BOOKING_FILTERS.map((filter) => {
+              const active = activeFilter === filter.value;
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setActiveFilter(filter.value)}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors',
+                    active
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                  )}
+                >
+                  <span>{filter.label}</span>
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[11px]',
+                      active ? 'bg-white/20 text-white' : 'bg-white text-slate-500 dark:bg-slate-900',
+                    )}
+                  >
+                    {filterCounts[filter.value]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <div className="divide-y divide-slate-200 dark:divide-slate-800">
-            {bookings.map((booking) => {
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="hidden grid-cols-[1fr_160px_150px_260px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400 lg:grid">
+              <span>Nội dung</span>
+              <span>Thời gian</span>
+              <span>Trạng thái</span>
+              <span className="text-right">Thao tác</span>
+            </div>
+            {filteredBookings.length === 0 ? (
+              <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                Không có booking phù hợp với bộ lọc này.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                {filteredBookings.map((booking) => {
               const canConfirm = booking.status === 'pending';
               const canCancel = ['pending', 'confirmed', 'rescheduled'].includes(booking.status);
               const canComplete = ['confirmed', 'rescheduled'].includes(booking.status);
@@ -1807,13 +2004,21 @@ function MentorBookingList({
               return (
                 <div key={booking.id} className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[1fr_160px_150px_260px] lg:items-center">
                   <div>
-                    <p className="font-semibold text-slate-950 dark:text-slate-50">{booking.sessionType.replace(/_/g, ' ')}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950 dark:text-slate-50">{booking.sessionType.replace(/_/g, ' ')}</p>
+                      {isTrialBooking(booking) ? <TrialBookingBadge booking={booking} /> : null}
+                    </div>
                     <p className="mt-1 text-slate-500 dark:text-slate-400">
                       {booking.bookingRequest.topicsToDiscuss?.join(', ') || 'Chưa có chủ đề'}
                     </p>
+                    {isTrialBooking(booking) ? (
+                      <p className="mt-1 text-xs font-medium text-violet-600 dark:text-violet-300">
+                        {getBookingPaymentSummary(booking)}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="text-slate-600 dark:text-slate-300">
-                    {date.toLocaleString('vi-VN')} · {booking.schedulingDetails.duration} phút
+                    {date.toLocaleString('vi-VN')} · {getBookingDuration(booking)} phút
                   </p>
                   <div>
                     <span className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', statusTone[booking.status] || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300')}>
@@ -1876,7 +2081,9 @@ function MentorBookingList({
                   </div>
                 </div>
               );
-            })}
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1899,7 +2106,69 @@ const MENTOR_SLOT_STARTS = Array.from(
   { length: Math.floor((MENTOR_WORK_END_MINUTE - MENTOR_WORK_START_MINUTE) / MENTOR_SLOT_MINUTES) },
   (_, index) => MENTOR_WORK_START_MINUTE + index * MENTOR_SLOT_MINUTES,
 );
+const MENTOR_EDIT_SLOT_STARTS = Array.from(
+  { length: Math.floor((MENTOR_WORK_END_MINUTE - MENTOR_WORK_START_MINUTE) / 15) },
+  (_, index) => MENTOR_WORK_START_MINUTE + index * 15,
+);
 const BOOKING_TIMETABLE_STATUSES = ['awaiting_payment', 'pending', 'confirmed', 'rescheduled'];
+
+type MentorCalendarItem = {
+  id: string;
+  slot?: MentorAvailabilitySlot;
+  booking?: BookingSession;
+  start: Date;
+  end: Date;
+};
+
+function getMentorSlotBucketMinute(date: Date) {
+  const minute = minutesFromMidnight(date);
+  const offset = Math.max(0, minute - MENTOR_WORK_START_MINUTE);
+  const bucket = MENTOR_WORK_START_MINUTE + Math.floor(offset / MENTOR_SLOT_MINUTES) * MENTOR_SLOT_MINUTES;
+  return Math.min(bucket, MENTOR_SLOT_STARTS[MENTOR_SLOT_STARTS.length - 1] || MENTOR_WORK_START_MINUTE);
+}
+
+function getAvailabilitySlotLabel(slot: MentorAvailabilitySlot, isPast: boolean) {
+  if (slot.status === 'available' && isPast) return 'Đã qua';
+  if (slot.status === 'available') return 'Đã mở';
+  if (slot.status === 'held') return 'Đang giữ';
+  if (slot.status === 'booked') return 'Đã booking';
+  return 'Đã chặn';
+}
+
+function getAvailabilitySlotClass(slot: MentorAvailabilitySlot, isPast: boolean) {
+  if (slot.status === 'available' && isPast) {
+    return 'border-slate-200 bg-slate-50 text-slate-400 hover:shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500';
+  }
+  if (slot.status === 'available') {
+    return 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
+  }
+  if (slot.status === 'held') {
+    return 'border-amber-300 bg-amber-50 text-amber-800 hover:shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
+  }
+  if (slot.status === 'booked') {
+    return 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200';
+  }
+  return 'border-slate-300 bg-slate-100 text-slate-700 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+}
+
+function getBookingCalendarClass(booking: BookingSession) {
+  if (isTrialBooking(booking)) {
+    return 'border-violet-300 bg-violet-50 text-violet-800 hover:shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200';
+  }
+  if (booking.status === 'pending') {
+    return 'border-sky-300 bg-sky-50 text-sky-800 hover:shadow-sm dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200';
+  }
+  if (booking.status === 'confirmed') {
+    return 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200';
+  }
+  if (booking.status === 'rescheduled') {
+    return 'border-violet-300 bg-violet-50 text-violet-800 hover:shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200';
+  }
+  if (booking.status === 'awaiting_payment') {
+    return 'border-amber-300 bg-amber-50 text-amber-800 hover:shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200';
+  }
+  return 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200';
+}
 
 function getSlotKey(dayIndex: number, minute: number) {
   return `${dayIndex}-${minute}`;
@@ -1967,14 +2236,18 @@ function MentorSchedulingWorkspace({
   onOpenChat: (booking: BookingSession) => void;
 }) {
   const token = authStorage.getAccessToken();
-  const currentCalendarWeekStart = useMemo(() => startOfWeek(new Date()), []);
-  const [calendarWeekStart, setCalendarWeekStart] = useState(() => startOfWeek(new Date()));
+  const [startOffsetWeeks, setStartOffsetWeeks] = useState(0);
+  const calendarWeekStart = useMemo(
+    () => startOfWeek(addDays(new Date(), startOffsetWeeks * 7)),
+    [startOffsetWeeks],
+  );
   const calendarWeekDays = useMemo(
     () => Array.from({ length: 7 }, (_, index) => addDays(calendarWeekStart, index)),
     [calendarWeekStart],
   );
   const [selectedSlotKeys, setSelectedSlotKeys] = useState<string[]>([]);
-  const [isFixedSchedule, setIsFixedSchedule] = useState(false);
+  const [draftDayIndex, setDraftDayIndex] = useState(0);
+  const [draftStartMinute, setDraftStartMinute] = useState(MENTOR_WORK_START_MINUTE);
   const [repeatWeeks, setRepeatWeeks] = useState(8);
   const [selectedBookingId, setSelectedBookingId] = useState('');
   const [selectedAvailabilitySlotId, setSelectedAvailabilitySlotId] = useState('');
@@ -1990,19 +2263,6 @@ function MentorSchedulingWorkspace({
   const [actionReason, setActionReason] = useState('');
   const now = new Date();
 
-  const slotsByCell = useMemo(() => {
-    const map = new Map<string, MentorAvailabilitySlot>();
-    slots.forEach((slot) => {
-      const start = new Date(slot.startAt);
-      const dayIndex = calendarWeekDays.findIndex((day) => sameDay(day, start));
-      const minute = minutesFromMidnight(start);
-      if (dayIndex >= 0 && MENTOR_SLOT_STARTS.includes(minute)) {
-        map.set(getSlotKey(dayIndex, minute), slot);
-      }
-    });
-    return map;
-  }, [calendarWeekDays, slots]);
-
   const visibleBookings = useMemo(
     () =>
       bookings
@@ -2015,32 +2275,82 @@ function MentorSchedulingWorkspace({
         })
         .filter((entry) => entry.dayIndex >= 0 && !Number.isNaN(entry.start.getTime()))
         .sort((first, second) => first.start.getTime() - second.start.getTime()),
-    [calendarWeekDays, bookings],
+    [bookings, calendarWeekDays],
   );
 
-  const bookingsBySlotId = useMemo(
-    () => new Map(visibleBookings.map(({ booking }) => [booking.availabilitySlotId, booking])),
-    [visibleBookings],
-  );
+  const calendarItemsByCell = useMemo(() => {
+    const map = new Map<string, MentorCalendarItem[]>();
+    const visibleBookingBySlotId = new Map(visibleBookings.map(({ booking }) => [booking.availabilitySlotId, booking]));
+    const mappedBookingIds = new Set<string>();
+    const pushItem = (dayIndex: number, start: Date, item: MentorCalendarItem) => {
+      const key = getSlotKey(dayIndex, getMentorSlotBucketMinute(start));
+      const items = map.get(key) || [];
+      items.push(item);
+      items.sort((first, second) => first.start.getTime() - second.start.getTime());
+      map.set(key, items);
+    };
 
-  const bookingsByCell = useMemo(() => {
-    const map = new Map<string, BookingSession>();
-    visibleBookings.forEach(({ booking, start, dayIndex }) => {
-      const minute = minutesFromMidnight(start);
-      if (MENTOR_SLOT_STARTS.includes(minute)) {
-        map.set(getSlotKey(dayIndex, minute), booking);
-      }
+    slots.forEach((slot) => {
+      const start = new Date(slot.startAt);
+      const end = new Date(slot.endAt);
+      const dayIndex = calendarWeekDays.findIndex((day) => sameDay(day, start));
+      if (dayIndex < 0 || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+
+      const booking = visibleBookingBySlotId.get(slot.id);
+      if (booking) mappedBookingIds.add(booking.id);
+      pushItem(dayIndex, start, {
+        id: booking ? `booking-${booking.id}` : `slot-${slot.id}`,
+        slot,
+        booking,
+        start: booking ? getBookingStart(booking) : start,
+        end: booking ? getBookingEnd(booking, getBookingStart(booking)) : end,
+      });
+    });
+
+    visibleBookings.forEach(({ booking, start, end, dayIndex }) => {
+      if (mappedBookingIds.has(booking.id)) return;
+      pushItem(dayIndex, start, {
+        id: `booking-${booking.id}`,
+        booking,
+        start,
+        end,
+      });
+    });
+
+    return map;
+  }, [calendarWeekDays, slots, visibleBookings]);
+  const draftSlots = useMemo(
+    () =>
+      selectedSlotKeys
+        .map(parseSlotKey)
+        .sort((first, second) => first.dayIndex - second.dayIndex || first.minute - second.minute),
+    [selectedSlotKeys],
+  );
+  const calendarItemsByDay = useMemo(() => {
+    const map = new Map<number, MentorCalendarItem[]>();
+    calendarItemsByCell.forEach((items, key) => {
+      const { dayIndex } = parseSlotKey(key);
+      const current = map.get(dayIndex) || [];
+      current.push(...items);
+      current.sort((first, second) => first.start.getTime() - second.start.getTime());
+      map.set(dayIndex, current);
     });
     return map;
-  }, [visibleBookings]);
+  }, [calendarItemsByCell]);
+  const hasCalendarItems = Array.from(calendarItemsByDay.values()).some((items) => items.length > 0);
 
   const selectedBooking = selectedBookingId
     ? bookings.find((booking) => booking.id === selectedBookingId) || null
     : null;
   const selectedMeetingHref = selectedBooking ? getBookingMeetingHref(selectedBooking) : '';
+  const selectedBookingStart = selectedBooking ? getBookingStart(selectedBooking) : null;
+  const selectedBookingEnd = selectedBooking && selectedBookingStart
+    ? getBookingEnd(selectedBooking, selectedBookingStart)
+    : null;
+  const selectedTrialNote = selectedBooking ? getTrialQuotaNote(selectedBooking) : '';
   const selectedPendingProposal = selectedBooking ? getPendingRescheduleProposal(selectedBooking) : null;
   const canRespondToSelectedProposal = selectedPendingProposal?.proposedByRole === 'mentee';
-  const proposalDuration = Math.max(1, selectedBooking?.schedulingDetails.duration || MENTOR_SLOT_MINUTES);
+  const proposalDuration = Math.max(1, selectedBooking ? getBookingDuration(selectedBooking) : MENTOR_SLOT_MINUTES);
   const proposalDateValue = parseDateOnlyInput(proposalDate);
   const proposalStartAt = proposalDateValue
     ? dateAtMinutes(proposalDateValue, proposalStartMinute)
@@ -2068,6 +2378,16 @@ function MentorSchedulingWorkspace({
     : null;
   const selectedAvailabilityStart = selectedAvailabilitySlot ? new Date(selectedAvailabilitySlot.startAt) : null;
   const selectedAvailabilityEnd = selectedAvailabilitySlot ? new Date(selectedAvailabilitySlot.endAt) : null;
+  const selectedAvailabilityDuration =
+    selectedAvailabilityStart &&
+    selectedAvailabilityEnd &&
+    !Number.isNaN(selectedAvailabilityStart.getTime()) &&
+    !Number.isNaN(selectedAvailabilityEnd.getTime())
+      ? Math.max(
+          15,
+          Math.round((selectedAvailabilityEnd.getTime() - selectedAvailabilityStart.getTime()) / 60_000),
+        )
+      : MENTOR_SLOT_MINUTES;
   const canEditSelectedAvailability =
     !!selectedAvailabilitySlot &&
     selectedAvailabilitySlot.status === 'available' &&
@@ -2075,17 +2395,9 @@ function MentorSchedulingWorkspace({
     selectedAvailabilityStart >= now;
   const editDateValue = parseDateOnlyInput(editDate);
   const editStartAt = editDateValue ? dateAtMinutes(editDateValue, editStartMinute) : new Date(Number.NaN);
-  const editEndAt = new Date(editStartAt.getTime() + MENTOR_SLOT_MINUTES * 60_000);
+  const editEndAt = new Date(editStartAt.getTime() + selectedAvailabilityDuration * 60_000);
   const editSlotDateInvalid = !editDateValue || Number.isNaN(editStartAt.getTime());
   const editSlotInPast = !editSlotDateInvalid && editStartAt < now;
-
-  const changeCalendarWeek = (days: number) => {
-    setCalendarWeekStart((current) => addDays(current, days));
-    setSelectedSlotKeys([]);
-    setSelectedAvailabilitySlotId('');
-    setSelectedBookingId('');
-    setMessage('');
-  };
 
   const openAvailabilitySlot = (slot: MentorAvailabilitySlot) => {
     const start = new Date(slot.startAt);
@@ -2093,14 +2405,32 @@ function MentorSchedulingWorkspace({
     setSelectedAvailabilitySlotId(slot.id);
     setSelectedBookingId('');
     setEditDate(formatDateOnly(start));
-    setEditStartMinute(MENTOR_SLOT_STARTS.includes(minutesFromMidnight(start)) ? minutesFromMidnight(start) : MENTOR_WORK_START_MINUTE);
+    setEditStartMinute(
+      MENTOR_EDIT_SLOT_STARTS.includes(minutesFromMidnight(start))
+        ? minutesFromMidnight(start)
+        : MENTOR_WORK_START_MINUTE,
+    );
     setMessage('');
   };
 
-  const toggleSlot = (key: string) => {
+  const addDraftSlot = () => {
+    const key = getSlotKey(draftDayIndex, draftStartMinute);
+    if (selectedSlotKeys.includes(key)) {
+      setMessage('Khung giờ này đã có trong danh sách chờ lưu.');
+      return;
+    }
     setSelectedSlotKeys((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+      [...current, key].sort((first, second) => {
+        const a = parseSlotKey(first);
+        const b = parseSlotKey(second);
+        return a.dayIndex - b.dayIndex || a.minute - b.minute;
+      }),
     );
+    setMessage('');
+  };
+
+  const removeDraftSlot = (key: string) => {
+    setSelectedSlotKeys((current) => current.filter((item) => item !== key));
     setMessage('');
   };
 
@@ -2124,7 +2454,7 @@ function MentorSchedulingWorkspace({
         tutorProfileId: profile.id,
         weekStart: formatDateOnly(calendarWeekStart),
         slotStarts,
-        repeatWeeks: isFixedSchedule ? repeatWeeks : 1,
+        repeatWeeks,
       });
       setSelectedSlotKeys([]);
       const refreshedSlots = await onChanged();
@@ -2346,55 +2676,44 @@ function MentorSchedulingWorkspace({
       <PortalPanel
         id="availability"
         title="Lịch làm việc của tôi"
-        description="Tạo lịch rảnh và theo dõi toàn bộ slot đã mở, đang giữ, đã booking trong cùng một thời khóa biểu."
+        description="Thiết lập các slot có thể nhận booking. Admin và phụ huynh sẽ dùng lịch này để giảm trùng lịch."
       >
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-bold text-slate-950 dark:text-slate-50">
-                Tuần {getWeekRangeLabel(calendarWeekStart)}
-              </p>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Slot bắt đầu từ 08:00 đến 21:30, mỗi slot kéo dài đến tối đa 23:00.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => changeCalendarWeek(-7)}>
-                  <ChevronLeft className="h-4 w-4" />
-                  Tuần trước
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setCalendarWeekStart(currentCalendarWeekStart);
-                    setSelectedSlotKeys([]);
-                    setSelectedAvailabilitySlotId('');
-                    setSelectedBookingId('');
-                    setMessage('');
-                  }}
-                >
-                  Tuần này
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => changeCalendarWeek(7)}>
-                  Tuần tới
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+        <div className="space-y-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-950 dark:text-slate-50">Tạo slot rảnh</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Chọn thứ và giờ bắt đầu, hệ thống tự tạo slot 90 phút.
+                </p>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={isFixedSchedule}
-                  onChange={(event) => setIsFixedSchedule(event.target.checked)}
-                  className="h-4 w-4 accent-sky-600"
-                />
-                <Repeat className="h-4 w-4" />
-                Lịch cố định
-              </label>
-              {isFixedSchedule && (
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+                  {[
+                    { label: 'Tuần này', value: 0 },
+                    { label: 'Tuần sau', value: 1 },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setStartOffsetWeeks(option.value);
+                        setSelectedSlotKeys([]);
+                        setMessage('');
+                      }}
+                      className={cn(
+                        'h-9 rounded-lg px-3 text-sm font-semibold transition',
+                        startOffsetWeeks === option.value
+                          ? 'bg-sky-600 text-white'
+                          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <Repeat className="h-4 w-4 text-sky-600" />
                   Lặp
                   <input
                     type="number"
@@ -2404,19 +2723,60 @@ function MentorSchedulingWorkspace({
                     onChange={(event) =>
                       setRepeatWeeks(Math.min(12, Math.max(1, Number(event.target.value) || 1)))
                     }
-                    className="h-10 w-20 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-sky-500/10"
+                    className="h-8 w-16 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-500/10"
                   />
                   tuần
                 </label>
-              )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)_180px] lg:items-end">
+              <label className="space-y-1.5">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Ngày</span>
+                <select
+                  value={draftDayIndex}
+                  onChange={(event) => setDraftDayIndex(Number(event.target.value))}
+                  className="h-14 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:ring-sky-500/10"
+                >
+                  {WEEKDAY_LABELS.map((label, index) => (
+                    <option key={label} value={index}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Bắt đầu</span>
+                <select
+                  value={draftStartMinute}
+                  onChange={(event) => setDraftStartMinute(Number(event.target.value))}
+                  className="h-14 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:ring-sky-500/10"
+                >
+                  {MENTOR_SLOT_STARTS.map((minute) => (
+                    <option key={minute} value={minute}>
+                      {formatMinuteLabel(minute)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="space-y-1.5">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Kết thúc</span>
+                <div className="flex h-14 items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50">
+                  <span>{formatMinuteLabel(draftStartMinute + MENTOR_SLOT_MINUTES)}</span>
+                  <Clock className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                </div>
+              </div>
+
               <Button
                 type="button"
-                onClick={createSelectedSlots}
-                disabled={isSaving || selectedSlotKeys.length === 0}
-                className="bg-sky-600 hover:bg-sky-700"
+                onClick={addDraftSlot}
+                disabled={isSaving}
+                className="h-14 rounded-xl bg-blue-900 text-base font-bold hover:bg-blue-800 dark:bg-sky-600 dark:hover:bg-sky-700"
               >
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Lưu lịch rảnh
+                <Plus className="h-4 w-4" />
+                Thêm
               </Button>
             </div>
           </div>
@@ -2425,143 +2785,159 @@ function MentorSchedulingWorkspace({
             <p
               className={cn(
                 'whitespace-pre-line rounded-xl px-3 py-2 text-sm',
-                message.startsWith('Không tạo được') || message.includes('Bỏ qua')
+                message.includes('Bỏ qua') || message.startsWith('Không')
                   ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20'
-                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                  : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20',
               )}
             >
               {message}
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-white px-2.5 py-1 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
-              Trống: click để chọn tạo lịch
-            </span>
-            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-              Đã mở
-            </span>
-            <span className="rounded-full bg-sky-100 px-2.5 py-1 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
-              Chờ xác nhận
-            </span>
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-              Đang giữ / chờ thanh toán
-            </span>
-            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
-              Đã booking
-            </span>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-950 dark:text-slate-50">
+                  {draftSlots.length} slot đang thêm
+                </p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Slot quá khứ trong tuần này có thể bị backend bỏ qua khi lưu.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={createSelectedSlots}
+                disabled={isSaving || selectedSlotKeys.length === 0}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Lưu lịch rảnh
+              </Button>
+            </div>
+
+            {draftSlots.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                Chưa có slot nào trong danh sách chờ lưu.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {draftSlots.map(({ dayIndex, minute }) => {
+                  const key = getSlotKey(dayIndex, minute);
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
+                    >
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+                        <Clock className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-bold text-slate-950 dark:text-slate-50">{WEEKDAY_LABELS[dayIndex]}</p>
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                          {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + MENTOR_SLOT_MINUTES)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeDraftSlot(key)}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-600 transition hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                        aria-label="Xóa slot khỏi danh sách chờ lưu"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="min-w-[920px]">
-              <div className="grid grid-cols-[88px_repeat(7,minmax(112px,1fr))] border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-                <div className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-400">Giờ</div>
-                {calendarWeekDays.map((day, index) => (
-                  <div key={day.toISOString()} className="border-l border-slate-200 px-3 py-3 dark:border-slate-800">
-                    <p className="text-sm font-bold text-slate-950 dark:text-slate-50">{WEEKDAY_LABELS[index]}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatScheduleDate(day)}</p>
-                  </div>
-                ))}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-950 dark:text-slate-50">Lịch đã mở sắp tới</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Bấm slot còn trống để sửa hoặc xóa; bấm booking để xem chi tiết.
+                </p>
               </div>
-
-              {MENTOR_SLOT_STARTS.map((minute) => (
-                <div
-                  key={minute}
-                  className="grid grid-cols-[88px_repeat(7,minmax(112px,1fr))] border-b border-slate-100 last:border-b-0 dark:border-slate-800"
-                >
-                  <div className="flex items-center justify-end px-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {formatMinuteLabel(minute)}
-                  </div>
-                  {calendarWeekDays.map((day, dayIndex) => {
-                    const key = getSlotKey(dayIndex, minute);
-                    const start = dateAtMinutes(day, minute);
-                    const end = new Date(start.getTime() + MENTOR_SLOT_MINUTES * 60_000);
-                    const existingSlot = slotsByCell.get(key);
-                    const booking = existingSlot
-                      ? bookingsBySlotId.get(existingSlot.id)
-                      : bookingsByCell.get(key);
-                    const isPast = start < now;
-                    const isSelected = selectedSlotKeys.includes(key);
-                    const disabled = isSaving || (!booking && !existingSlot && isPast);
-                    const slotLabel = existingSlot
-                      ? existingSlot.status === 'available'
-                        ? 'Đã mở'
-                        : existingSlot.status === 'held'
-                          ? 'Đang giữ'
-                          : existingSlot.status === 'booked'
-                            ? 'Đã booking'
-                            : 'Đã chặn'
-                      : isPast
-                        ? 'Đã qua'
-                        : isSelected
-                          ? 'Đã chọn'
-                          : 'Trống';
-                    const slotClass = existingSlot
-                      ? existingSlot.status === 'available'
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
-                        : existingSlot.status === 'held'
-                          ? 'border-amber-300 bg-amber-50 text-amber-800 hover:shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
-                          : existingSlot.status === 'booked'
-                            ? 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200'
-                            : 'border-slate-300 bg-slate-100 text-slate-700 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      : isPast
-                        ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-600'
-                        : isSelected
-                          ? 'border-sky-600 bg-sky-600 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-sky-500/10';
-                    const bookingClass =
-                      booking?.status === 'pending'
-                        ? 'border-sky-300 bg-sky-50 text-sky-800 hover:shadow-sm dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200'
-                        : booking?.status === 'confirmed'
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
-                          : booking?.status === 'rescheduled'
-                            ? 'border-violet-300 bg-violet-50 text-violet-800 hover:shadow-sm dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200'
-                            : booking?.status === 'awaiting_payment'
-                              ? 'border-amber-300 bg-amber-50 text-amber-800 hover:shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
-                              : 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200';
-                    const calendarLabel = booking
-                      ? statusLabel[booking.status] || booking.status
-                      : existingSlot?.status === 'available' && isPast
-                        ? 'Đã qua'
-                        : slotLabel;
-                    const calendarClass = booking
-                      ? bookingClass
-                      : existingSlot?.status === 'available' && isPast
-                        ? 'border-slate-200 bg-slate-50 text-slate-400 hover:shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500'
-                        : slotClass;
-
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => {
-                          if (booking) {
-                            setSelectedAvailabilitySlotId('');
-                            setSelectedBookingId(booking.id);
-                            return;
-                          }
-                          if (existingSlot) {
-                            openAvailabilitySlot(existingSlot);
-                            return;
-                          }
-                          toggleSlot(key);
-                        }}
-                        className={cn(
-                          'm-1 flex h-12 flex-col justify-center rounded-lg border px-2 text-left text-xs transition',
-                          calendarClass,
-                        )}
-                      >
-                        <span className="truncate font-bold">{calendarLabel}</span>
-                        <span className="opacity-80">
-                          {formatScheduleTime(start)} - {formatScheduleTime(end)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-500/20">
+                  Đã mở
+                </span>
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20">
+                  Đang giữ
+                </span>
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-200 dark:ring-indigo-500/20">
+                  Booking
+                </span>
+              </div>
             </div>
+
+            {!hasCalendarItems ? (
+              <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                Tuần đang chọn chưa có slot hoặc booking nào.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-5">
+                {calendarWeekDays.map((day, dayIndex) => {
+                  const items = calendarItemsByDay.get(dayIndex) || [];
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={day.toISOString()} className="space-y-2">
+                      <p className="text-sm font-bold text-slate-950 dark:text-slate-50">{WEEKDAY_LABELS[dayIndex]}</p>
+                      <div className="space-y-2">
+                        {items.map((item) => {
+                          const itemStart = item.booking ? getBookingStart(item.booking) : item.start;
+                          const itemEnd = item.booking ? getBookingEnd(item.booking, itemStart) : item.end;
+                          const label = item.booking
+                            ? isTrialBooking(item.booking)
+                              ? `Trial ${getTrialDuration(item.booking)} phút`
+                              : statusLabel[item.booking.status] || item.booking.status
+                            : item.slot
+                              ? getAvailabilitySlotLabel(item.slot, itemStart < now)
+                              : 'Lịch';
+                          const itemClass = item.booking
+                            ? getBookingCalendarClass(item.booking)
+                            : item.slot
+                              ? getAvailabilitySlotClass(item.slot, itemStart < now)
+                              : 'border-slate-200 bg-white text-slate-600';
+                          const meta = item.booking
+                            ? `${statusLabel[item.booking.status] || item.booking.status} · ${formatScheduleTime(itemStart)} - ${formatScheduleTime(itemEnd)}`
+                            : `${formatScheduleTime(itemStart)} - ${formatScheduleTime(itemEnd)}`;
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                if (item.booking) {
+                                  setSelectedAvailabilitySlotId('');
+                                  setSelectedBookingId(item.booking.id);
+                                  return;
+                                }
+                                if (item.slot) {
+                                  openAvailabilitySlot(item.slot);
+                                }
+                              }}
+                              className={cn(
+                                'flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left text-sm transition',
+                                itemClass,
+                              )}
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate font-bold">{label}</span>
+                                <span className="mt-0.5 block truncate text-xs opacity-80">{meta}</span>
+                              </span>
+                              <Clock className="h-4 w-4 shrink-0 opacity-70" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </PortalPanel>
@@ -2579,27 +2955,51 @@ function MentorSchedulingWorkspace({
           {selectedBooking ? (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedBooking.sessionType.replace(/_/g, ' ')}</DialogTitle>
+                <DialogTitle className="flex flex-wrap items-center gap-2">
+                  <span>{selectedBooking.sessionType.replace(/_/g, ' ')}</span>
+                  {isTrialBooking(selectedBooking) ? <TrialBookingBadge booking={selectedBooking} /> : null}
+                </DialogTitle>
                 <DialogDescription>
-                  {new Date(
-                    selectedBooking.schedulingDetails.confirmedDateTime ||
-                      selectedBooking.schedulingDetails.requestedDateTime,
-                  ).toLocaleString('vi-VN')}{' '}
-                  · {selectedBooking.schedulingDetails.duration} phút
+                  {selectedBookingStart?.toLocaleString('vi-VN') || 'Chưa xác định thời gian'} ·{' '}
+                  {selectedBookingEnd ? `${formatScheduleTime(selectedBookingEnd)} · ` : ''}
+                  {getBookingDuration(selectedBooking)} phút
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
-                <span
-                  className={cn(
-                    'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-                    statusTone[selectedBooking.status] || statusTone.pending,
-                  )}
-                >
-                  {statusLabel[selectedBooking.status] || selectedBooking.status}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                      statusTone[selectedBooking.status] || statusTone.pending,
+                    )}
+                  >
+                    {statusLabel[selectedBooking.status] || selectedBooking.status}
+                  </span>
+                  {isTrialBooking(selectedBooking) ? <TrialBookingBadge booking={selectedBooking} /> : null}
+                </div>
 
                 <div className="grid gap-3 text-sm md:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loại booking</p>
+                    <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">
+                      {isTrialBooking(selectedBooking) ? `Trial ${getTrialDuration(selectedBooking)} phút` : 'Buổi trả phí'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Thanh toán / thu nhập</p>
+                    <p className="mt-1 font-bold text-slate-900 dark:text-slate-100">
+                      {getBookingPaymentSummary(selectedBooking)}
+                    </p>
+                  </div>
+                  {selectedTrialNote ? (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-violet-800 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-100 md:col-span-2">
+                      <p className="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-200">
+                        Ghi chú trial
+                      </p>
+                      <p className="mt-1 text-sm font-medium">{selectedTrialNote}</p>
+                    </div>
+                  ) : null}
                   <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Chủ đề</p>
                     <p className="mt-1 font-medium text-slate-900 dark:text-slate-100">
@@ -2848,9 +3248,11 @@ function MentorSchedulingWorkspace({
                         onChange={(event) => setEditStartMinute(Number(event.target.value))}
                         className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:focus:ring-sky-500/10"
                       >
-                        {MENTOR_SLOT_STARTS.map((minute) => (
+                        {MENTOR_EDIT_SLOT_STARTS
+                          .filter((minute) => minute + selectedAvailabilityDuration <= MENTOR_WORK_END_MINUTE)
+                          .map((minute) => (
                           <option key={minute} value={minute}>
-                            {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + MENTOR_SLOT_MINUTES)}
+                            {formatMinuteLabel(minute)} - {formatMinuteLabel(minute + selectedAvailabilityDuration)}
                           </option>
                         ))}
                       </select>
@@ -2933,12 +3335,20 @@ function MentorSchedulingWorkspace({
   );
 }
 
-function ProfileSummary({ profile, activeBookings }: { profile: TutorProfile; activeBookings: number }) {
+function ProfileSummary({
+  profile,
+  activeBookings,
+  activeTrialBookings = 0,
+}: {
+  profile: TutorProfile;
+  activeBookings: number;
+  activeTrialBookings?: number;
+}) {
   return (
     <PortalPanel id="profile" title="Hồ sơ mentor" description="Thông tin đang dùng trong cổng mentor.">
       <div className="space-y-4">
         <div>
-          <h3 className="text-lg font-bold text-slate-950 dark:text-slate-50">{getMentorName(profile)}</h3>
+          <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">{getMentorName(profile)}</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {profile.professionalBackground?.company || 'Independent'} ·{' '}
             {profile.professionalBackground?.yearsOfExperience || 0} năm kinh nghiệm
@@ -2948,15 +3358,23 @@ function ProfileSummary({ profile, activeBookings }: { profile: TutorProfile; ac
           {profile.mentoringExpertise?.skillExpertise?.slice(0, 8).map((skill) => (
             <span
               key={skill.skillName}
-              className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+              className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
             >
               {skill.skillName}
             </span>
           ))}
         </div>
-        <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Booking đang theo dõi</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950 dark:text-slate-50">{activeBookings}</p>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Booking đang theo dõi</p>
+          <p className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50">{activeBookings}</p>
+          {activeTrialBookings > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <TrialBookingBadge />
+              <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                {activeTrialBookings} trial đang mở
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
     </PortalPanel>
@@ -3029,26 +3447,26 @@ function MentorReviewsPanel({ reviews }: { reviews: SessionReview[] }) {
     : null;
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Điểm trung bình</p>
-          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">
+      <div className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Điểm trung bình</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-slate-50">
             {formatRating(averageRating)}
-            <span className="text-base font-bold text-slate-400">/5</span>
+            <span className="text-base font-medium text-slate-400">/5</span>
           </p>
         </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Tổng đánh giá</p>
-          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">{reviews.length}</p>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Tổng đánh giá</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-slate-50">{reviews.length}</p>
         </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Đánh giá 5 sao</p>
-          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">{fiveStarCount}</p>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Đánh giá 5 sao</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-slate-50">{fiveStarCount}</p>
         </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Tỷ lệ giới thiệu</p>
-          <p className="mt-2 text-3xl font-extrabold text-slate-950 dark:text-slate-50">
+        <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Tỷ lệ giới thiệu</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-slate-50">
             {recommendRate === null ? '--' : `${recommendRate}%`}
           </p>
         </article>
@@ -3059,7 +3477,7 @@ function MentorReviewsPanel({ reviews }: { reviews: SessionReview[] }) {
         description="Các đánh giá đã gửi sau khi buổi tư vấn hoàn thành."
       >
         {reviews.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
             Chưa có đánh giá nào. Đánh giá sẽ xuất hiện sau khi học viên hoàn thành feedback.
           </div>
         ) : (
@@ -3074,7 +3492,7 @@ function MentorReviewsPanel({ reviews }: { reviews: SessionReview[] }) {
               return (
                 <article
                   key={review.id || review._id || `${review.createdAt || 'review'}-${index}`}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                  className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -3180,48 +3598,48 @@ function MentorIncomePanel({ income }: { income?: MentorIncomeResponse }) {
           title="Doanh thu booking"
           value={formatIncomeMoney(summary?.grossRevenue, currency)}
           icon={ReceiptText}
-          tone="bg-sky-600"
+          tone="bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
         />
         <StatCard
           title="Thu nhập của tôi"
           value={formatIncomeMoney(summary?.mentorPayoutAmount, currency)}
           icon={HandCoins}
-          tone="bg-emerald-600"
+          tone="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
         />
         <StatCard
           title="Sẵn sàng nhận"
           value={formatIncomeMoney(summary?.readyPayoutAmount, currency)}
           icon={WalletCards}
-          tone="bg-violet-600"
+          tone="bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300"
         />
         <StatCard
           title="Phí nền tảng"
           value={formatIncomeMoney(summary?.platformFeeAmount, currency)}
           icon={Percent}
-          tone="bg-amber-500"
+          tone="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
         />
       </div>
 
       <PortalPanel
         title="Chi tiết thu nhập"
-        description="Chỉ hiển thị các khoản đã hoàn thành và sẵn sàng nhận."
+        description="Chỉ hiển thị các khoản đã hoàn thành và sẵn sàng nhận. Trial miễn phí không phát sinh payout nên không nằm trong bảng này."
       >
         <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Đang chờ</p>
-            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Đang chờ</p>
+            <p className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50">
               {formatIncomeMoney(summary?.pendingPayoutAmount, currency)}
             </p>
           </div>
-          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Phiên hoàn thành</p>
-            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Phiên hoàn thành</p>
+            <p className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50">
               {summary?.completedSessionCount || 0}
             </p>
           </div>
-          <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bản ghi thu nhập</p>
-            <p className="mt-1 text-xl font-black text-slate-950 dark:text-slate-50">{income?.total || 0}</p>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Bản ghi thu nhập</p>
+            <p className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50">{income?.total || 0}</p>
           </div>
         </div>
 
@@ -3285,7 +3703,676 @@ function MentorIncomePanel({ income }: { income?: MentorIncomeResponse }) {
   );
 }
 
-export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings' | 'income' | 'reviews';
+function MentorCommunityPanel({
+  accessToken,
+  profile,
+}: {
+  accessToken: string;
+  profile: TutorProfile;
+}) {
+  const [activeCategory, setActiveCategory] = useState('Tất cả');
+  const [search, setSearch] = useState('');
+  const [posts, setPosts] = useState<CommunityPost[]>(EMPTY_COMMUNITY_POSTS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('Hỏi đáp');
+  const [tagInput, setTagInput] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentDialogPost, setCommentDialogPost] = useState<CommunityPost | null>(null);
+  const [commentDialogComments, setCommentDialogComments] = useState<CommunityComment[]>([]);
+  const [isCommentDialogLoading, setIsCommentDialogLoading] = useState(false);
+  const [commentDialogError, setCommentDialogError] = useState('');
+  const [commentSubmitError, setCommentSubmitError] = useState('');
+
+  const authorName = getMentorAuthorName(profile);
+  const authorTitle = getMentorAuthorTitle(profile);
+  const authorAvatar = profile.mentorUser?.avatar;
+  const commentDialogPostId = commentDialogPost ? getPostId(commentDialogPost) : '';
+  const commentDialogAuthorName = commentDialogPost?.authorName || 'Thành viên EDUMEE';
+  const commentDialogAuthorTitle = commentDialogPost?.authorTitle || 'Thành viên';
+
+  const loadPosts = useCallback(async () => {
+    if (!accessToken) return;
+
+    setIsLoading(true);
+    setMessage('');
+    try {
+      const response = await communityService.listPosts(accessToken, {
+        limit: 30,
+        category: activeCategory === 'Tất cả' ? undefined : activeCategory,
+        q: search.trim() || undefined,
+      });
+      setPosts(response.data || EMPTY_COMMUNITY_POSTS);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể tải cộng đồng lúc này.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken, activeCategory, search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadPosts();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [loadPosts]);
+
+  const hashtags = useMemo(
+    () =>
+      tagInput
+        .split(',')
+        .map((tag) => tag.trim().replace(/^#+/, ''))
+        .filter(Boolean)
+        .slice(0, 8)
+        .map((tag) => `#${tag}`),
+    [tagInput],
+  );
+
+  const resetComposer = () => {
+    setTitle('');
+    setContent('');
+    setCategory('Hỏi đáp');
+    setTagInput('');
+    setIsAnonymous(false);
+  };
+
+  const submitPost = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!title.trim() || !content.trim()) {
+      setMessage('Vui lòng nhập tiêu đề và nội dung bài viết.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setMessage('');
+    try {
+      const created = await communityService.createPost(accessToken, {
+        title: title.trim(),
+        content: content.trim(),
+        category,
+        hashtags,
+        authorName: isAnonymous ? 'Ẩn danh' : authorName,
+        authorTitle: isAnonymous ? undefined : authorTitle,
+        authorAvatar: isAnonymous ? undefined : authorAvatar,
+      });
+      setPosts((current) => [created, ...current]);
+      resetComposer();
+      setIsComposerOpen(false);
+      setMessage('Đã đăng bài lên cộng đồng.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể đăng bài lúc này.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const updatePost = (updatedPost: CommunityPost) => {
+    const updatedId = getPostId(updatedPost);
+    setPosts((current) => current.map((post) => (getPostId(post) === updatedId ? updatedPost : post)));
+  };
+
+  const closeCommentDialog = () => {
+    setCommentDialogPost(null);
+    setCommentDialogComments([]);
+    setCommentDialogError('');
+    setCommentSubmitError('');
+    setIsCommentDialogLoading(false);
+  };
+
+  const openCommentDialog = async (post: CommunityPost) => {
+    const postId = getPostId(post);
+    if (!postId) return;
+
+    setCommentDialogPost(post);
+    setCommentDialogComments(post.comments || []);
+    setCommentDialogError('');
+    setCommentSubmitError('');
+    setIsCommentDialogLoading(true);
+
+    try {
+      const comments = await communityService.listComments(accessToken, postId);
+      setCommentDialogComments(comments || []);
+    } catch (error) {
+      setCommentDialogError(error instanceof Error ? error.message : 'Không thể tải bình luận.');
+    } finally {
+      setIsCommentDialogLoading(false);
+    }
+  };
+
+  const toggleLike = async (post: CommunityPost) => {
+    const postId = getPostId(post);
+    if (!postId) return;
+
+    try {
+      const updated = await communityService.likePost(accessToken, postId);
+      updatePost(updated);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể cập nhật lượt thích.');
+    }
+  };
+
+  const submitComment = async (post: CommunityPost) => {
+    const postId = getPostId(post);
+    const draft = commentDrafts[postId]?.trim();
+    if (!postId || !draft) return;
+
+    const isDialogPost = commentDialogPost ? getPostId(commentDialogPost) === postId : false;
+    if (isDialogPost) setCommentSubmitError('');
+    try {
+      const updated = await communityService.addComment(accessToken, postId, {
+        content: draft,
+        authorName,
+        authorTitle,
+        authorAvatar,
+      });
+      updatePost(updated);
+      if (isDialogPost) {
+        setCommentDialogPost(updated);
+        setCommentDialogComments(updated.comments || []);
+        setCommentSubmitError('');
+      }
+      setCommentDrafts((current) => ({ ...current, [postId]: '' }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Không thể gửi bình luận.';
+      if (isDialogPost) {
+        setCommentSubmitError(errorMessage);
+      } else {
+        setMessage(errorMessage);
+      }
+    }
+  };
+
+  const reportPost = async (post: CommunityPost) => {
+    const postId = getPostId(post);
+    if (!postId) return;
+
+    const reason = window.prompt('Lý do báo cáo', 'Spam');
+    if (!reason) return;
+
+    try {
+      await communityService.report(accessToken, {
+        targetId: postId,
+        targetType: 'post',
+        reason,
+        postId,
+      });
+      setMessage('Đã gửi báo cáo cho đội ngũ quản trị.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể gửi báo cáo.');
+    }
+  };
+
+  const deletePost = async (post: CommunityPost) => {
+    const postId = getPostId(post);
+    if (!postId) return;
+    if (!window.confirm('Bạn muốn xoá bài viết này?')) return;
+
+    try {
+      await communityService.deletePost(accessToken, postId);
+      setPosts((current) => current.filter((item) => getPostId(item) !== postId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể xoá bài viết.');
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-4">
+      {!isComposerOpen ? (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={() => setIsComposerOpen(true)}
+            className="rounded-xl bg-sky-600 px-4 hover:bg-sky-700"
+          >
+            <Plus className="h-4 w-4" />
+            Tạo bài viết
+          </Button>
+        </div>
+      ) : (
+        <PortalPanel className="overflow-hidden p-0">
+          <form className="space-y-4 p-4 sm:p-5" onSubmit={submitPost}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <CommunityAvatar
+                  name={isAnonymous ? 'Ẩn danh' : authorName}
+                  avatarUrl={isAnonymous ? undefined : authorAvatar}
+                />
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-slate-950 dark:text-slate-50">
+                    Đăng bài với vai trò mentor
+                  </h2>
+                  <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                    {isAnonymous ? (
+                      'Bài viết sẽ không hiển thị tên mentor.'
+                    ) : (
+                      <>
+                        Hiển thị dưới tên <span className="font-semibold text-sky-700 dark:text-sky-300">{authorName}</span> · {authorTitle}
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex w-fit items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                  <span>Đăng ẩn danh</span>
+                  <input
+                    type="checkbox"
+                    checked={isAnonymous}
+                    onChange={(event) => setIsAnonymous(event.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <span className="relative h-5 w-9 rounded-full bg-slate-300 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-sky-600 peer-checked:after:translate-x-4 dark:bg-slate-700" />
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="rounded-xl text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-50"
+                  onClick={() => {
+                    resetComposer();
+                    setIsComposerOpen(false);
+                  }}
+                >
+                  Hủy
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+              <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span>Tiêu đề</span>
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Ví dụ: Cách chuẩn bị portfolio phỏng vấn"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-500/10"
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span>Chủ đề</span>
+                <select
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-500/10"
+                >
+                  {MENTOR_COMMUNITY_CATEGORIES.filter((item) => item !== 'Tất cả').map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <span>Nội dung</span>
+              <textarea
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+                placeholder="Viết câu trả lời hoặc chia sẻ kinh nghiệm thực tế..."
+                rows={4}
+                className="min-h-28 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-500/10"
+              />
+            </label>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span>Hashtag</span>
+                <input
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  placeholder="career, cv, interview"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-500/10"
+                />
+              </label>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={resetComposer} className="rounded-xl">
+                  Làm mới
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="rounded-xl bg-sky-600 px-5 hover:bg-sky-700">
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Đăng bài
+                </Button>
+              </div>
+            </div>
+          </form>
+        </PortalPanel>
+      )}
+
+      <PortalPanel className="p-3 sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950">
+            <Search className="h-4 w-4 shrink-0 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm bài viết, câu hỏi, hashtag..."
+              className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-500 dark:placeholder:text-slate-400"
+            />
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
+            {MENTOR_COMMUNITY_CATEGORIES.map((item) => {
+              const active = activeCategory === item;
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setActiveCategory(item)}
+                  className={cn(
+                    'h-10 shrink-0 rounded-xl px-3 text-sm font-semibold transition-colors',
+                    active
+                      ? 'bg-sky-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                  )}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </PortalPanel>
+
+      {message && (
+        <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          {message}
+        </p>
+      )}
+
+      {isLoading ? (
+        <PortalPanel className="flex h-52 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-sky-600" />
+        </PortalPanel>
+      ) : posts.length === 0 ? (
+        <PortalPanel className="py-12 text-center">
+          <MessageSquare className="mx-auto h-9 w-9 text-slate-300" />
+          <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+            Chưa có bài viết phù hợp.
+          </p>
+        </PortalPanel>
+      ) : (
+        <div className="space-y-3">
+            {posts.map((post) => {
+              const postId = getPostId(post);
+              const liked = post.likedUserIds?.some((id) => String(id) === String(profile.userId));
+              const canDelete = post.authorId && String(post.authorId) === String(profile.userId);
+              const postAuthorName = post.authorName || 'Thành viên EDUMEE';
+              const postAuthorTitle = post.authorTitle || 'Thành viên';
+              return (
+                <article
+                  key={postId || `${post.title}-${post.createdAt || 'post'}`}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5"
+                >
+                  <div className="flex gap-3">
+                    <CommunityAvatar name={postAuthorName} avatarUrl={post.authorAvatar} className="h-10 w-10" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+                              {post.category}
+                            </span>
+                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {formatCommunityDate(post.createdAt)}
+                            </span>
+                          </div>
+                          <h3 className="mt-2 break-words text-base font-bold leading-6 text-slate-950 dark:text-slate-50">
+                            {post.title}
+                          </h3>
+                          <p className="mt-1 break-words text-sm font-medium text-slate-500 dark:text-slate-400">
+                            {postAuthorName} · {postAuthorTitle}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="rounded-xl px-2 text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-50"
+                            onClick={() => reportPost(post)}
+                          >
+                            <Flag className="h-4 w-4" />
+                            <span className="hidden sm:inline">Báo cáo</span>
+                          </Button>
+                          {canDelete && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="rounded-xl px-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-500/10"
+                              onClick={() => deletePost(post)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="hidden sm:inline">Xoá</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="mt-3 whitespace-pre-line break-words text-sm leading-6 text-slate-700 dark:text-slate-300">
+                        {post.content}
+                      </p>
+
+                      {post.hashtags?.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {post.hashtags.slice(0, 6).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center">
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleLike(post)}
+                            className={cn(
+                              'inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900',
+                              liked
+                                ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                            )}
+                          >
+                            <Heart className={cn('h-4 w-4', liked && 'fill-current')} />
+                            {post.likeCount ?? 0}
+                          </button>
+                          {postId ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openCommentDialog(post);
+                              }}
+                              aria-label={`Xem ${post.commentCount ?? 0} bình luận của bài viết ${post.title}`}
+                              className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition-colors hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-sky-500/10 dark:hover:text-sky-200 dark:focus-visible:ring-offset-slate-900"
+                            >
+                              <MessageSquare className="h-4 w-4" />
+                              {post.commentCount ?? 0}
+                            </button>
+                          ) : (
+                            <span className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              <MessageSquare className="h-4 w-4" />
+                              {post.commentCount ?? 0}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+                          <input
+                            value={commentDrafts[postId] || ''}
+                            onChange={(event) =>
+                              setCommentDrafts((current) => ({ ...current, [postId]: event.target.value }))
+                            }
+                            placeholder="Trả lời nhanh với vai trò mentor..."
+                            className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-500 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-sky-500/10"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!commentDrafts[postId]?.trim()}
+                            onClick={() => submitComment(post)}
+                            className="h-10 rounded-xl bg-sky-600 px-3 hover:bg-sky-700 sm:w-auto"
+                          >
+                            <Send className="h-4 w-4" />
+                            <span className="sm:hidden">Gửi trả lời</span>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      <Dialog
+        open={!!commentDialogPost}
+        onOpenChange={(open) => {
+          if (!open) closeCommentDialog();
+        }}
+      >
+        <DialogContent className="max-h-[88vh] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:rounded-2xl">
+          {commentDialogPost && (
+            <>
+              <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left dark:border-slate-800">
+                <DialogTitle className="text-center text-lg font-extrabold text-slate-950 dark:text-slate-50">
+                  Bình luận
+                </DialogTitle>
+                <DialogDescription className="line-clamp-1 text-center">
+                  {commentDialogPost.title}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="min-h-0 overflow-y-auto bg-slate-50/60 px-4 py-4 dark:bg-slate-950/60 sm:px-5">
+                <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex gap-3">
+                    <CommunityAvatar
+                      name={commentDialogAuthorName}
+                      avatarUrl={commentDialogPost.authorAvatar}
+                      className="h-10 w-10 rounded-full"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-sm font-bold text-slate-950 dark:text-slate-50">
+                          {commentDialogAuthorName}
+                        </p>
+                        <span className="text-xs text-slate-400">·</span>
+                        <p className="break-words text-xs font-medium text-slate-500 dark:text-slate-400">
+                          {commentDialogAuthorTitle}
+                        </p>
+                      </div>
+                      <h3 className="mt-2 break-words text-base font-bold text-slate-950 dark:text-slate-50">
+                        {commentDialogPost.title}
+                      </h3>
+                      <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700 dark:text-slate-300">
+                        {commentDialogPost.content}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+
+                <div className="mt-4 space-y-3">
+                  {isCommentDialogLoading ? (
+                    <div className="flex h-28 items-center justify-center rounded-2xl bg-white dark:bg-slate-900">
+                      <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+                    </div>
+                  ) : commentDialogError ? (
+                    <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">
+                      {commentDialogError}
+                    </p>
+                  ) : commentDialogComments.length === 0 ? (
+                    <div className="rounded-2xl bg-white px-4 py-8 text-center dark:bg-slate-900">
+                      <MessageSquare className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+                      <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Chưa có bình luận nào.
+                      </p>
+                    </div>
+                  ) : (
+                    commentDialogComments.map((comment, index) => {
+                      const commentId = comment.id || comment._id || `${comment.createdAt || 'comment'}-${index}`;
+                      const commentAuthorName = comment.authorName || 'Thành viên EDUMEE';
+                      return (
+                        <div key={commentId} className="flex gap-2.5">
+                          <CommunityAvatar
+                            name={commentAuthorName}
+                            avatarUrl={comment.authorAvatar}
+                            className="h-9 w-9 rounded-full"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="w-fit max-w-full rounded-2xl bg-white px-3.5 py-2.5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <p className="break-words text-sm font-bold text-slate-950 dark:text-slate-50">
+                                  {commentAuthorName}
+                                </p>
+                                {comment.authorTitle && (
+                                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    {comment.authorTitle}
+                                  </p>
+                                )}
+                              </div>
+                              <p className="mt-1 whitespace-pre-line break-words text-sm leading-6 text-slate-700 dark:text-slate-300">
+                                {comment.content}
+                              </p>
+                            </div>
+                            <p className="mt-1 px-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {formatCommunityDate(comment.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-5">
+                {commentSubmitError && (
+                  <p className="mb-2 text-xs font-medium text-rose-600 dark:text-rose-300">{commentSubmitError}</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <CommunityAvatar name={authorName} avatarUrl={authorAvatar} className="h-9 w-9 rounded-full" />
+                  <input
+                    value={commentDrafts[commentDialogPostId] || ''}
+                    onChange={(event) =>
+                      setCommentDrafts((current) => ({ ...current, [commentDialogPostId]: event.target.value }))
+                    }
+                    placeholder="Viết bình luận với vai trò mentor..."
+                    className="h-10 min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition placeholder:text-slate-500 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-sky-500/10"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!commentDrafts[commentDialogPostId]?.trim()}
+                    onClick={() => {
+                      if (commentDialogPost) void submitComment(commentDialogPost);
+                    }}
+                    className="h-10 rounded-full bg-sky-600 px-3 hover:bg-sky-700"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+export type MentorDashboardView = 'overview' | 'profile' | 'availability' | 'bookings' | 'community' | 'income' | 'reviews';
 
 export default function MentorDashboard({ view = 'overview' }: { view?: MentorDashboardView }) {
   const { accessToken } = useAuth();
@@ -3376,21 +4463,28 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     () => bookings.filter((booking) => ['pending', 'confirmed', 'rescheduled'].includes(booking.status)),
     [bookings],
   );
+  const activeTrialBookings = useMemo(
+    () => activeBookings.filter((booking) => isTrialBooking(booking)),
+    [activeBookings],
+  );
   const pendingBookings = bookings.filter((booking) => booking.status === 'pending').length;
+  const pendingTrialBookings = activeTrialBookings.filter((booking) => booking.status === 'pending').length;
   const rate = getPrimaryRate(myProfile);
   const pageTitle: Record<MentorDashboardView, string> = {
-    overview: 'Tổng quan mentor',
+    overview: 'Tổng quan làm việc',
     profile: 'Hồ sơ mentor',
     availability: 'Lịch làm việc',
     bookings: 'Booking cần xử lý',
+    community: 'Cộng đồng mentor',
     income: 'Thu nhập của tôi',
     reviews: 'Đánh giá của tôi',
   };
   const pageDescription: Record<MentorDashboardView, string> = {
-    overview: 'Theo dõi nhanh trạng thái hồ sơ, lịch trống và booking 1-1.',
+    overview: 'Theo dõi hồ sơ, lịch trống, booking và các việc cần xử lý trong ngày.',
     profile: 'Kiểm tra hồ sơ mentor và thông tin làm việc trong cổng mentor.',
     availability: 'Quản lý khung giờ trống bằng thời khóa biểu theo từng ngày và từng giờ.',
     bookings: 'Theo dõi và xử lý các buổi tư vấn học viên đã đặt với bạn.',
+    community: 'Chia sẻ kinh nghiệm, trả lời câu hỏi và xây dựng uy tín mentor trong cộng đồng EDUMEE.',
     income: 'Theo dõi doanh thu, phí nền tảng và khoản mentor được nhận.',
     reviews: 'Theo dõi phản hồi học viên gửi sau các buổi tư vấn.',
   };
@@ -3417,13 +4511,13 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
 
   if (!myProfile) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-5">
         <section>
-          <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+          <p className="mb-2 inline-flex items-center gap-2 rounded-lg bg-sky-50 px-2.5 py-1 text-sm font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
             <BadgeCheck className="h-4 w-4" />
             Đăng ký mentor
           </p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-slate-50 md:text-4xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 md:text-3xl">
             Hoàn thiện hồ sơ mentor
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
@@ -3437,13 +4531,13 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
 
   if (!isActiveProfile) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-5">
         <section>
-          <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="mb-2 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1 text-sm font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
             <AlertCircle className="h-4 w-4" />
             Chờ duyệt mentor
           </p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-slate-50 md:text-4xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 md:text-3xl">
             Hồ sơ mentor chưa được mở portal
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
@@ -3456,17 +4550,13 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <section id="overview" className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-7xl space-y-5">
+      <section id="overview" className="border-b border-slate-200 pb-4 dark:border-slate-800">
         <div>
-          <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
-            <BadgeCheck className="h-4 w-4" />
-            Cổng mentor
-          </p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-slate-50 md:text-4xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
             {pageTitle[view]}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
             {pageDescription[view]}
           </p>
         </div>
@@ -3484,31 +4574,76 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
               title="Trạng thái hồ sơ"
               value={profileStatusLabel[myProfile.status] || myProfile.status}
               icon={UserCheck}
-              tone="bg-sky-600"
+              tone="bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
             />
-            <StatCard title="Slot đã tạo" value={mySlots.length.toString()} icon={Calendar} tone="bg-indigo-600" />
-            <StatCard title="Chờ xác nhận" value={pendingBookings.toString()} icon={Clock} tone="bg-amber-500" />
+            <StatCard
+              title="Slot đã tạo"
+              value={mySlots.length.toString()}
+              icon={Calendar}
+              tone="bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300"
+            />
+            <StatCard
+              title="Chờ xác nhận"
+              value={pendingBookings.toString()}
+              icon={Clock}
+              tone="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+            />
             <StatCard
               title="Giá từ"
               value={formatMoney(rate?.pricePerSession, myProfile.pricing?.currency)}
               icon={WalletCards}
-              tone="bg-emerald-600"
+              tone="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
             />
           </div>
       )}
 
       {view === 'overview' && (
         <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-          <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />
-          <PortalPanel title="Chất lượng phiên tư vấn" description="Giữ lịch rõ ràng, xác nhận nhanh và chuẩn bị trước nội dung học viên gửi.">
-            <div className="flex items-center gap-2 text-amber-500">
-              <Star className="h-5 w-5 fill-current" />
-              <span className="font-bold">Sẵn sàng nhận đánh giá tốt</span>
+          <ProfileSummary
+            profile={myProfile}
+            activeBookings={activeBookings.length}
+            activeTrialBookings={activeTrialBookings.length}
+          />
+          <PortalPanel title="Chuẩn phiên tư vấn" description="Các điểm cần giữ ổn định trước khi nhận thêm booking.">
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">Xác nhận booking đúng hạn</p>
+                  <p className="mt-0.5 text-slate-500 dark:text-slate-400">Ưu tiên các phiên đang chờ để học viên không bị treo lịch.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">Chuẩn bị trước nội dung</p>
+                  <p className="mt-0.5 text-slate-500 dark:text-slate-400">Đọc chủ đề học viên gửi trước khi vào buổi tư vấn.</p>
+                </div>
+              </div>
             </div>
+            {activeTrialBookings.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
+                <TrialBookingBadge />
+                <p className="mt-2 text-sm font-medium text-violet-800 dark:text-violet-100">
+                  {pendingTrialBookings > 0
+                    ? `${pendingTrialBookings} trial đang chờ bạn xác nhận.`
+                    : `${activeTrialBookings.length} trial đang được theo dõi trong lịch.`}
+                </p>
+                <p className="mt-1 text-xs text-violet-700 dark:text-violet-200">
+                  Trial miễn phí và không phát sinh doanh thu mentor.
+                </p>
+              </div>
+            ) : null}
           </PortalPanel>
         </div>
       )}
-      {view === 'profile' && <ProfileSummary profile={myProfile} activeBookings={activeBookings.length} />}
+      {view === 'profile' && (
+        <ProfileSummary
+          profile={myProfile}
+          activeBookings={activeBookings.length}
+          activeTrialBookings={activeTrialBookings.length}
+        />
+      )}
       {view === 'availability' && (
         <MentorSchedulingWorkspace
           profile={myProfile}
@@ -3527,6 +4662,7 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
           onOpenChat={openBookingChat}
         />
       )}
+      {view === 'community' && <MentorCommunityPanel accessToken={accessToken} profile={myProfile} />}
       {view === 'income' && <MentorIncomePanel income={income} />}
       {view === 'reviews' && <MentorReviewsPanel reviews={reviews} />}
     </div>

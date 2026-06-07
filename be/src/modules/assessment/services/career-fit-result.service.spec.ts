@@ -80,10 +80,27 @@ describe('CareerFitResultService', () => {
     expect(results[0].recommendationRank).toBe(1);
     expect(results[3].isLocked).toBe(true);
     expect(results[3].rank).toBe(4);
-    expect(results[3].careerTitle).toBe('Marketing Strategist');
-    expect(results[3].overallFitScore).toBe(82);
-    expect(results[3].strengths).toEqual(['Strong communication fit']);
-    expect(results[3].aiExplanation).toBe('analysis');
+    expect(results[3].recommendationRank).toBe(4);
+    expect(results[3].lockedReason).toBe('plan_limit');
+    expect(results[3].requiredPlan).toBe('Plus');
+    expect(results[3]).not.toHaveProperty('userId');
+    expect(results[3]).not.toHaveProperty('careerId');
+    expect(results[3]).not.toHaveProperty('careerTitle');
+    expect(results[3]).not.toHaveProperty('overallFitScore');
+    expect(results[3]).not.toHaveProperty('strengths');
+    expect(results[3]).not.toHaveProperty('developmentAreas');
+    expect(results[3]).not.toHaveProperty('improvementSuggestions');
+    expect(results[3]).not.toHaveProperty('dimensionScores');
+    expect(results[3]).not.toHaveProperty('personalityMatch');
+    expect(results[3]).not.toHaveProperty('aiExplanation');
+    expect(results[3]).not.toHaveProperty('confidence');
+    expect(results[3]).not.toHaveProperty('personalityProfile');
+    expect(careerFitResultModel.mock.calls[3][0]).toMatchObject({
+      careerTitle: 'Marketing Strategist',
+      overallFitScore: 82,
+      strengths: ['Strong communication fit'],
+      aiExplanation: 'analysis',
+    });
     expect(careerFitResultModel).toHaveBeenCalledTimes(5);
     expect(careerFitResultModel.deleteMany).not.toHaveBeenCalled();
     expect(careerInsightModel.findOneAndUpdate).toHaveBeenCalledTimes(3);

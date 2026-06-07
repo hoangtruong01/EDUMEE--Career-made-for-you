@@ -8,7 +8,7 @@ import {
   IsObject,
   ValidateNested,
 } from 'class-validator';
-import { BookingStatus, SessionType } from '../schemas/booking-session.schema';
+import { BookingStatus, BookingType, SessionType } from '../schemas/booking-session.schema';
 
 export class BookingPaymentReturnUrlsDto {
   @ApiPropertyOptional()
@@ -39,6 +39,11 @@ export class CreateBookingSessionDto {
   @ApiProperty({ enum: SessionType, description: 'Type of session' })
   @IsEnum(SessionType)
   sessionType!: SessionType;
+
+  @ApiPropertyOptional({ enum: BookingType, description: 'Paid booking or AI plan trial intro call' })
+  @IsOptional()
+  @IsEnum(BookingType)
+  bookingType?: BookingType;
 
   @ApiPropertyOptional({ description: 'Session scheduling details derived from selected availability slot' })
   @IsOptional()

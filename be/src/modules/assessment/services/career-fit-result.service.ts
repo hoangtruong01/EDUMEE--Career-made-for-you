@@ -31,10 +31,10 @@ interface AnswerWithSessionId {
 
 export interface CareerFitResultVisibilityView extends Record<string, unknown> {
   id?: unknown;
-  userId?: unknown;
-  careerId?: unknown;
-  careerTitle?: unknown;
-  overallFitScore?: unknown;
+  generatedAt?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  assessmentSessionId?: unknown;
   recommendationRank: number;
   rank: number;
   isLocked: boolean;
@@ -1051,7 +1051,6 @@ export class CareerFitResultService {
 
     return {
       id: plain.id,
-      userId: plain.userId,
       generatedAt: plain.generatedAt,
       createdAt: plain.createdAt,
       updatedAt: plain.updatedAt,
@@ -1061,19 +1060,6 @@ export class CareerFitResultService {
       isLocked: true,
       lockedReason: 'plan_limit',
       requiredPlan: 'Plus',
-      careerId: plain.careerId ?? null,
-      careerTitle: plain.careerTitle ?? `Nghề #${rank}`,
-      overallFitScore: plain.overallFitScore ?? null,
-      strengths: Array.isArray(plain.strengths) ? plain.strengths : [],
-      developmentAreas: Array.isArray(plain.developmentAreas) ? plain.developmentAreas : [],
-      improvementSuggestions: Array.isArray(plain.improvementSuggestions)
-        ? plain.improvementSuggestions
-        : [],
-      dimensionScores: null,
-      personalityMatch: null,
-      aiExplanation: plain.aiExplanation ?? null,
-      confidence: plain.confidence ?? null,
-      personalityProfile: null,
     };
   }
 

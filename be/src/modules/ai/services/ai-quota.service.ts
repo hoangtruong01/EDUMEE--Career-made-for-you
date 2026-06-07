@@ -194,6 +194,44 @@ export class AiQuotaService {
       .exec();
   }
 
+  async refundQuota(
+    userId: string,
+    feature: AiFeature,
+    usage: QuotaUsageInput = { requestCount: 1, tokensUsed: 0 },
+    now = new Date(),
+  ): Promise<void> {
+    if (feature === AiFeature.ASSESSMENT) return;
+    if (!Types.ObjectId.isValid(userId)) return;
+
+    const requestCount = Math.max(0, usage.requestCount ?? 1);
+    const tokensUsed = Math.max(0, usage.tokensUsed ?? 0);
+    if (requestCount <= 0 && tokensUsed <= 0) return;
+
+    const context = await this.getPlanContext(userId, now).catch(() => null);
+    const baseFilter = context
+      ? this.buildUsagePeriodFilter(userId, feature, context.quotaPeriod)
+      : { userId: new Types.ObjectId(userId), feature };
+
+    const existingUsage = await this.aiUsageLogModel
+      .findOne({
+        ...baseFilter,
+        $and: [
+          ...(Array.isArray((baseFilter as Record<string, unknown>).$and)
+            ? ((baseFilter as Record<string, unknown>).$and as Record<string, unknown>[])
+            : []),
+          { requestCount: { $gt: 0 } },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!existingUsage) return;
+
+    existingUsage.requestCount = Math.max(0, Number(existingUsage.requestCount || 0) - requestCount);
+    existingUsage.tokensUsed = Math.max(0, Number(existingUsage.tokensUsed || 0) - tokensUsed);
+    await existingUsage.save();
+  }
+
   async runWithQuota<T>(
     userId: string,
     feature: AiFeature,
