@@ -189,16 +189,14 @@ export default function WelcomeScreen() {
   const testimonialCardFade = useRef(new Animated.Value(1)).current;
   const scalePulse = useRef(new Animated.Value(1)).current;
 
-  // 🟢 EFFECT 1: Kiểm soát duy trì phiên đăng nhập khi Hot Reload / Fast Refresh cấu trúc code
   useEffect(() => {
     const verifySession = async () => {
       try {
         const token = await getAuthToken();
         if (token) {
-          // 🟢 ĐÃ FIX: Đồng bộ hóa cấu hình Token vào Axios instance trung tâm trước khi định tuyến nhảy trang
           await setAuthToken(token);
           // Có token, đá thẳng người dùng vượt vách ngăn vào Dashboard
-          router.replace('/(tabs)/dashboard');
+          router.replace('/(tabs)');
         } else {
           // Không có token, giải phóng màn hình mở giao diện Welcome
           setIsCheckingAuth(false);
