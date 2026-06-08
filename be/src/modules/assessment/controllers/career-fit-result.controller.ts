@@ -64,7 +64,7 @@ export class CareerFitResultController {
   @Get('statistics')
   @ApiOperation({ summary: 'Get career fit statistics' })
   async getStatistics(): Promise<Record<string, unknown>> {
-    return this.careerFitResultService.getStatistics() as Promise<Record<string, unknown>>;
+    return this.careerFitResultService.getStatistics();
   }
 
   @Post('generate-my-analysis')
@@ -233,6 +233,6 @@ export class CareerFitResultController {
     @CurrentUser() user: AuthUserLike,
     @Body() body: { careerIds: string[] },
   ): Promise<Record<string, unknown>> {
-    return (await this.careerFitResultService.generateComparisonReport(getAuthUserId(user), body.careerIds)) as Record<string, unknown>;
+    return (await this.careerFitResultService.generateComparisonReport(getAuthUserId(user), body.careerIds));
   }
 }

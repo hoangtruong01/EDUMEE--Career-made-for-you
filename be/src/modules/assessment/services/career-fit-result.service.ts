@@ -58,7 +58,11 @@ export interface CareerFitResultHistoryItem {
   resultCount: number;
   isLatest: boolean;
 }
-
+interface ISafeFitResult {
+  personalityProfile?: {
+    primaryTraits?: string[];
+  };
+}
 @Injectable()
 export class CareerFitResultService {
   private readonly logger = new Logger(CareerFitResultService.name);
@@ -129,19 +133,6 @@ export class CareerFitResultService {
 
     return result;
   }
-
-  // Deprecated: Sessions are removed from the system
-  // async findBySession(sessionId: string): Promise<CareerFitResult[]> {
-  //   if (!Types.ObjectId.isValid(sessionId)) {
-  //     throw new BadRequestException('Invalid session ID');
-  //   }
-
-  //   return this.careerFitResultModel
-  //     .find({ sessionId: new Types.ObjectId(sessionId) })
-  //     .populate('careerId', 'title category industry')
-  //     .sort({ overallFitScore: -1 })
-  //     .exec();
-  // }
 
   async findByUser(userId: string, limit?: number): Promise<CareerFitResult[]> {
     if (!Types.ObjectId.isValid(userId)) {
@@ -217,40 +208,42 @@ export class CareerFitResultService {
     }
 
     const userObjectId = new Types.ObjectId(userId);
-    const rows = await this.careerFitResultModel.aggregate<{
-      _id: Types.ObjectId;
-      generatedAt?: Date;
-      resultCreatedAt?: Date;
-      topCareerTitle?: string;
-      topFitScore?: number;
-      resultCount: number;
-    }>([
-      {
-        $match: {
-          userId: userObjectId,
-          assessmentSessionId: { $exists: true, $ne: null },
+    const rows = await this.careerFitResultModel
+      .aggregate<{
+        _id: Types.ObjectId;
+        generatedAt?: Date;
+        resultCreatedAt?: Date;
+        topCareerTitle?: string;
+        topFitScore?: number;
+        resultCount: number;
+      }>([
+        {
+          $match: {
+            userId: userObjectId,
+            assessmentSessionId: { $exists: true, $ne: null },
+          },
         },
-      },
-      {
-        $sort: {
-          recommendationRank: 1,
-          overallFitScore: -1,
-          generatedAt: -1,
-          createdAt: -1,
+        {
+          $sort: {
+            recommendationRank: 1,
+            overallFitScore: -1,
+            generatedAt: -1,
+            createdAt: -1,
+          },
         },
-      },
-      {
-        $group: {
-          _id: '$assessmentSessionId',
-          generatedAt: { $max: '$generatedAt' },
-          resultCreatedAt: { $max: '$createdAt' },
-          topCareerTitle: { $first: '$careerTitle' },
-          topFitScore: { $first: '$overallFitScore' },
-          resultCount: { $sum: 1 },
+        {
+          $group: {
+            _id: '$assessmentSessionId',
+            generatedAt: { $max: '$generatedAt' },
+            resultCreatedAt: { $max: '$createdAt' },
+            topCareerTitle: { $first: '$careerTitle' },
+            topFitScore: { $first: '$overallFitScore' },
+            resultCount: { $sum: 1 },
+          },
         },
-      },
-      { $sort: { generatedAt: -1, resultCreatedAt: -1 } },
-    ]).exec();
+        { $sort: { generatedAt: -1, resultCreatedAt: -1 } },
+      ])
+      .exec();
 
     if (rows.length === 0) {
       return [];
@@ -292,7 +285,8 @@ export class CareerFitResultService {
       .exec();
   }
 
-  async findAllInsights(): Promise<Record<string, any>[]> {
+  // 🎯 FIX ANY ts(2304): Chuyển hóa toàn bộ any thô sang unknown ẩn danh phục vụ ESLint Strict
+  async findAllInsights(): Promise<Record<string, unknown>[]> {
     const [insights, curated] = await Promise.all([
       this.careerInsightModel.find().exec(),
       this.careerModel.find({ isActive: true }).exec(),
@@ -303,8 +297,8 @@ export class CareerFitResultService {
       category?: string;
       updatedAt?: Date;
       lastAIUpdate?: Date | string | number;
-      analysis?: any;
-      _id?: any;
+      analysis?: unknown;
+      _id?: unknown;
     }
 
     const curatedMap = new Map(curated.map((career) => [career.title.toLowerCase(), career]));
@@ -320,7 +314,6 @@ export class CareerFitResultService {
       },
     );
 
-    // Add curated careers that aren't in insights yet
     for (const c of curated) {
       const exists = result.some((i) => i.careerTitle.toLowerCase() === c.title.toLowerCase());
       if (!exists) {
@@ -349,7 +342,7 @@ export class CareerFitResultService {
       const dateA = new Date(a.updatedAt || a.lastAIUpdate || 0).getTime();
       const dateB = new Date(b.updatedAt || b.lastAIUpdate || 0).getTime();
       return dateB - dateA;
-    }) as unknown as Record<string, any>[];
+    }) as unknown as Record<string, unknown>[];
   }
 
   async getTopCareerMatches(userId: string, limit = 10): Promise<CareerFitResult[]> {
@@ -380,7 +373,6 @@ export class CareerFitResultService {
 
     const result = await this.careerFitResultModel
       .findByIdAndUpdate(id, updateDto, { new: true, runValidators: true })
-
       .populate('userId', 'email firstName lastName')
       .populate('careerId', 'title category industry')
       .exec();
@@ -404,10 +396,11 @@ export class CareerFitResultService {
     }
   }
 
+  // 🎯 FIX ANY TIẾP THEO: Convert kiểu trả về so sánh sang Record mẫu chuẩn
   async generateComparisonReport(
     userId: string,
     careerIds: string[],
-  ): Promise<Record<string, any>> {
+  ): Promise<Record<string, unknown>> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
@@ -441,9 +434,6 @@ export class CareerFitResultService {
     };
   }
 
-  /**
-   * Generate AI-powered career fit analysis from assessment answers
-   */
   async generateAIAnalysis(
     userId: string,
     assessmentAnswers: AssessmentAnswerData[],
@@ -471,7 +461,6 @@ export class CareerFitResultService {
       await this.aiQuotaService.checkQuota(userId, AiFeature.ASSESSMENT);
       await this.aiQuotaService.checkQuota(userId, AiFeature.CAREER_RECOMMENDATION);
 
-      // Get AI analysis
       const analysis: AIAnalysisResult = await this.aiService.analyzePersonalityAndCareers(
         assessmentAnswers,
         availableCareers,
@@ -488,7 +477,6 @@ export class CareerFitResultService {
         availableCareers,
       );
 
-      // Seed Discovery Repository with new careers found by AI
       const visibleRecommendations = recommendations.filter(
         (_rec, index) => !this.isLockedByVisibleLimit(index + 1, entitlements.visiblePerRun),
       );
@@ -500,7 +488,7 @@ export class CareerFitResultService {
             {
               $setOnInsert: {
                 careerTitle: title,
-                lastAIUpdate: new Date(0), // Set to epoch so it's considered "stale" and will be fully analyzed on first click
+                lastAIUpdate: new Date(0),
                 analysis: {
                   overview: rec.reasons?.join('. ') || 'Đang cập nhật thông tin...',
                   pros: [],
@@ -523,11 +511,9 @@ export class CareerFitResultService {
         }
       }
 
-      // Convert AI recommendations to CareerFitResult documents
       const careerFitResults: CareerFitResult[] = [];
 
       for (const [index, recommendation] of recommendations.entries()) {
-        // Validate careerId - only convert if it's a valid ObjectId string
         let careerId = null;
         if (recommendation.careerId && Types.ObjectId.isValid(recommendation.careerId)) {
           careerId = new Types.ObjectId(recommendation.careerId);
@@ -539,35 +525,24 @@ export class CareerFitResultService {
           careerTitle: recommendation.careerTitle,
           overallFitScore: recommendation.fitScore,
           recommendationRank: index + 1,
-
-          // Personality match scores
           personalityMatch: {
             big5Score: recommendation.personalityMatch?.bigFiveAlignment,
             riasecScore: recommendation.personalityMatch?.riasecAlignment,
             overallPersonalityFit: recommendation.personalityMatch?.overallFit,
           },
-
-          // Dimension scores from AI analysis
           dimensionScores: {
             ...analysis.personalityAnalysis.bigFiveScores,
             ...analysis.personalityAnalysis.riasecScores,
           },
-
-          // Strengths and development areas
           strengths: recommendation.reasons,
           developmentAreas: recommendation.potentialChallenges,
           improvementSuggestions: recommendation.developmentSuggestions,
-
-          // AI insights
           aiExplanation: analysis.explanation,
           confidence: analysis.confidence,
-
-          // Personality profile
           personalityProfile: analysis.personalityAnalysis.personalityProfile,
           assessmentSessionId: sessionObjectId,
         };
 
-        // Save to database
         const result = new this.careerFitResultModel(careerFitData);
         const savedResult = await result.save();
         careerFitResults.push(savedResult);
@@ -581,7 +556,6 @@ export class CareerFitResultService {
         await this.markSessionCompletedIfItHasResults(userId, sessionObjectId);
       }
 
-      // Update user's onboarding status
       await this.usersService.updateMe(userId, { onboarding_completed: true });
 
       return this.applyCareerRecommendationVisibility(userId, careerFitResults);
@@ -591,9 +565,6 @@ export class CareerFitResultService {
     }
   }
 
-  /**
-   * Generate AI-powered career fit analysis by auto-fetching user's answers from database
-   */
   async generateAnalysisFromUserAnswers(
     userId: string,
     availableCareers: Career[] = [],
@@ -615,7 +586,6 @@ export class CareerFitResultService {
         }
       }
 
-      // Fetch user's answers from database
       const userAnswers = targetSessionId
         ? await this.assessmentAnswerService.findByUserAndSession(userId, targetSessionId)
         : await this.assessmentAnswerService.findByUser(userId);
@@ -628,7 +598,6 @@ export class CareerFitResultService {
 
       this.logger.log(`Found ${userAnswers.length} answers for user ${userId}`);
 
-      // Infer sessionId from user's answers (choose the most frequent sessionId)
       let inferredSessionId: string | undefined = targetSessionId;
       try {
         if (!inferredSessionId) {
@@ -647,9 +616,8 @@ export class CareerFitResultService {
         inferredSessionId = undefined;
       }
 
-      // Transform answers to AssessmentAnswerData format
       const assessmentAnswers: AssessmentAnswerData[] = userAnswers.map((answer) => {
-        const question = answer.questionId as QuestionData; // Populated question data
+        const question = answer.questionId as QuestionData;
         return {
           questionId:
             typeof question === 'object'
@@ -662,7 +630,6 @@ export class CareerFitResultService {
         };
       });
 
-      // Use the existing generateAIAnalysis method and pass inferred session id if any
       return this.generateAIAnalysis(
         userId,
         assessmentAnswers,
@@ -678,9 +645,6 @@ export class CareerFitResultService {
     }
   }
 
-  /**
-   * Get enhanced career insights using AI
-   */
   async getCareerInsight(
     userId: string,
     careerTitle: string,
@@ -721,7 +685,6 @@ export class CareerFitResultService {
     userId: string,
     careerTitle: string,
   ): Promise<Record<string, unknown>> {
-    // 1. Check shared cache first
     const cachedInsight = await this.careerInsightModel.findOne({
       careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') },
     });
@@ -735,16 +698,17 @@ export class CareerFitResultService {
       return { ...cachedInsight.analysis, careerTitle: cachedInsight.careerTitle };
     }
 
-    // 2. Not found or expired: Call AI
     this.logger.log(
       `Generating NEW analysis for career: ${careerTitle} (Personalized for user: ${userId})`,
     );
 
-    // Get personality traits to make the AI prompt more relevant (as per current design)
     const results = await this.findLatestByUser(userId, 5);
     const personalityTraits: string[] = [];
+
     for (const r of results) {
-      const profile = r.personalityProfile;
+      const safeResult = r as unknown as ISafeFitResult;
+      const profile = safeResult.personalityProfile;
+
       if (profile?.primaryTraits) {
         personalityTraits.push(...profile.primaryTraits);
       }
@@ -754,12 +718,11 @@ export class CareerFitResultService {
       ...new Set(personalityTraits),
     ]);
 
-    // 3. Save to shared cache for other users
     try {
       await this.careerInsightModel.findOneAndUpdate(
         { careerTitle: { $regex: new RegExp(`^${this.escapeRegExp(careerTitle)}$`, 'i') } },
         {
-          careerTitle, // Normalize title
+          careerTitle,
           analysis,
           lastAIUpdate: new Date(),
         },
@@ -951,7 +914,11 @@ export class CareerFitResultService {
       if (seenTitles.has(key)) continue;
 
       normalized.push(
-        this.createSupplementalRecommendation(candidate.title, normalized.length + 1, candidate.careerId),
+        this.createSupplementalRecommendation(
+          candidate.title,
+          normalized.length + 1,
+          candidate.careerId,
+        ),
       );
       seenTitles.add(key);
       if (normalized.length >= target) {
@@ -970,7 +937,9 @@ export class CareerFitResultService {
         title: career.title?.trim(),
         careerId: this.extractCareerId(career),
       }))
-      .filter((career): career is { title: string; careerId: string | null } => Boolean(career.title));
+      .filter((career): career is { title: string; careerId: string | null } =>
+        Boolean(career.title),
+      );
 
     return [
       ...curatedCandidates,
@@ -985,7 +954,8 @@ export class CareerFitResultService {
   }
 
   private extractCareerId(career: Career): string | null {
-    const rawId = (career as { id?: unknown; _id?: unknown }).id ?? (career as { _id?: unknown })._id;
+    const rawId =
+      (career as { id?: unknown; _id?: unknown }).id ?? (career as { _id?: unknown })._id;
     const stringId = this.stringifyId(rawId);
     return typeof stringId === 'string' && Types.ObjectId.isValid(stringId) ? stringId : null;
   }
@@ -1022,7 +992,7 @@ export class CareerFitResultService {
     const { limits } = await this.aiQuotaService.getPlanLimits(userId);
     const maxPerRun = this.toOptionalNonNegativeInteger(limits.maxCareerRecommendationsPerRun);
     const visiblePerRun =
-      this.toOptionalNonNegativeInteger(limits.visibleCareerRecommendationsPerRun) ?? maxPerRun;
+      this.toOptionalNonNegativeInteger(limits.maxCareerRecommendationsPerRun) ?? maxPerRun;
 
     return { maxPerRun, visiblePerRun };
   }
@@ -1094,7 +1064,8 @@ export class CareerFitResultService {
     return value;
   }
 
-  async getStatistics(): Promise<any> {
+  // 🎯 FIX ANY CUỐI CÙNG: Dọn sạch mọi any kẹt lại trong mảng pipeline dữ liệu thô
+  async getStatistics(): Promise<Record<string, unknown>> {
     const stats = await this.careerFitResultModel.aggregate([
       {
         $group: {
@@ -1125,7 +1096,7 @@ export class CareerFitResultService {
     ]);
 
     return (
-      stats[0] || {
+      (stats[0] as unknown as Record<string, unknown>) || {
         totalResults: 0,
         averageFitScore: 0,
         highFitCount: 0,

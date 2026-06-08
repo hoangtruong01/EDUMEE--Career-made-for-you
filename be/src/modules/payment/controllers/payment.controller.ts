@@ -138,7 +138,7 @@ export class PaymentController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a payment by id for its owner or admin' })
+  @ApiOperation({ summary: 'Get a payment and provider transaction history by id for its owner or admin' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
     return this.paymentService.findOneForActor(id, user);
   }

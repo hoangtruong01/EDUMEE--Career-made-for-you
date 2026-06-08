@@ -5,32 +5,26 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AllExceptionsFilter } from './common/filters';
-import {
-  LoggingInterceptor,
-  TransformInterceptor,
-} from './common/interceptors';
-import {
-  appConfig,
-  cloudinaryConfig,
-  databaseConfig,
-  jwtConfig,
-  redisConfig,
-} from './config';
+import { LoggingInterceptor, TransformInterceptor } from './common/interceptors';
+import { appConfig, cloudinaryConfig, databaseConfig, jwtConfig, redisConfig } from './config';
 
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
-import { AssessmentModule } from './modules/assessment/assessment.module';
-import { CareersModule } from './modules/careers/careers.module';
-import { LearningModule } from './modules/learning/learning.module';
-import { CommunityModule } from './modules/community/community.module';
-import { MentoringModule } from './modules/mentoring/mentoring.module';
-import { OnboardingModule } from './modules/onboarding/onboarding.module';
-import { AiModule } from './modules/ai/ai.module';
-import { PaymentModule } from './modules/payment/payment.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AiModule } from './modules/ai/ai.module';
+import { AssessmentModule } from './modules/assessment/assessment.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { CareersModule } from './modules/careers/careers.module';
+import { CommunityModule } from './modules/community/community.module';
+import { LearningModule } from './modules/learning/learning.module';
+import { MentoringModule } from './modules/mentoring/mentoring.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { PaymentModule } from './modules/payment/payment.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { UsersModule } from './modules/users/users.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+
+// 🎯 FIX CHUẨN ĐÉT 404: Import trực tiếp DashboardModule vào file cấu hình tổng
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -81,6 +75,9 @@ import { AppService } from './app.service';
     TrackingModule,
     AdminModule,
     NotificationsModule,
+
+    // 🎯 ĐĂNG KÝ KÍCH HOẠT MODULE TẠI ĐÂY: Thông mạch toàn bộ router dashboard
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [

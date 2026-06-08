@@ -1,39 +1,41 @@
-// Checkpoint DTOs
-export {
-  CreateCheckpointDto,
-  UpdateCheckpointDto,
-  CheckpointResponseDto,
-  CheckpointListResponseDto,
-} from './checkpoint.dto';
+// src/modules/learning/dto/index.ts
 
-// Learning Roadmap DTOs
+// 1. Checkpoint DTOs bản nâng cấp
+export {
+  CheckpointResponseDto,
+  CheckpointType,
+  CreateCheckpointDto,
+  UpdateCheckpointAiFeedbackDto,
+  UpdateCheckpointDto,
+  UserReflectionDto,
+} from './checkpoint.dto2';
+
+// 2. Learning Roadmap DTOs bản nâng cấp
 export {
   CreateLearningRoadmapDto,
+  MilestoneDto,
+  PhaseDto,
   UpdateLearningRoadmapDto,
-  LearningRoadmapResponseDto,
-  LearningRoadmapListResponseDto,
-} from './learning-roadmap.dto';
+} from './learning-roadmap.dto2';
 
-// Simulation Task DTOs
+// 3. Simulation Task DTOs bản nâng cấp
 export {
   CreateSimulationTaskDto,
+  EvaluationRubricDto,
+  RubricLevelDto,
+  TaskMaterialDto,
   UpdateSimulationTaskDto,
-  SimulationTaskResponseDto,
-  SimulationTaskListResponseDto,
-} from './simulation-task.dto';
+} from './simulation-task.dto2';
 
-// Task Submission DTOs
+// 4. Task Submission DTOs bản nâng cấp
 export {
   CreateTaskSubmissionDto,
+  CriteriaScoreDto,
+  EvaluateSubmissionDto,
+  SubmissionContentDto,
+  SubmissionFileDto,
   UpdateTaskSubmissionDto,
-  TaskSubmissionResponseDto,
-  TaskSubmissionListResponseDto,
-} from './task-submission.dto';
+} from './task-submission.dto2';
 
-// Weekly Plan DTOs
-export {
-  CreateWeeklyPlanDto,
-  UpdateWeeklyPlanDto,
-  WeeklyPlanResponseDto,
-  WeeklyPlanListResponseDto,
-} from './weekly-plan.dto';
+// 5. Weekly Plan DTOs bản nâng cấp
+export { CreateWeeklyPlanDto, PlannedTaskDto, UpdateWeeklyPlanDto } from './weekly-plan.dto2';

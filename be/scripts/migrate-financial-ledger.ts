@@ -19,6 +19,41 @@ import {
   WalletWithdrawalStatus,
 } from '../src/modules/wallet/schemas';
 
+type MigratedPayment = {
+  _id: Types.ObjectId;
+  userId?: Types.ObjectId;
+  bookingSessionId?: Types.ObjectId;
+  amount?: number;
+  creditAppliedAmount?: number;
+  subtotalAmount?: number;
+  refundedAmount?: number;
+  purpose?: PaymentPurpose;
+  settlementStatus?: PaymentSettlementStatus;
+  settlementBaseAmount?: number;
+  platformFeeAmount?: number;
+  mentorPayoutAmount?: number;
+  paidAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+  refundedAt?: Date;
+  currency?: string;
+  refundReason?: string;
+  checkoutReference?: string;
+  settledAt?: Date;
+};
+
+type MigratedWithdrawal = {
+  _id: Types.ObjectId;
+  userId?: Types.ObjectId;
+  amount?: number;
+  accountType?: string;
+  processedAt?: Date;
+  updatedAt?: Date;
+  createdAt?: Date;
+  currency?: string;
+  transferReference?: string;
+};
+
 type JournalLine = {
   accountCode: FinancialAccountCode;
   direction: FinancialJournalDirection;
@@ -55,15 +90,23 @@ function getDatabaseUri(): string {
 async function migrateFinancialLedger(): Promise<void> {
   await mongoose.connect(getDatabaseUri());
   const paymentModel = mongoose.model(Payment.name, PaymentSchema);
-  const withdrawalModel = mongoose.model(WalletWithdrawalRequest.name, WalletWithdrawalRequestSchema);
+  const withdrawalModel = mongoose.model(
+    WalletWithdrawalRequest.name,
+    WalletWithdrawalRequestSchema,
+  );
   const journalModel = mongoose.model(FinancialJournalEntry.name, FinancialJournalEntrySchema);
 
   const payloads: JournalPayload[] = [];
-  const payments = await paymentModel.find({ paidAt: { $exists: true } }).exec();
+  const payments = (await paymentModel
+    .find({ paidAt: { $exists: true } })
+    .exec()) as unknown as MigratedPayment[];
   for (const payment of payments) {
     payloads.push(buildPaymentPaidPayload(payment));
 
-    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING && payment.settlementStatus === PaymentSettlementStatus.READY) {
+    if (
+      payment.purpose === PaymentPurpose.MENTOR_BOOKING &&
+      payment.settlementStatus === PaymentSettlementStatus.READY
+    ) {
       const settlement = buildMentorSettlementPayload(payment);
       if (settlement) payloads.push(settlement);
     }
@@ -74,7 +117,9 @@ async function migrateFinancialLedger(): Promise<void> {
     }
   }
 
-  const withdrawals = await withdrawalModel.find({ status: WalletWithdrawalStatus.PAID }).exec();
+  const withdrawals = (await withdrawalModel
+    .find({ status: WalletWithdrawalStatus.PAID })
+    .exec()) as unknown as MigratedWithdrawal[];
   for (const withdrawal of withdrawals) {
     payloads.push(buildWithdrawalPaidPayload(withdrawal));
   }
@@ -84,16 +129,18 @@ async function migrateFinancialLedger(): Promise<void> {
   let skipped = 0;
   for (const payload of validPayloads) {
     assertBalanced(payload);
-    const exists = await journalModel.exists({
-      $or: [
-        { eventKey: payload.eventKey },
-        {
-          eventType: payload.eventType,
-          sourceType: payload.sourceType,
-          sourceId: payload.sourceId,
-        },
-      ],
-    }).exec();
+    const exists = await journalModel
+      .exists({
+        $or: [
+          { eventKey: payload.eventKey },
+          {
+            eventType: payload.eventType,
+            sourceType: payload.sourceType,
+            sourceId: payload.sourceId,
+          },
+        ],
+      })
+      .exec();
     if (exists) {
       skipped += 1;
       continue;
@@ -120,7 +167,7 @@ async function migrateFinancialLedger(): Promise<void> {
   console.log(`Debit total: ${totals.debit}, credit total: ${totals.credit}.`);
 }
 
-function buildPaymentPaidPayload(payment: any): JournalPayload {
+function buildPaymentPaidPayload(payment: MigratedPayment): JournalPayload {
   const totalAmount = getPaymentTotalAmount(payment);
   const cashAmount = roundCurrency(Number(payment.amount || 0));
   const creditAmount = roundCurrency(Number(payment.creditAppliedAmount || 0));
@@ -170,11 +217,12 @@ function buildPaymentPaidPayload(payment: any): JournalPayload {
   };
 }
 
-function buildMentorSettlementPayload(payment: any): JournalPayload | null {
+function buildMentorSettlementPayload(payment: MigratedPayment): JournalPayload | null {
   const settlementBaseAmount = roundCurrency(Number(payment.settlementBaseAmount || 0));
   const platformFeeAmount = roundCurrency(Number(payment.platformFeeAmount || 0));
   const mentorPayoutAmount = roundCurrency(Number(payment.mentorPayoutAmount || 0));
-  if (settlementBaseAmount <= 0 || platformFeeAmount + mentorPayoutAmount !== settlementBaseAmount) return null;
+  if (settlementBaseAmount <= 0 || platformFeeAmount + mentorPayoutAmount !== settlementBaseAmount)
+    return null;
 
   const common = {
     userId: payment.userId,
@@ -214,7 +262,7 @@ function buildMentorSettlementPayload(payment: any): JournalPayload | null {
   };
 }
 
-function buildRefundPayload(payment: any, refundAmount: number): JournalPayload {
+function buildRefundPayload(payment: MigratedPayment, refundAmount: number): JournalPayload {
   const split = splitRefundByPaymentSource(payment, refundAmount);
   const common = {
     userId: payment.userId,
@@ -225,7 +273,8 @@ function buildRefundPayload(payment: any, refundAmount: number): JournalPayload 
     {
       ...common,
       accountCode:
-        payment.purpose === PaymentPurpose.MENTOR_BOOKING && payment.settlementStatus !== PaymentSettlementStatus.READY
+        payment.purpose === PaymentPurpose.MENTOR_BOOKING &&
+        payment.settlementStatus !== PaymentSettlementStatus.READY
           ? FinancialAccountCode.MENTOR_BOOKING_ESCROW
           : FinancialAccountCode.REFUND_CONTRA_REVENUE,
       direction: FinancialJournalDirection.DEBIT,
@@ -270,7 +319,7 @@ function buildRefundPayload(payment: any, refundAmount: number): JournalPayload 
   };
 }
 
-function buildWithdrawalPaidPayload(withdrawal: any): JournalPayload {
+function buildWithdrawalPaidPayload(withdrawal: MigratedWithdrawal): JournalPayload {
   const amount = roundCurrency(Number(withdrawal.amount || 0));
   const liabilityAccount =
     withdrawal.accountType === 'mentor_earnings'
@@ -281,7 +330,8 @@ function buildWithdrawalPaidPayload(withdrawal: any): JournalPayload {
     eventType: FinancialEventType.WITHDRAWAL_PAID,
     sourceType: 'wallet_withdrawal',
     sourceId: withdrawal._id.toString(),
-    occurredAt: withdrawal.processedAt || withdrawal.updatedAt || withdrawal.createdAt || new Date(),
+    occurredAt:
+      withdrawal.processedAt || withdrawal.updatedAt || withdrawal.createdAt || new Date(),
     currency: withdrawal.currency || 'VND',
     status: FinancialJournalStatus.POSTED,
     lines: [
@@ -307,25 +357,27 @@ function buildWithdrawalPaidPayload(withdrawal: any): JournalPayload {
   };
 }
 
-function splitRefundByPaymentSource(payment: any, refundAmount: number) {
+function splitRefundByPaymentSource(payment: MigratedPayment, refundAmount: number) {
   const totalAmount = getPaymentTotalAmount(payment);
   const creditAppliedAmount = roundCurrency(Number(payment.creditAppliedAmount || 0));
   const cashPaidAmount = Math.max(totalAmount - creditAppliedAmount, 0);
   if (totalAmount <= 0) {
     return { cashRefundAmount: refundAmount, creditRefundAmount: 0 };
   }
-  const cashRefundAmount = roundCurrency(Math.min(refundAmount, (refundAmount * cashPaidAmount) / totalAmount));
+  const cashRefundAmount = roundCurrency(
+    Math.min(refundAmount, (refundAmount * cashPaidAmount) / totalAmount),
+  );
   const creditRefundAmount = roundCurrency(Math.max(refundAmount - cashRefundAmount, 0));
   return { cashRefundAmount, creditRefundAmount };
 }
 
-function getPaymentTotalAmount(payment: any): number {
+function getPaymentTotalAmount(payment: MigratedPayment): number {
   const explicitTotal = Number(payment.subtotalAmount);
   if (Number.isFinite(explicitTotal) && explicitTotal > 0) return roundCurrency(explicitTotal);
   return roundCurrency(Number(payment.amount || 0) + Number(payment.creditAppliedAmount || 0));
 }
 
-function buildPaymentMetadata(payment: any): Record<string, unknown> {
+function buildPaymentMetadata(payment: MigratedPayment): Record<string, unknown> {
   return {
     checkoutReference: payment.checkoutReference,
     purpose: payment.purpose,
@@ -351,7 +403,9 @@ function assertBalanced(payload: JournalPayload): void {
     { debit: 0, credit: 0 },
   );
   if (totals.debit !== totals.credit) {
-    throw new Error(`Unbalanced journal ${payload.eventKey}: debit=${totals.debit}, credit=${totals.credit}`);
+    throw new Error(
+      `Unbalanced journal ${payload.eventKey}: debit=${totals.debit}, credit=${totals.credit}`,
+    );
   }
 }
 
@@ -361,12 +415,12 @@ function roundCurrency(amount: number): number {
 }
 
 migrateFinancialLedger()
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (mongoose.connection.readyState !== 0) {
+    if ((mongoose.connection.readyState as number) !== 0) {
       await mongoose.disconnect();
     }
   });

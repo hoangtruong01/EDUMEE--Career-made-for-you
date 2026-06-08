@@ -1,28 +1,26 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  HttpStatus,
+  Param,
   Post,
   Put,
-  Delete,
-  Body,
-  Param,
   Query,
-  HttpStatus,
   UseGuards,
-  ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { TaskSubmissionService } from '../services/task-submission.service';
-import { CreateTaskSubmissionDto, UpdateTaskSubmissionDto } from '../dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { AiQuotaService } from '../../ai/services/ai-quota.service';
-import { AiFeature } from '../../ai/schema/ai-usage-logs.schema';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { UserRole } from '../../../common/enums/user-role.enum';
-import { getAuthUserId, isAdmin } from '../../../common/auth';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { TaskSubmissionService } from '../services/task-submission.service2';
+
 import type { AuthUserLike } from '../../../common/auth';
+import { getAuthUserId } from '../../../common/auth';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CreateTaskSubmissionDto, UpdateTaskSubmissionDto } from '../dto/task-submission.dto2';
+
+import { FilterQuery } from 'mongoose';
+import { ISubmissionContent, TaskSubmissionDocument } from '../schemas/task-submission.schema2';
 
 @ApiTags('task-submissions')
 @ApiBearerAuth('JWT-auth')
@@ -31,184 +29,98 @@ import type { AuthUserLike } from '../../../common/auth';
 export class TaskSubmissionController {
   constructor(
     private readonly taskSubmissionService: TaskSubmissionService,
-    private readonly aiQuotaService: AiQuotaService,
-  ) { }
+    // 🎯 Đã gỡ bỏ AiQuotaService để trả luồng nộp bài lộ trình về bản chất tinh gọn, không dính líu đến tính năng gói Premium thương mại
+  ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new task submission' })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Submission created successfully' })
-  async create(@Body() createDto: CreateTaskSubmissionDto, @CurrentUser() user: AuthUserLike) {
+  @ApiOperation({ summary: 'Nộp bài thực hành lý thuyết hoặc làm bài thi Milestone hệ biến thiên' })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Ghi nhận và chấm điểm bài nộp thành công',
+  })
+  async create(
+    @Body() createDto: CreateTaskSubmissionDto,
+    @CurrentUser() user: AuthUserLike,
+  ): Promise<TaskSubmissionDocument> {
     const userId = getAuthUserId(user);
-    return this.aiQuotaService.runWithQuota(
+
+    // =========================================================================
+    // 🎯 LOẠI BỎ CHỐT CHẶN PHẦN MỀM THƯƠNG MẠI (ANTI-403 FORBIDDEN)
+    // Toàn bộ các bộ lọc checkQuota, consumeQuota thuộc phân hệ SIMULATION đã được tháo dỡ
+    // Luồng chạy sẽ đi thẳng xuống nghiệp vụ ghi nhận, tính streak và bẻ khóa cuốn chiếu
+    // =========================================================================
+
+    const rawContent = createDto.submissionContent;
+    const rawQuizAnswers = rawContent?.quizAnswers;
+    let safeQuizAnswers: Array<{ questionIndex: number; selectedValue: number }> | undefined =
+      undefined;
+
+    if (rawQuizAnswers && Array.isArray(rawQuizAnswers)) {
+      safeQuizAnswers = rawQuizAnswers.map((ans) => ({
+        questionIndex: ans.questionIndex,
+        selectedValue: ans.selectedValue,
+      }));
+    }
+
+    const safeContent: ISubmissionContent = {
+      textContent: rawContent?.textContent,
+      quizAnswers: safeQuizAnswers,
+    };
+
+    // Gọi thẳng xuống Service chấm điểm lý thuyết/trắc nghiệm và cập nhật trạng thái COMPLETED cuốn chiếu
+    return await this.taskSubmissionService.submitAndEvaluate(
       userId,
-      AiFeature.SIMULATION,
-      () => this.taskSubmissionService.create({ ...createDto, userId }),
-      { requestCount: 1, tokensUsed: 0 },
+      createDto.taskId,
+      createDto.roadmapId,
+      safeContent,
     );
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all task submissions' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submissions retrieved successfully' })
-  findAll(
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+  @ApiOperation({ summary: 'Truy vấn danh sách lịch sử nộp bài mô phỏng' })
+  async findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('userId') userId?: string,
     @Query('taskId') taskId?: string,
     @Query('status') status?: string,
-  ) {
-    const filters = {
-      ...(userId ? { userId } : {}),
-      ...(taskId ? { taskId } : {}),
-      ...(status ? { status } : {}),
-    } as Parameters<TaskSubmissionService['findAll']>[2];
+  ): Promise<{ data: TaskSubmissionDocument[]; total: number; page: number; limit: number }> {
+    const filters: FilterQuery<TaskSubmissionDocument> = {};
+    if (userId) filters.userId = userId;
+    if (taskId) filters.taskId = taskId;
+    if (status) filters.status = status;
 
-    return this.taskSubmissionService.findAll(page, limit, filters);
-  }
-
-  @Get('pending')
-  @ApiOperation({ summary: 'Get pending evaluations' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Pending submissions retrieved successfully' })
-  findPendingEvaluations() {
-    return this.taskSubmissionService.findPendingEvaluations();
-  }
-
-  @Get('statistics')
-  @ApiOperation({ summary: 'Get submission statistics' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Statistics retrieved successfully' })
-  getStatistics(@Query() filters?: any) {
-    return this.taskSubmissionService.getSubmissionStatistics(filters);
-  }
-
-  @Get('leaderboard')
-  @ApiOperation({ summary: 'Get leaderboard' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Leaderboard retrieved successfully' })
-  getLeaderboard(@Query('taskId') taskId?: string, @Query('limit') limit?: number) {
-    return this.taskSubmissionService.getLeaderboard(taskId, limit);
+    return await this.taskSubmissionService.findAll(
+      Number(page) || 1,
+      Number(limit) || 10,
+      filters,
+    );
   }
 
   @Get('user/:userId')
-  @ApiOperation({ summary: 'Get submissions by user' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submissions retrieved successfully' })
-  findByUser(@Param('userId') userId: string) {
-    return this.taskSubmissionService.findByUser(userId);
-  }
-
-  @Get('user/:userId/progress')
-  @ApiOperation({ summary: 'Get user progress' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Progress retrieved successfully' })
-  getUserProgress(@Param('userId') userId: string) {
-    return this.taskSubmissionService.getUserProgress(userId);
-  }
-
-  @Get('task/:taskId')
-  @ApiOperation({ summary: 'Get submissions by task' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submissions retrieved successfully' })
-  findByTask(@Param('taskId') taskId: string) {
-    return this.taskSubmissionService.findByTask(taskId);
-  }
-
-  @Get('user/:userId/task/:taskId')
-  @ApiOperation({ summary: 'Get submissions by user and task' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submissions retrieved successfully' })
-  findByUserAndTask(@Param('userId') userId: string, @Param('taskId') taskId: string) {
-    return this.taskSubmissionService.findByUserAndTask(userId, taskId);
+  @ApiOperation({ summary: 'Lấy toàn bộ lịch sử bài làm của một Learner' })
+  async findByUser(@Param('userId') userId: string): Promise<TaskSubmissionDocument[]> {
+    return await this.taskSubmissionService.findByUser(userId);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a task submission by ID' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission retrieved successfully' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Submission not found' })
-  findOne(@Param('id') id: string) {
-    return this.taskSubmissionService.findOne(id);
-  }
-
-  @Post(':id/submit')
-  @ApiOperation({ summary: 'Submit for evaluation' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission sent for evaluation' })
-  async submitForEvaluation(@Param('id') id: string, @CurrentUser() user: AuthUserLike) {
-    const userId = getAuthUserId(user);
-    return this.aiQuotaService.runWithQuota(
-      userId,
-      AiFeature.SIMULATION,
-      async () => {
-        const submission = await this.taskSubmissionService.findOne(id);
-        if (!isAdmin(user) && String((submission as { userId?: unknown }).userId) !== userId) {
-          throw new ForbiddenException('Forbidden');
-        }
-        return this.taskSubmissionService.submitForEvaluation(id);
-      },
-      { requestCount: 1, tokensUsed: 0 },
-    );
-  }
-
-  @Post(':id/evaluate')
-  @ApiOperation({ summary: 'Evaluate a submission' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission evaluated successfully' })
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MENTOR)
-  evaluateSubmission(@Param('id') id: string, @Body() evaluation: any) {
-    return this.taskSubmissionService.evaluateSubmission(id, evaluation);
-  }
-
-  @Post(':id/request-revision')
-  @ApiOperation({ summary: 'Request revision for a submission' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Revision requested successfully' })
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MENTOR)
-  requestRevision(
-    @Param('id') id: string,
-    @Body() body: { feedback: string; requiredChanges: string[] },
-  ) {
-    return this.taskSubmissionService.requestRevision(id, body.feedback, body.requiredChanges);
-  }
-
-  @Post(':id/approve')
-  @ApiOperation({ summary: 'Approve a submission' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission approved successfully' })
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MENTOR)
-  approveSubmission(@Param('id') id: string) {
-    return this.taskSubmissionService.approveSubmission(id);
-  }
-
-  @Post(':id/retry')
-  @ApiOperation({ summary: 'Create a retry attempt' })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Retry attempt created successfully' })
-  async createRetryAttempt(
-    @Param('id') id: string,
-    @Body() newSubmissionData: CreateTaskSubmissionDto,
-    @CurrentUser() user: AuthUserLike,
-  ) {
-    const userId = getAuthUserId(user);
-    return this.aiQuotaService.runWithQuota(
-      userId,
-      AiFeature.SIMULATION,
-      async () => {
-        const original = await this.taskSubmissionService.findOne(id);
-        if (!isAdmin(user) && String((original as { userId?: unknown }).userId) !== userId) {
-          throw new ForbiddenException('Forbidden');
-        }
-
-        return this.taskSubmissionService.createRetryAttempt(id, { ...newSubmissionData, userId });
-      },
-      { requestCount: 1, tokensUsed: 0 },
-    );
+  @ApiOperation({ summary: 'Chi tiết một bài nộp thực hành' })
+  async findOne(@Param('id') id: string): Promise<TaskSubmissionDocument> {
+    return await this.taskSubmissionService.findOne(id);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update a task submission' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission updated successfully' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Submission not found' })
-  update(@Param('id') id: string, @Body() updateDto: UpdateTaskSubmissionDto) {
-    return this.taskSubmissionService.update(id, updateDto);
+  @ApiOperation({ summary: 'Cập nhật thông tin bài làm nâng cao' })
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateTaskSubmissionDto,
+  ): Promise<TaskSubmissionDocument> {
+    return await this.taskSubmissionService.update(id, updateDto);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a task submission' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Submission deleted successfully' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Submission not found' })
-  remove(@Param('id') id: string) {
-    return this.taskSubmissionService.remove(id);
+  @ApiOperation({ summary: 'Gỡ bỏ bản ghi bài làm khỏi hệ thống' })
+  async remove(@Param('id') id: string): Promise<void> {
+    await this.taskSubmissionService.remove(id);
   }
 }

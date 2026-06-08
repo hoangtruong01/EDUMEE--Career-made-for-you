@@ -6,8 +6,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
-const LOOPBACK_ORIGIN_PATTERN =
-  /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/;
+const LOOPBACK_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/;
 
 function parseCorsOrigins(value: string): string[] {
   return value
@@ -16,10 +15,7 @@ function parseCorsOrigins(value: string): string[] {
     .filter(Boolean);
 }
 
-function isAllowedCorsOrigin(
-  origin: string | undefined,
-  configuredOrigins: string[],
-): boolean {
+function isAllowedCorsOrigin(origin: string | undefined, configuredOrigins: string[]): boolean {
   if (!origin) return true;
   if (configuredOrigins.includes('*')) return true;
   if (configuredOrigins.includes(origin)) return true;
@@ -32,10 +28,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port', 3001);
-  const corsOrigin = configService.get<string>(
-    'app.corsOrigin',
-    'http://localhost:3000',
-  );
+  const corsOrigin = configService.get<string>('app.corsOrigin', 'http://localhost:3000');
   const configuredCorsOrigins = parseCorsOrigins(corsOrigin);
   const enableSwagger = configService.get<boolean>('app.enableSwagger', true);
   const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
@@ -99,7 +92,9 @@ async function bootstrap() {
   if (enableSwagger) {
     const config = new DocumentBuilder()
       .setTitle('EDUMEE API')
-      .setDescription('EDUMEE - Career made for you API Documentation\n\nThis API provides endpoints for managing users, authentication, and career-related services.')
+      .setDescription(
+        'EDUMEE - Career made for you API Documentation\n\nThis API provides endpoints for managing users, authentication, and career-related services.',
+      )
       .setVersion('1.0.0')
       .setContact('EDUMEE Team', 'https://edumee.com', 'support@edumee.com')
       .setLicense('MIT', 'https://opensource.org/licenses/MIT')
@@ -137,17 +132,13 @@ async function bootstrap() {
         'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-bundle.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-standalone-preset.min.js',
       ],
-      customCssUrl: [
-        'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.min.css',
-      ],
+      customCssUrl: ['https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.min.css'],
     });
 
-    logger.log(
-      `📚 Swagger documentation available at http://localhost:${port}/api/docs`,
-    );
+    logger.log(`📚 Swagger documentation available at http://localhost:${port}/api/docs`);
   }
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 EDUMEE Backend is running on http://localhost:${port}`);
   logger.log(`🌍 Environment: ${nodeEnv}`);

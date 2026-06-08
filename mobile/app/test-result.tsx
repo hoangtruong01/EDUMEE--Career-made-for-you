@@ -1,340 +1,302 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  ScrollView, 
-  Pressable, 
-  ActivityIndicator, 
-  Dimensions 
-} from 'react-native';
+// app/test-result.tsx
 import { useRouter } from 'expo-router';
-import { COLORS, SPACING, RADIUS } from '../src/theme';
+import { Brain, Briefcase, Compass, Map, Sparkles } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { GlassView } from '../src/components/GlassView';
-import { Svg, Polygon, Line, Text as SvgText, Circle } from 'react-native-svg';
-import { CheckCircle2, ChevronRight, Share2, Home } from 'lucide-react-native';
 import { api } from '../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../src/theme';
 
-const { width } = Dimensions.get('window');
-const CHART_SIZE = width * 0.8;
-const CENTER = CHART_SIZE / 2;
-const RADIUS_CHART = (CHART_SIZE / 2) * 0.7;
-
-const RIASEC_LABELS = {
-  realistic: 'Thực tế',
-  investigative: 'Nghiên cứu',
-  artistic: 'Nghệ thuật',
-  social: 'Xã hội',
-  enterprising: 'Kinh doanh',
-  conventional: 'Nghiệp vụ'
-};
-
-const RIASEC_ORDER = [
-  'realistic',
-  'investigative',
-  'artistic',
-  'social',
-  'enterprising',
-  'conventional'
-];
+interface MatchedCareer {
+  id: string;
+  _id?: string;
+  title: string;
+  matchPercentage: number;
+  description?: string;
+}
 
 export default function TestResultScreen() {
   const router = useRouter();
-  const [result, setResult] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [creatingRoadmap, setCreatingRoadmap] = useState(false);
+  const [resultData, setResultData] = useState<any>(null);
+  const [selectedCareer, setSelectedCareer] = useState<MatchedCareer | null>(null);
 
   useEffect(() => {
-    fetchResult();
+    fetchTestResult();
   }, []);
 
-  const fetchResult = async () => {
+  const fetchTestResult = async () => {
     try {
-      const response = await api.get('/career-fit-results/my-results', {
-        params: { limit: 1 }
-      });
-      if (response.data && response.data.data.length > 0) {
-        setResult(response.data.data[0]);
+      // 🟢 Đồng bộ Web: Lấy kết quả Career Fit phân tích RIASEC mới nhất của học viên
+      const response = await api.get('/career-fit-results/my-result');
+      const data = response.data?.data || response.data;
+      setResultData(data);
+
+      // Mặc định chọn ngành có độ tương thích phần trăm cao nhất
+      if (data?.matchedCareers?.length > 0) {
+        setSelectedCareer(data.matchedCareers[0]);
       }
     } catch (error) {
       console.error('Fetch result error:', error);
+      Alert.alert(
+        'Thông báo',
+        'Hệ thống đang hoàn tất phân tích AI. Vui lòng tải lại sau ít phút.',
+      );
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const getCoordinates = (index: number, score: number) => {
-    const angle = (Math.PI * 2 * index) / 6 - Math.PI / 2;
-    const r = (score / 100) * RADIUS_CHART;
-    return {
-      x: CENTER + r * Math.cos(angle),
-      y: CENTER + r * Math.sin(angle),
-    };
+  // 🛠️ TÍNH NĂNG 1: Bấm xem chi tiết nghề -> Điều hướng sang Tab Khám phá kèm từ khóa tìm kiếm
+  const handleViewCareerDetail = (career: MatchedCareer) => {
+    if (!career) return;
+
+    // Đẩy sang Tab Khám phá (explore.tsx) và truyền tên ngành lên query params ngầm
+    router.push({
+      pathname: '/(tabs)/explore',
+      params: { search: career.title },
+    });
   };
 
-  const renderRadarChart = () => {
-    if (!result?.dimensionScores) return null;
+  // 🛠️ TÍNH NĂNG 2: Gọi API khởi tạo Lộ trình học tập cá nhân hóa giống hệt bản Web
+  const handleCreateRoadmap = async () => {
+    if (!selectedCareer) {
+      Alert.alert('Thông báo', 'Vui lòng chọn một ngành nghề để tạo lộ trình.');
+      return;
+    }
 
-    const scores = RIASEC_ORDER.map(key => result.dimensionScores[key] || 0);
-    const points = scores.map((score, i) => {
-      const coords = getCoordinates(i, score);
-      return `${coords.x},${coords.y}`;
-    }).join(' ');
+    setCreatingRoadmap(true);
+    try {
+      // Bắn request lên cổng learning-roadmaps để NestJS ra lệnh cho AI dựng Node bài học
+      await api.post('/learning-roadmaps', {
+        careerId: selectedCareer.id || selectedCareer._id,
+        careerTitle: selectedCareer.title,
+      });
 
-    return (
-      <View style={styles.chartContainer}>
-        <Svg width={CHART_SIZE} height={CHART_SIZE}>
-          {/* Grid lines */}
-          {[20, 40, 60, 80, 100].map((level) => {
-            const gridPoints = RIASEC_ORDER.map((_, i) => {
-              const coords = getCoordinates(i, level);
-              return `${coords.x},${coords.y}`;
-            }).join(' ');
-            return (
-              <Polygon
-                key={level}
-                points={gridPoints}
-                fill="none"
-                stroke="rgba(255, 255, 255, 0.1)"
-                strokeWidth="1"
-              />
-            );
-          })}
+      Alert.alert(
+        'Thành công 🎉',
+        `AI đã khởi tạo lộ trình học tập ngành ${selectedCareer.title} dành riêng cho bạn!`,
+      );
 
-          {/* Axis lines */}
-          {RIASEC_ORDER.map((_, i) => {
-            const coords = getCoordinates(i, 100);
-            return (
-              <Line
-                key={i}
-                x1={CENTER}
-                y1={CENTER}
-                x2={coords.x}
-                y2={coords.y}
-                stroke="rgba(255, 255, 255, 0.1)"
-                strokeWidth="1"
-              />
-            );
-          })}
-
-          {/* Data Polygon */}
-          <Polygon
-            points={points}
-            fill="rgba(56, 189, 248, 0.4)"
-            stroke={COLORS.primary}
-            strokeWidth="2"
-          />
-
-          {/* Labels */}
-          {RIASEC_ORDER.map((key, i) => {
-            const coords = getCoordinates(i, 115);
-            return (
-              <SvgText
-                key={key}
-                x={coords.x}
-                y={coords.y}
-                fill={COLORS.muted}
-                fontSize="10"
-                fontWeight="bold"
-                textAnchor="middle"
-                alignmentBaseline="middle"
-              >
-                {RIASEC_LABELS[key as keyof typeof RIASEC_LABELS]}
-              </SvgText>
-            );
-          })}
-        </Svg>
-      </View>
-    );
+      // 🟢 Đồng bộ Web: Tạo xong thì chuyển hướng học viên sang không gian học tập (Tab Định hướng)
+      router.replace('/(tabs)/orientation');
+    } catch (error: any) {
+      console.error('Create roadmap error:', error);
+      const msg =
+        error.response?.data?.message || 'Không thể khởi tạo lộ trình lúc này. Vui lòng thử lại.';
+      Alert.alert('Lỗi khởi tạo', msg);
+    } finally {
+      setCreatingRoadmap(false);
+    }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  if (!result) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>Không tìm thấy kết quả. Vui lòng làm bài trắc nghiệm.</Text>
-        <Pressable onPress={() => router.replace('/holland-test')} style={styles.retryButton}>
-          <Text style={styles.retryText}>Làm trắc nghiệm ngay</Text>
-        </Pressable>
+        <ActivityIndicator size="large" color={COLORS.secondary} />
+        <Text style={styles.loadingText}>Đang đồng bộ kết quả phân tích AI...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
-        <CheckCircle2 size={48} color={COLORS.secondary} />
-        <Text style={styles.title}>Hoàn tất phân tích!</Text>
-        <Text style={styles.subtitle}>AI đã xác định hồ sơ nghề nghiệp của bạn</Text>
+        <Brain size={48} color={COLORS.secondary} />
+        <Text style={styles.title}>KẾT QUẢ PHÂN TÍCH</Text>
+        <Text style={styles.subtitle}>Bản đồ mật mã tính cách nghề nghiệp Holland</Text>
       </View>
 
-      <GlassView style={styles.chartCard}>
-        <Text style={styles.cardTitle}>Biểu đồ RIASEC</Text>
-        {renderRadarChart()}
+      {/* Card nhóm tính cách trội RIASEC */}
+      <GlassView style={styles.summaryCard}>
+        <Sparkles size={20} color={COLORS.primary} style={{ marginBottom: 6 }} />
+        <Text style={styles.summaryTitle}>Nhóm tính cách trội của bạn</Text>
+        <Text style={styles.riasecCode}>{resultData?.primaryTraits?.join(' - ') || 'RIASEC'}</Text>
       </GlassView>
 
-      <Text style={styles.sectionTitle}>Nghề nghiệp phù hợp nhất</Text>
-      
-      <GlassView style={styles.careerCard}>
-        <View style={styles.careerHeader}>
-          <Text style={styles.careerTitle}>{result.careerTitle}</Text>
-          <View style={styles.scoreBadge}>
-            <Text style={styles.scoreText}>{Math.round(result.overallFitScore)}%</Text>
-          </View>
-        </View>
-        <Text style={styles.careerDesc}>{result.aiExplanation?.substring(0, 150)}...</Text>
-        <Pressable style={styles.detailButton}>
-          <Text style={styles.detailButtonText}>Xem chi tiết lộ trình</Text>
-          <ChevronRight size={16} color={COLORS.primary} />
-        </Pressable>
-      </GlassView>
+      <Text style={styles.sectionTitle}>Top ngành nghề phù hợp nhất</Text>
+      <Text style={styles.sectionInfo}>
+        Bấm vào từng ngành để chọn, xem chi tiết thị trường hoặc tạo lộ trình
+      </Text>
 
-      <View style={styles.actionGroup}>
-        <Pressable style={[styles.actionButton, { backgroundColor: COLORS.primary }]} onPress={() => router.replace('/(tabs)')}>
-          <Home size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>Về Trang chủ</Text>
-        </Pressable>
-        <Pressable style={[styles.actionButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-          <Share2 size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>Chia sẻ</Text>
-        </Pressable>
+      {/* Danh sách ngành nghề tương thích đổ bộ từ Backend */}
+      <View style={styles.careerList}>
+        {resultData?.matchedCareers?.map((career: MatchedCareer) => {
+          const isSelected = selectedCareer?.title === career.title;
+          return (
+            <TouchableOpacity
+              key={career.title}
+              onPress={() => setSelectedCareer(career)}
+              style={[styles.careerCard, isSelected && styles.careerCardActive]}
+            >
+              <View style={styles.careerRow}>
+                <View style={styles.careerInfo}>
+                  <Briefcase
+                    size={18}
+                    color={isSelected ? COLORS.primary : COLORS.muted}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.careerName, isSelected && styles.careerNameActive]}>
+                    {career.title}
+                  </Text>
+                </View>
+                <View style={[styles.badge, isSelected && styles.badgeActive]}>
+                  <Text style={[styles.badgeText, isSelected && styles.badgeTextActive]}>
+                    {career.matchPercentage}% khớp
+                  </Text>
+                </View>
+              </View>
+
+              {/* Hộp mở rộng thông tin khi học viên click chọn ngành */}
+              {isSelected && (
+                <View style={styles.detailBox}>
+                  <Text style={styles.descriptionText} numberOfLines={3}>
+                    {career.description ||
+                      'Ngành nghề có triển vọng phát triển cao dựa trên thế mạnh và mô hình tính cách RIASEC của bạn.'}
+                  </Text>
+
+                  {/* Cổng bấm xem chi tiết: Kích hoạt hàm điều hướng sang Tab Khám phá ngành */}
+                  <TouchableOpacity
+                    onPress={() => handleViewCareerDetail(career)}
+                    style={styles.viewDetailLink}
+                  >
+                    <Text style={styles.viewDetailLinkText}>
+                      Xem chi tiết thị trường & mức lương
+                    </Text>
+                    <Compass size={14} color={COLORS.secondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
+
+      {/* 🔮 NÚT CỐT LÕI: Kích hoạt AI tạo lộ trình cá nhân hóa */}
+      {selectedCareer && (
+        <TouchableOpacity
+          onPress={handleCreateRoadmap}
+          disabled={creatingRoadmap}
+          style={[styles.roadmapButton, creatingRoadmap && styles.disabledBtn]}
+        >
+          {creatingRoadmap ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.roadmapButtonText}>
+                Tạo lộ trình học tập cho: {selectedCareer.title}
+              </Text>
+              <Map size={20} color="#fff" />
+            </>
+          )}
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    padding: SPACING.lg,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  center: { justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { padding: SPACING.lg, paddingTop: 60, paddingBottom: 40 },
+  loadingText: { color: COLORS.muted, marginTop: SPACING.md, fontSize: 14 },
+  header: { alignItems: 'center', marginBottom: SPACING.xl },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '900',
     color: COLORS.foreground,
-    marginTop: SPACING.md,
+    letterSpacing: 2,
+    marginTop: SPACING.sm,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.muted,
     textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: SPACING.sm,
   },
-  chartCard: {
-    padding: SPACING.lg,
-    borderRadius: RADIUS.xl,
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  cardTitle: {
-    color: COLORS.foreground,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: SPACING.md,
-    alignSelf: 'flex-start',
-  },
-  chartContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.foreground,
-    marginBottom: SPACING.md,
-  },
-  careerCard: {
+  summaryCard: {
     padding: SPACING.xl,
-    borderRadius: RADIUS.xl,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
     marginBottom: SPACING.xl,
   },
-  careerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  careerTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+  summaryTitle: { fontSize: 14, fontWeight: '600', color: COLORS.muted },
+  riasecCode: {
+    fontSize: 32,
+    fontWeight: '900',
     color: COLORS.primary,
-    flex: 1,
+    letterSpacing: 4,
+    marginTop: 4,
   },
-  scoreBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.foreground, marginBottom: 2 },
+  sectionInfo: { fontSize: 12, color: COLORS.muted, marginBottom: SPACING.md },
+  careerList: { gap: SPACING.sm, marginBottom: SPACING.xxl },
+  careerCard: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderWidth: 1,
-    borderColor: '#10B981',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
-  scoreText: {
-    color: '#10B981',
-    fontWeight: '800',
-    fontSize: 14,
+  careerCardActive: {
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    backgroundColor: 'rgba(56, 189, 248, 0.04)',
   },
-  careerDesc: {
-    color: COLORS.muted,
-    lineHeight: 20,
-    marginBottom: SPACING.lg,
+  careerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  careerInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  careerName: { fontSize: 15, fontWeight: '600', color: COLORS.muted },
+  careerNameActive: { color: COLORS.foreground, fontWeight: '700' },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  detailButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  badgeActive: { backgroundColor: COLORS.primary },
+  badgeText: { fontSize: 11, fontWeight: '600', color: COLORS.muted },
+  badgeTextActive: { color: COLORS.foreground, fontWeight: '700' },
+  detailBox: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
   },
-  detailButtonText: {
-    color: COLORS.primary,
+  descriptionText: { fontSize: 13, color: COLORS.muted, lineHeight: 18 },
+  viewDetailLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm },
+  viewDetailLinkText: {
+    fontSize: 12,
+    color: COLORS.secondary,
     fontWeight: '600',
-    marginRight: 4,
+    textDecorationLine: 'underline',
   },
-  actionGroup: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  actionButton: {
-    flex: 1,
+  roadmapButton: {
     height: 56,
+    backgroundColor: COLORS.secondary,
     borderRadius: RADIUS.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
+    shadowColor: COLORS.secondary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  actionButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  errorText: {
-    color: COLORS.muted,
-    marginBottom: SPACING.lg,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.lg,
-  },
-  retryText: {
-    color: COLORS.foreground,
-    fontWeight: '700',
-  }
+  disabledBtn: { opacity: 0.6 },
+  roadmapButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

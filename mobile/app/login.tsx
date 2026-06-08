@@ -1,29 +1,29 @@
+// app/login.tsx
+import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { ArrowRight, Lock, Mail } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
-  ImageBackground,
   Pressable,
-  Alert,
-  ActivityIndicator,
-  Keyboard,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, SPACING, RADIUS } from '../src/theme';
-import { GlassView } from '../src/components/GlassView';
-import { Mail, Lock, ArrowRight } from 'lucide-react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import Svg, { Path } from 'react-native-svg';
+import { GlassView } from '../src/components/GlassView';
 import { api, setAuthToken } from '../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../src/theme';
 import { getRoleHomeRoute } from '../src/utils/roleNavigation';
-
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
@@ -31,6 +31,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [clickCount, setClickCount] = useState(0);
 
@@ -85,35 +86,28 @@ export default function LoginScreen() {
     Keyboard.dismiss();
     setIsLoading(true);
     try {
-      // 1. Tạo deep link redirect cho app của chúng ta
       const redirectUrl = Linking.createURL('oauth-success');
       console.log('Mobile Deep Link Callback:', redirectUrl);
 
-      // 2. Điểm nối API Backend Edumee khởi tạo Google Auth
       const backendAuthUrl = `${api.defaults.baseURL}/auth/google?state=${encodeURIComponent(redirectUrl)}`;
       console.log('Opening Backend Google Auth URL:', backendAuthUrl);
 
-      // 3. Phân nhánh nền tảng để tối ưu hóa tính ổn định
       if ((Platform.OS as string) === 'web') {
-        // Trên Web-preview, chuyển hướng toàn trang trực tiếp để tránh lỗi Chrome popup blocker/dismiss
         window.location.href = backendAuthUrl;
         return;
       }
 
-      // Trên Mobile Native (iOS/Android), mở trình duyệt in-app
       const authResult = await WebBrowser.openAuthSessionAsync(backendAuthUrl, redirectUrl);
 
       if (authResult.type === 'success' && authResult.url) {
-        // 4. Trình duyệt đóng và redirect trả link về ứng dụng khách
         const parsedUrl = Linking.parse(authResult.url);
-        const { access_token, refresh_token } = parsedUrl.queryParams as {
+        const { access_token } = parsedUrl.queryParams as {
           access_token?: string;
           refresh_token?: string;
           role?: string;
         };
 
         if (access_token) {
-          // Lưu token vào SecureStore / HTTP client state
           await setAuthToken(access_token);
 
           // Điều hướng người dùng vào Dashboard chính
@@ -134,7 +128,6 @@ export default function LoginScreen() {
       const msg = error.message || 'Có lỗi xảy ra trong quá trình đăng nhập bằng Google';
       (Platform.OS as string) === 'web' ? alert(msg) : Alert.alert('Lỗi', msg);
     } finally {
-      // Chỉ tắt loading trên native vì trên web đã chuyển hướng sang trang Google
       if ((Platform.OS as string) !== 'web') {
         setIsLoading(false);
       }
@@ -328,15 +321,8 @@ const styles = StyleSheet.create({
     color: COLORS.foreground,
     marginBottom: SPACING.xs,
   },
-  instructionText: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginBottom: SPACING.xl,
-  },
-  inputGroup: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
+  instructionText: { fontSize: 14, color: COLORS.muted, marginBottom: SPACING.xl },
+  inputGroup: { gap: SPACING.md, marginBottom: SPACING.xl },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,9 +332,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: SPACING.md,
   },
-  inputIcon: {
-    marginRight: SPACING.sm,
-  },
+  inputIcon: { marginRight: SPACING.sm },
+  eyeIconWrapper: { padding: SPACING.xs, justifyContent: 'center', alignItems: 'center' },
   input: {
     flex: 1,
     height: 50,
@@ -356,11 +341,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    ...Platform.select({
-      web: {
-        outlineStyle: 'none' as any,
-      },
-    }),
+    ...Platform.select({ web: { outlineStyle: 'none' as any } }),
   },
   loginButton: {
     height: 56,
@@ -371,39 +352,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: SPACING.sm,
   },
-  loginButtonText: {
-    color: COLORS.foreground,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  loginButtonText: { color: COLORS.foreground, fontSize: 16, fontWeight: '600' },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: SPACING.xl,
   },
-  footerText: {
-    color: COLORS.muted,
-  },
-  signUpLink: {
-    color: COLORS.secondary,
-    fontWeight: '700',
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: SPACING.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  dividerText: {
-    color: COLORS.muted,
-    paddingHorizontal: SPACING.md,
-    fontSize: 13,
-  },
+  footerText: { color: COLORS.muted },
+  signUpLink: { color: COLORS.secondary, fontWeight: '700' },
+  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)' },
+  dividerText: { color: COLORS.muted, paddingHorizontal: SPACING.md, fontSize: 13 },
   googleButton: {
     height: 56,
     borderRadius: RADIUS.lg,
@@ -413,11 +373,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: SPACING.xs,
   },
-  googleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  googleButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   googleButtonText: {
     color: COLORS.foreground,
     fontSize: 16,

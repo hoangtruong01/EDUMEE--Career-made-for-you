@@ -1,31 +1,31 @@
 import {
-  Controller,
-  Get,
-  Post,
+  BadRequestException,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  Query,
+  Get,
   HttpCode,
   HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
   UseGuards,
-  BadRequestException,
 } from '@nestjs/common';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
-  ApiResponse,
   ApiParam,
   ApiQuery,
-  ApiBearerAuth,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
-import { AssessmentAnswerService } from '../services/assessment-answer.service';
-import { UpdateAssessmentAnswerDto, BulkAnswerDto } from '../dto';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { assertOwnerOrAdmin } from '../../../common/auth';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { BulkAnswerDto, UpdateAssessmentAnswerDto } from '../dto';
+import { AssessmentAnswerService } from '../services/assessment-answer.service';
 
 interface CurrentUserPayload {
   userId: string;
@@ -42,18 +42,15 @@ export class AssessmentAnswerController {
 
   @Post()
   @ApiOperation({ summary: 'Answer a question (create new or update existing)' })
-  @ApiResponse({ 
-    status: 201, 
-    description: 'Assessment answer saved successfully' 
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment answer saved successfully',
   })
-  @ApiResponse({ 
-    status: 409, 
-    description: 'Answer already exists for this question and user' 
+  @ApiResponse({
+    status: 409,
+    description: 'Answer already exists for this question and user',
   })
-  async answerQuestion(
-    @Body() createDto: BulkAnswerDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
+  async answerQuestion(@Body() createDto: BulkAnswerDto, @CurrentUser() user: CurrentUserPayload) {
     const answerWithUser = {
       ...createDto,
       userId: user.userId,
@@ -63,18 +60,15 @@ export class AssessmentAnswerController {
 
   @Post('force-create')
   @ApiOperation({ summary: 'Force create a new assessment answer (may cause conflict)' })
-  @ApiResponse({ 
-    status: 201, 
-    description: 'Assessment answer created successfully' 
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment answer created successfully',
   })
-  @ApiResponse({ 
-    status: 409, 
-    description: 'User đã trả lời câu hỏi này rồi' 
+  @ApiResponse({
+    status: 409,
+    description: 'User đã trả lời câu hỏi này rồi',
   })
-  async create(
-    @Body() createDto: BulkAnswerDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
+  async create(@Body() createDto: BulkAnswerDto, @CurrentUser() user: CurrentUserPayload) {
     const answerWithUser = {
       ...createDto,
       userId: user.userId,
@@ -84,20 +78,17 @@ export class AssessmentAnswerController {
 
   @Post('bulk')
   @ApiOperation({ summary: 'Create multiple assessment answers' })
-  @ApiResponse({ 
-    status: 201, 
-    description: 'Assessment answers created successfully' 
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment answers created successfully',
   })
-  async bulkCreate(
-    @Body() answers: BulkAnswerDto[],
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
+  async bulkCreate(@Body() answers: BulkAnswerDto[], @CurrentUser() user: CurrentUserPayload) {
     if (!user?.userId) {
       throw new BadRequestException('User ID not found in JWT token');
     }
-    
+
     // Inject userId from token to all answers
-    const answersWithUser = answers.map(answer => ({
+    const answersWithUser = answers.map((answer) => ({
       ...answer,
       userId: user.userId,
     }));
@@ -111,9 +102,9 @@ export class AssessmentAnswerController {
   @ApiQuery({ name: 'sessionId', required: false, type: String })
   @ApiQuery({ name: 'userId', required: false, type: String })
   @ApiQuery({ name: 'questionId', required: false, type: String })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Assessment answers retrieved successfully' 
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment answers retrieved successfully',
   })
   async findAll(
     @Query('page') page?: number,
@@ -137,9 +128,9 @@ export class AssessmentAnswerController {
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get answers for a specific user' })
   @ApiParam({ name: 'userId', description: 'User ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'User answers retrieved successfully' 
+  @ApiResponse({
+    status: 200,
+    description: 'User answers retrieved successfully',
   })
   async findByUser(@Param('userId') userId: string, @CurrentUser() user: CurrentUserPayload) {
     assertOwnerOrAdmin(userId, user);
@@ -150,7 +141,7 @@ export class AssessmentAnswerController {
   @ApiOperation({ summary: 'Get current user answers' })
   @ApiResponse({
     status: 200,
-    description: 'User answers retrieved successfully'
+    description: 'User answers retrieved successfully',
   })
   async findMyAnswers(@CurrentUser() user: CurrentUserPayload) {
     return this.assessmentAnswerService.findByUser(user.userId);
@@ -160,7 +151,7 @@ export class AssessmentAnswerController {
   @ApiOperation({ summary: 'Get current user answer statistics' })
   @ApiResponse({
     status: 200,
-    description: 'User answer statistics retrieved successfully'
+    description: 'User answer statistics retrieved successfully',
   })
   async getMyStats(@CurrentUser() user: CurrentUserPayload) {
     return this.assessmentAnswerService.getUserAnswerStats(user.userId);
@@ -169,9 +160,9 @@ export class AssessmentAnswerController {
   @Get('question/:questionId')
   @ApiOperation({ summary: 'Get answers for a specific question' })
   @ApiParam({ name: 'questionId', description: 'Question ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Question answers retrieved successfully' 
+  @ApiResponse({
+    status: 200,
+    description: 'Question answers retrieved successfully',
   })
   async findByQuestion(@Param('questionId') questionId: string) {
     return this.assessmentAnswerService.findByQuestion(questionId);
@@ -180,13 +171,13 @@ export class AssessmentAnswerController {
   @Get(':id')
   @ApiOperation({ summary: 'Get an assessment answer by ID' })
   @ApiParam({ name: 'id', description: 'Assessment answer ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Assessment answer retrieved successfully' 
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment answer retrieved successfully',
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Assessment answer not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Assessment answer not found',
   })
   async findOne(@Param('id') id: string) {
     return this.assessmentAnswerService.findOne(id);
@@ -195,18 +186,15 @@ export class AssessmentAnswerController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update an assessment answer' })
   @ApiParam({ name: 'id', description: 'Assessment answer ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Assessment answer updated successfully' 
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment answer updated successfully',
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Assessment answer not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Assessment answer not found',
   })
-  async update(
-    @Param('id') id: string,
-    @Body() updateDto: UpdateAssessmentAnswerDto,
-  ) {
+  async update(@Param('id') id: string, @Body() updateDto: UpdateAssessmentAnswerDto) {
     return this.assessmentAnswerService.update(id, updateDto);
   }
 
@@ -214,13 +202,13 @@ export class AssessmentAnswerController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete an assessment answer' })
   @ApiParam({ name: 'id', description: 'Assessment answer ID' })
-  @ApiResponse({ 
-    status: 204, 
-    description: 'Assessment answer deleted successfully' 
+  @ApiResponse({
+    status: 204,
+    description: 'Assessment answer deleted successfully',
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Assessment answer not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Assessment answer not found',
   })
   async remove(@Param('id') id: string) {
     return this.assessmentAnswerService.remove(id);

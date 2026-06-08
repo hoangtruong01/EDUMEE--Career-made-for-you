@@ -4,12 +4,7 @@ const COLLECTION_NAME = 'booking_sessions';
 const LEGACY_INDEX_NAME = 'availabilitySlotId_1';
 const ACTIVE_SLOT_INDEX_NAME = 'booking_session_active_slot_unique';
 
-const ACTIVE_SLOT_BOOKING_STATUSES = [
-  'awaiting_payment',
-  'pending',
-  'confirmed',
-  'rescheduled',
-];
+const ACTIVE_SLOT_BOOKING_STATUSES = ['awaiting_payment', 'pending', 'confirmed', 'rescheduled'];
 
 function getDatabaseUri(): string {
   const uri = process.env.DATABASE_URI?.trim() || process.env.MONGODB_URI?.trim();
@@ -23,7 +18,7 @@ async function migrateBookingSlotIndex(): Promise<void> {
   await mongoose.connect(getDatabaseUri());
   const collection = mongoose.connection.collection(COLLECTION_NAME);
 
-  const indexes = await collection.indexes();
+  const indexes = (await collection.indexes()) as Array<{ name?: string }>;
   const hasLegacyIndex = indexes.some((index) => index.name === LEGACY_INDEX_NAME);
 
   if (hasLegacyIndex) {
@@ -33,8 +28,10 @@ async function migrateBookingSlotIndex(): Promise<void> {
     console.log(`Legacy index ${LEGACY_INDEX_NAME} was not present.`);
   }
 
-  const refreshedIndexes = await collection.indexes();
-  const hasActiveSlotIndex = refreshedIndexes.some((index) => index.name === ACTIVE_SLOT_INDEX_NAME);
+  const refreshedIndexes = (await collection.indexes()) as Array<{ name?: string }>;
+  const hasActiveSlotIndex = refreshedIndexes.some(
+    (index) => index.name === ACTIVE_SLOT_INDEX_NAME,
+  );
 
   if (hasActiveSlotIndex) {
     console.log(`Index ${ACTIVE_SLOT_INDEX_NAME} already exists.`);
@@ -55,12 +52,12 @@ async function migrateBookingSlotIndex(): Promise<void> {
 }
 
 migrateBookingSlotIndex()
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (mongoose.connection.readyState !== 0) {
+    if ((mongoose.connection.readyState as number) !== 0) {
       await mongoose.disconnect();
     }
   });

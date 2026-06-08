@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  KeyboardAvoidingView, 
-  Platform, 
-  ImageBackground,
-  Pressable,
-  Alert,
-  ActivityIndicator
-} from 'react-native';
+// app/admin-login.tsx
 import { useRouter } from 'expo-router';
-import { COLORS, SPACING, RADIUS } from '../src/theme';
+import { ArrowLeft, Lock, Mail, ShieldCheck } from 'lucide-react-native';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { GlassView } from '../src/components/GlassView';
-import { Mail, Lock, ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { api, setAuthToken } from '../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../src/theme';
 import { getRoleHomeRoute } from '../src/utils/roleNavigation';
 
 export default function AdminLoginScreen() {
@@ -36,11 +37,13 @@ export default function AdminLoginScreen() {
     try {
       const response = await api.post('/auth/admin-login', { email, password });
       console.log('Admin login response:', JSON.stringify(response.data));
-      
-      const result = response.data?.data?.result || response.data?.result || response.data?.data || {};
-      const token = result?.access_token || response.data?.data?.access_token || response.data?.access_token;
+
+      const result =
+        response.data?.data?.result || response.data?.result || response.data?.data || {};
+      const token =
+        result?.access_token || response.data?.data?.access_token || response.data?.access_token;
       const role = result?.role || response.data?.data?.role || response.data?.role;
-      
+
       if (token) {
         await setAuthToken(token);
         router.replace(getRoleHomeRoute(role) as any);
@@ -49,7 +52,8 @@ export default function AdminLoginScreen() {
       }
     } catch (error: any) {
       console.error('Admin login error:', error);
-      const message = error.response?.data?.message || 'Đăng nhập Admin thất bại. Kiểm tra Backend.';
+      const message =
+        error.response?.data?.message || 'Đăng nhập Admin thất bại. Kiểm tra Backend.';
       Platform.OS === 'web' ? alert(message) : Alert.alert('Lỗi', message);
     } finally {
       setIsLoading(false);
@@ -58,11 +62,13 @@ export default function AdminLoginScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ImageBackground 
-        source={{ uri: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop' }}
+      <ImageBackground
+        source={{
+          uri: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop',
+        }}
         style={styles.backgroundImage}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.container}
         >
@@ -78,7 +84,9 @@ export default function AdminLoginScreen() {
 
           <GlassView style={styles.formContainer}>
             <Text style={styles.welcomeText}>Xác thực quản trị viên</Text>
-            <Text style={styles.instructionText}>Vui lòng nhập thông tin để truy cập hệ thống quản lý.</Text>
+            <Text style={styles.instructionText}>
+              Vui lòng nhập thông tin để truy cập hệ thống quản lý.
+            </Text>
 
             <View style={styles.inputGroup}>
               <View style={styles.inputWrapper}>
@@ -90,6 +98,8 @@ export default function AdminLoginScreen() {
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
                 />
               </View>
 
@@ -102,16 +112,18 @@ export default function AdminLoginScreen() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
+                  autoCorrect={false}
+                  spellCheck={false}
                 />
               </View>
             </View>
 
-            <Pressable 
+            <Pressable
               onPress={handleAdminLogin}
               disabled={isLoading}
               style={({ pressed }) => [
                 styles.loginButton,
-                { opacity: pressed || isLoading ? 0.7 : 1 }
+                { opacity: pressed || isLoading ? 0.7 : 1 },
               ]}
             >
               {isLoading ? (
@@ -128,27 +140,15 @@ export default function AdminLoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  backgroundImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
+  backgroundImage: { flex: 1, width: '100%', height: '100%' },
   container: {
     flex: 1,
     justifyContent: 'center',
     padding: SPACING.lg,
     backgroundColor: 'rgba(15, 23, 42, 0.8)',
   },
-  backButton: {
-    position: 'absolute',
-    top: 60,
-    left: SPACING.lg,
-    zIndex: 10,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: SPACING.xxl,
-  },
+  backButton: { position: 'absolute', top: 60, left: SPACING.lg, zIndex: 10 },
+  header: { alignItems: 'center', marginBottom: SPACING.xxl },
   title: {
     fontSize: 32,
     fontWeight: '900',
@@ -156,30 +156,16 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginTop: SPACING.sm,
   },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  formContainer: {
-    padding: SPACING.xl,
-    borderRadius: RADIUS.xl * 1.5,
-  },
+  subtitle: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
+  formContainer: { padding: SPACING.xl, borderRadius: RADIUS.xl * 1.5 },
   welcomeText: {
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.foreground,
     marginBottom: SPACING.xs,
   },
-  instructionText: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginBottom: SPACING.xl,
-  },
-  inputGroup: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
+  instructionText: { fontSize: 13, color: COLORS.muted, marginBottom: SPACING.xl },
+  inputGroup: { gap: SPACING.md, marginBottom: SPACING.xl },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -189,9 +175,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: SPACING.md,
   },
-  inputIcon: {
-    marginRight: SPACING.sm,
-  },
+  inputIcon: { marginRight: SPACING.sm },
   input: {
     flex: 1,
     height: 50,
@@ -199,11 +183,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    ...Platform.select({
-      web: {
-        outlineStyle: 'none' as any,
-      },
-    }),
+    ...Platform.select({ web: { outlineStyle: 'none' as any } }),
   },
   loginButton: {
     height: 56,
@@ -213,9 +193,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: SPACING.sm,
   },
-  loginButtonText: {
-    color: COLORS.foreground,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  loginButtonText: { color: COLORS.foreground, fontSize: 16, fontWeight: '600' },
 });

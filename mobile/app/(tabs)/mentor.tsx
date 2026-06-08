@@ -1,22 +1,22 @@
+import { Calendar, CheckCircle2, Search, Send, Star, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { Calendar, CheckCircle2, Search, Send, Star, X } from 'lucide-react-native';
 import { GlassView } from '../../src/components/GlassView';
-import { COLORS, RADIUS, SPACING } from '../../src/theme';
 import { api } from '../../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../../src/theme';
 
 type BookingStep = 'form' | 'success';
 
