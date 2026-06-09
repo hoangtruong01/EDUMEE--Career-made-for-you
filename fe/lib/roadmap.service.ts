@@ -91,14 +91,10 @@ export const roadmapService = {
     return apiClient.get<CareerInsight[]>('/career-fit-results/insights', accessToken);
   },
 
-  async generateAIRoadmap(
-    accessToken: string,
-    careerTitle: string,
-    careerId: string,
-  ): Promise<GeneratedRoadmap> {
+  async generateAIRoadmap(accessToken: string, careerTitle: string): Promise<GeneratedRoadmap> {
     return apiClient.post<GeneratedRoadmap>(
       '/learning-roadmaps/generate-ai',
-      { careerTitle, careerId },
+      { careerTitle },
       accessToken,
     );
   },

@@ -79,7 +79,10 @@ export default function CareerAnalysisDetail() {
     void load();
   }, [accessToken, careerTitle, handlePlanError]);
 
-  /* Generate roadmap and redirect */
+  // fe/views/CareerAnalysisDetail.tsx
+
+  // fe/views/CareerAnalysisDetail.tsx
+
   const handleStartRoadmap = async () => {
     if (!accessToken || !analysis) return;
     const allowed = await ensureFeatureAvailable('roadmap');
@@ -88,15 +91,8 @@ export default function CareerAnalysisDetail() {
     try {
       setIsGenerating(true);
 
-      // 🟢 FIX 1: Trích xuất careerId từ dữ liệu phân tích đã fetch một cách Type-safe hoàn toàn
-      const careerId =
-        (analysis as unknown as { _id?: string; id?: string })?._id ??
-        (analysis as unknown as { _id?: string; id?: string })?.id ??
-        '';
+      const roadmap = await roadmapService.generateAIRoadmap(accessToken, careerTitle);
 
-      const roadmap = await roadmapService.generateAIRoadmap(accessToken, careerTitle, careerId);
-
-      // 🟢 FIX 2: Ép kiểu cấu trúc trung gian an toàn để lấy ID mà không dính quy tắc cấm sử dụng từ khóa 'any'
       const targetRoadmap = roadmap as { id?: string; _id?: string };
       const id = targetRoadmap.id ?? targetRoadmap._id ?? '';
 

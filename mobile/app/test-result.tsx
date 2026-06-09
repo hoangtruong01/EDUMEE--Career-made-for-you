@@ -76,9 +76,7 @@ export default function TestResultScreen() {
 
     setCreatingRoadmap(true);
     try {
-      // Bắn request lên cổng learning-roadmaps để NestJS ra lệnh cho AI dựng Node bài học
-      await api.post('/learning-roadmaps', {
-        careerId: selectedCareer.id || selectedCareer._id,
+      await api.post('/learning-roadmaps/generate-ai', {
         careerTitle: selectedCareer.title,
       });
 
@@ -87,7 +85,7 @@ export default function TestResultScreen() {
         `AI đã khởi tạo lộ trình học tập ngành ${selectedCareer.title} dành riêng cho bạn!`,
       );
 
-      // 🟢 Đồng bộ Web: Tạo xong thì chuyển hướng học viên sang không gian học tập (Tab Định hướng)
+      // Đồng bộ Web: Tạo xong chuyển hướng học viên sang không gian học tập (Tab Định hướng)
       router.replace('/(tabs)/orientation');
     } catch (error: any) {
       console.error('Create roadmap error:', error);

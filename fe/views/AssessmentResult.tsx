@@ -2,28 +2,25 @@
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
-import {
-  assessmentService,
-  type CareerFitResultHistoryItem,
-} from '@/lib/assessment.service';
-import { roadmapService, CareerDetailedAnalysis } from '@/lib/roadmap.service';
+import { assessmentService, type CareerFitResultHistoryItem } from '@/lib/assessment.service';
+import { CareerDetailedAnalysis, roadmapService } from '@/lib/roadmap.service';
 import { motion } from 'framer-motion';
-import { 
-  CheckCircle2, 
-  TrendingUp, 
-  Bot, 
-  ChevronRight,
+import {
+  AlertCircle,
   BarChart3,
-  Rocket,
-  DollarSign,
+  Bot,
   Calendar,
-  Zap,
+  CheckCircle2,
+  ChevronRight,
+  DollarSign,
+  Eye,
+  History,
   Info,
   Lock,
-  History,
-  Eye,
+  Rocket,
   RotateCcw,
-  AlertCircle
+  TrendingUp,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -96,7 +93,7 @@ const CareerCard = ({
   detailError,
   onNavigate,
   onUpgrade,
-  onRetryDetails
+  onRetryDetails,
 }: {
   career: MappedCareer;
   index: number;
@@ -114,36 +111,42 @@ const CareerCard = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className={`glass-card relative flex h-full flex-col overflow-hidden rounded-3xl border-border/50 shadow-soft transition-all duration-300 ${
+      className={`glass-card border-border/50 shadow-soft relative flex h-full flex-col overflow-hidden rounded-3xl transition-all duration-300 ${
         isLocked ? 'border-primary/20' : 'hover:shadow-elevated'
       }`}
     >
       {/* Gradient top strip */}
-      <div className={`h-1.5 w-full bg-linear-to-r ${isLocked ? 'from-slate-400 to-zinc-500' : career.gradient}`} />
+      <div
+        className={`h-1.5 w-full bg-linear-to-r ${isLocked ? 'from-slate-400 to-zinc-500' : career.gradient}`}
+      />
 
-      <div className={`flex flex-1 flex-col p-5 ${isLocked ? 'pointer-events-none select-none blur-[4px] opacity-60' : ''}`}>
+      <div
+        className={`flex flex-1 flex-col p-5 ${isLocked ? 'pointer-events-none opacity-60 blur-[4px] select-none' : ''}`}
+      >
         {/* Header row */}
         <div className="mb-4 flex items-start justify-between gap-2">
           <div className="flex items-start gap-3">
-            <span className="bg-muted flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl shadow-sm border border-border/50">
+            <span className="bg-muted border-border/50 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-2xl shadow-sm">
               {career.icon}
             </span>
             <div>
               <div className="flex items-start gap-2">
-                <h3 className="font-display leading-tight font-bold text-base">{career.title}</h3>
+                <h3 className="font-display text-base leading-tight font-bold">{career.title}</h3>
                 {index === 0 && (
-                  <span className="bg-amber-400/20 text-amber-600 dark:text-amber-400 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase border border-amber-400/30 shrink-0 mt-0.5">
+                  <span className="mt-0.5 shrink-0 rounded-full border border-amber-400/30 bg-amber-400/20 px-2 py-0.5 text-[9px] font-bold text-amber-600 uppercase dark:text-amber-400">
                     TOP
                   </span>
                 )}
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <div className="bg-muted h-1.5 w-24 overflow-hidden rounded-full border border-border/30">
-                  <motion.div 
+                <div className="bg-muted border-border/30 h-1.5 w-24 overflow-hidden rounded-full border">
+                  <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${isLocked || career.match === null ? 100 : career.match}%` }}
+                    animate={{
+                      width: `${isLocked || career.match === null ? 100 : career.match}%`,
+                    }}
                     transition={{ duration: 1, delay: 0.5 }}
-                    className={`h-full bg-linear-to-r ${career.gradient}`} 
+                    className={`h-full bg-linear-to-r ${career.gradient}`}
                   />
                 </div>
                 <span className="text-primary text-[10px] font-bold">
@@ -156,28 +159,28 @@ const CareerCard = ({
 
         {/* Insight snippet - Fixed height to keep cards equal */}
         <div className="mb-4 min-h-[40px]">
-          <p className="text-muted-foreground line-clamp-2 text-xs italic pl-3 border-l-2 border-primary/30">
+          <p className="text-muted-foreground border-primary/30 line-clamp-2 border-l-2 pl-3 text-xs italic">
             &quot;{career.insight}&quot;
           </p>
         </div>
 
         {/* Quick Stats Row */}
         <div className="mb-4 grid grid-cols-2 gap-2">
-          <div className="bg-primary/5 rounded-xl p-2.5 border border-primary/10">
-            <div className="flex items-center gap-1.5 text-primary mb-1">
+          <div className="bg-primary/5 border-primary/10 rounded-xl border p-2.5">
+            <div className="text-primary mb-1 flex items-center gap-1.5">
               <DollarSign className="h-3 w-3" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">Lương</span>
+              <span className="text-[9px] font-bold tracking-wider uppercase">Lương</span>
             </div>
-            <p className="text-foreground font-bold text-xs truncate">
+            <p className="text-foreground truncate text-xs font-bold">
               {showDetailError ? 'Không tải được' : details?.salaryRange || 'Đang phân tích...'}
             </p>
           </div>
-          <div className="bg-emerald-500/5 rounded-xl p-2.5 border border-emerald-500/10">
-            <div className="flex items-center gap-1.5 text-emerald-500 mb-1">
+          <div className="rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-2.5">
+            <div className="mb-1 flex items-center gap-1.5 text-emerald-500">
               <TrendingUp className="h-3 w-3" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">Nhu cầu</span>
+              <span className="text-[9px] font-bold tracking-wider uppercase">Nhu cầu</span>
             </div>
-            <p className="text-foreground font-bold text-xs truncate">
+            <p className="text-foreground truncate text-xs font-bold">
               {showDetailError ? 'Không tải được' : details?.demandLevel || career.demandLabel}
             </p>
           </div>
@@ -209,42 +212,55 @@ const CareerCard = ({
             <>
               {/* Summary */}
               <div className="min-h-[60px]">
-                <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5">
                   <Info className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Tóm tắt ngành</span>
+                  <span className="text-[10px] font-bold tracking-wider uppercase">
+                    Tóm tắt ngành
+                  </span>
                 </div>
-                <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-3">
-                  {details?.overview || 'Đang chờ AI cập nhật thông tin tổng quan về ngành nghề này...'}
+                <p className="text-muted-foreground line-clamp-3 text-[11px] leading-relaxed">
+                  {details?.overview ||
+                    'Đang chờ AI cập nhật thông tin tổng quan về ngành nghề này...'}
                 </p>
               </div>
 
               {/* 5-Year Outlook & Skills in a small grid */}
               <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                  <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Tầm nhìn 5 năm</span>
+                    <span className="text-[10px] font-bold tracking-wider uppercase">
+                      Tầm nhìn 5 năm
+                    </span>
                   </div>
-                  <div className="bg-muted/30 rounded-xl p-2 border border-border/40">
-                    <p className="text-[10px] text-foreground/80 leading-snug line-clamp-2">
-                      {details?.trends?.[0]?.description || 'Xu hướng phát triển đang được AI phân tích...'}
+                  <div className="bg-muted/30 border-border/40 rounded-xl border p-2">
+                    <p className="text-foreground/80 line-clamp-2 text-[10px] leading-snug">
+                      {details?.trends?.[0]?.description ||
+                        'Xu hướng phát triển đang được AI phân tích...'}
                     </p>
                   </div>
                 </div>
 
                 <div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground mb-1.5">
+                  <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5">
                     <Zap className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Kỹ năng cần học</span>
+                    <span className="text-[10px] font-bold tracking-wider uppercase">
+                      Kỹ năng cần học
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {(details?.keySkills || career.skills || []).slice(0, 3).map((skill: string, i: number) => (
-                      <span key={i} className="bg-primary/5 text-primary border border-primary/10 rounded-lg px-2 py-0.5 text-[9px] font-medium">
-                        {skill}
-                      </span>
-                    ))}
+                    {(details?.keySkills || career.skills || [])
+                      .slice(0, 3)
+                      .map((skill: string, i: number) => (
+                        <span
+                          key={i}
+                          className="bg-primary/5 text-primary border-primary/10 rounded-lg border px-2 py-0.5 text-[9px] font-medium"
+                        >
+                          {skill}
+                        </span>
+                      ))}
                     {(details?.keySkills || career.skills || []).length === 0 && (
-                      <span className="text-[10px] text-muted-foreground italic">Đang tải...</span>
+                      <span className="text-muted-foreground text-[10px] italic">Đang tải...</span>
                     )}
                   </div>
                 </div>
@@ -254,10 +270,10 @@ const CareerCard = ({
         </div>
 
         {/* Buttons */}
-        <div className="mt-5 pt-4 border-t border-border/50">
-          <Button 
-            variant="hero" 
-            className="w-full gap-2 rounded-2xl py-5 shadow-lg shadow-primary/20 text-xs"
+        <div className="border-border/50 mt-5 border-t pt-4">
+          <Button
+            variant="hero"
+            className="shadow-primary/20 w-full gap-2 rounded-2xl py-5 text-xs shadow-lg"
             onClick={() => onNavigate(career.title)}
           >
             <Rocket className="h-3.5 w-3.5" />
@@ -268,15 +284,15 @@ const CareerCard = ({
       </div>
 
       {isLocked && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/35 p-5 backdrop-blur-[2px]">
-          <div className="w-full max-w-[260px] rounded-2xl border border-primary/20 bg-background/90 p-4 text-center shadow-elevated">
-            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+        <div className="bg-background/35 absolute inset-0 z-10 flex items-center justify-center p-5 backdrop-blur-[2px]">
+          <div className="border-primary/20 bg-background/90 shadow-elevated w-full max-w-[260px] rounded-2xl border p-4 text-center">
+            <div className="border-primary/20 bg-primary/10 text-primary mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl border">
               <Lock className="h-5 w-5" />
             </div>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
               Nghề #{career.rank}
             </p>
-            <p className="mt-1 text-sm font-bold text-foreground">Mở khóa để xem chi tiết</p>
+            <p className="text-foreground mt-1 text-sm font-bold">Mở khóa để xem chi tiết</p>
             <Button
               variant="hero"
               className="mt-4 w-full gap-2 rounded-xl py-4 text-xs"
@@ -298,10 +314,14 @@ const AssessmentResult = () => {
   const router = useRouter();
   const { accessToken } = useAuth();
   const [topCareers, setTopCareers] = useState<MappedCareer[]>([]);
-  const [detailedAnalyses, setDetailedAnalyses] = useState<Record<string, CareerDetailedAnalysis>>({});
+  const [detailedAnalyses, setDetailedAnalyses] = useState<Record<string, CareerDetailedAnalysis>>(
+    {},
+  );
   const [radarData, setRadarData] = useState<{ subject: string; A: number }[]>([]);
   const [barData, setBarData] = useState<{ name: string; score: number; color: string }[]>([]);
-  const [personalityTraits, setPersonalityTraits] = useState<{ name: string; value: number; desc: string }[]>([]);
+  const [personalityTraits, setPersonalityTraits] = useState<
+    { name: string; value: number; desc: string }[]
+  >([]);
   const [isLoadingResult, setIsLoadingResult] = useState(true);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [history, setHistory] = useState<CareerFitResultHistoryItem[]>([]);
@@ -340,82 +360,88 @@ const AssessmentResult = () => {
     });
   }, []);
 
-  const loadCareerDetails = useCallback(async (careers: MappedCareer[], requestId: number) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const targets = careers.filter(
-      (career) => !career.isLocked && !detailedAnalysesRef.current[career.title],
-    );
-    if (targets.length === 0) {
-      return;
-    }
-
-    setDetailErrors((current) => {
-      const next = { ...current };
-      targets.forEach((career) => delete next[career.title]);
-      return next;
-    });
-
-    const detailResults: DetailLoadResult[] = await Promise.all(
-      targets.map(async (career) => {
-        try {
-          const detail = await roadmapService.getDetailedAnalysis(accessToken, career.title);
-          return { status: 'success', title: career.title, detail };
-        } catch (error) {
-          return {
-            status: 'error',
-            title: career.title,
-            error: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
-          };
-        }
-      }),
-    );
-
-    if (requestId !== resultRequestSeqRef.current) {
-      return;
-    }
-
-    const updates: Record<string, CareerDetailedAnalysis> = {};
-    const errors: Record<string, string> = {};
-    detailResults.forEach((result) => {
-      if (result.status === 'error') {
-        errors[result.title] = result.error;
-      } else {
-        updates[result.title] = result.detail;
+  const loadCareerDetails = useCallback(
+    async (careers: MappedCareer[], requestId: number) => {
+      if (!accessToken) {
+        return;
       }
-    });
 
-    if (Object.keys(updates).length > 0) {
-      mergeDetailedAnalyses(updates);
-    }
-    if (Object.keys(errors).length > 0) {
-      setDetailErrors((current) => ({ ...current, ...errors }));
-    }
-  }, [accessToken, mergeDetailedAnalyses]);
+      const targets = careers.filter(
+        (career) => !career.isLocked && !detailedAnalysesRef.current[career.title],
+      );
+      if (targets.length === 0) {
+        return;
+      }
 
-  const handleRetryDetails = useCallback(async (careerTitle: string) => {
-    if (!accessToken) {
-      return;
-    }
+      setDetailErrors((current) => {
+        const next = { ...current };
+        targets.forEach((career) => delete next[career.title]);
+        return next;
+      });
 
-    setDetailErrors((current) => {
-      const next = { ...current };
-      delete next[careerTitle];
-      return next;
-    });
+      const detailResults: DetailLoadResult[] = await Promise.all(
+        targets.map(async (career) => {
+          try {
+            const detail = await roadmapService.getDetailedAnalysis(accessToken, career.title);
+            return { status: 'success', title: career.title, detail };
+          } catch (error) {
+            return {
+              status: 'error',
+              title: career.title,
+              error: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
+            };
+          }
+        }),
+      );
 
-    try {
-      const detail = await roadmapService.getDetailedAnalysis(accessToken, careerTitle);
-      mergeDetailedAnalyses({ [careerTitle]: detail });
-    } catch (error) {
-      setDetailErrors((current) => ({
-        ...current,
-        [careerTitle]: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
-      }));
-    }
-  }, [accessToken, mergeDetailedAnalyses]);
+      if (requestId !== resultRequestSeqRef.current) {
+        return;
+      }
+
+      const updates: Record<string, CareerDetailedAnalysis> = {};
+      const errors: Record<string, string> = {};
+      detailResults.forEach((result) => {
+        if (result.status === 'error') {
+          errors[result.title] = result.error;
+        } else {
+          updates[result.title] = result.detail;
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        mergeDetailedAnalyses(updates);
+      }
+      if (Object.keys(errors).length > 0) {
+        setDetailErrors((current) => ({ ...current, ...errors }));
+      }
+    },
+    [accessToken, mergeDetailedAnalyses],
+  );
+
+  const handleRetryDetails = useCallback(
+    async (careerTitle: string) => {
+      if (!accessToken) {
+        return;
+      }
+
+      setDetailErrors((current) => {
+        const next = { ...current };
+        delete next[careerTitle];
+        return next;
+      });
+
+      try {
+        const detail = await roadmapService.getDetailedAnalysis(accessToken, careerTitle);
+        mergeDetailedAnalyses({ [careerTitle]: detail });
+      } catch (error) {
+        setDetailErrors((current) => ({
+          ...current,
+          [careerTitle]: getErrorMessage(error, 'Không tải được phân tích chi tiết.'),
+        }));
+      }
+    },
+    [accessToken, mergeDetailedAnalyses],
+  );
 
   const loadHistory = useCallback(async () => {
     if (!accessToken) {
@@ -423,7 +449,10 @@ const AssessmentResult = () => {
       return;
     }
 
-    if (loadedHistoryTokenRef.current === accessToken || inFlightHistoryTokenRef.current === accessToken) {
+    if (
+      loadedHistoryTokenRef.current === accessToken ||
+      inFlightHistoryTokenRef.current === accessToken
+    ) {
       return;
     }
 
@@ -442,107 +471,121 @@ const AssessmentResult = () => {
     }
   }, [accessToken]);
 
-  const loadResults = useCallback(async (sessionId?: string, force = false) => {
-    if (!accessToken) {
-      setIsLoadingResult(false);
-      return;
-    }
-
-    const requestKey = sessionId || 'latest';
-    if (!force && (inFlightResultKeyRef.current === requestKey || loadedResultKeyRef.current === requestKey)) {
-      return;
-    }
-
-    inFlightResultKeyRef.current = requestKey;
-    const requestId = resultRequestSeqRef.current + 1;
-    resultRequestSeqRef.current = requestId;
-    setIsLoadingResult(true);
-    setResultError('');
-
-    try {
-      const results = await assessmentService.getMyResults(accessToken, { sessionId });
-      if (requestId !== resultRequestSeqRef.current) {
-        return;
-      }
-
-      if (!Array.isArray(results) || results.length === 0) {
-        setTopCareers([]);
-        setBarData([]);
-        replaceDetailedAnalyses({});
-        setDetailErrors({});
-        loadedResultKeyRef.current = requestKey;
-        return;
-      }
-      setSelectedSessionId(sessionId || results[0]?.assessmentSessionId || '');
-
-      const palette = [
-        { gradient: 'from-violet-600 to-indigo-600', icon: '💻' },
-        { gradient: 'from-fuchsia-600 to-purple-600', icon: '🤖' },
-        { gradient: 'from-blue-600 to-cyan-500', icon: '📊' },
-        { gradient: 'from-emerald-600 to-teal-500', icon: '🧭' },
-        { gradient: 'from-amber-500 to-orange-500', icon: '🚀' },
-      ];
-
-      // Map careers
-      const mapped = results.slice(0, 5).map((item, idx) => {
-        const style = palette[idx] || palette[0];
-        const rank = Number(item.rank || item.recommendationRank || idx + 1);
-        const isLocked = item.isLocked === true;
-        const fallbackTitle = `Nghề #${rank}`;
-        return {
-          title: isLocked ? fallbackTitle : item.careerTitle || fallbackTitle,
-          match: isLocked ? null : Math.round(Number(item.overallFitScore || 0)),
-          icon: style.icon,
-          insight: isLocked ? '' : item.aiExplanation || 'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
-          growth: 'Tăng trưởng mạnh',
-          demandLabel: 'Rất cao',
-          skills: isLocked ? [] : (item.strengths || []).slice(0, 3),
-          gradient: style.gradient,
-          rank,
-          isLocked,
-        };
-      });
-      setTopCareers(mapped);
-
-      // Map bar data
-      setBarData(mapped.filter((r) => !r.isLocked).slice(0, 5).map(r => ({
-        name: r.title || 'Nghề nghiệp',
-        score: Math.round(Number(r.match || 0)),
-        color: '#7c3aed'
-      })));
-
-      // Mock radar & personality (can be replaced with real data if available in backend)
-      setRadarData([
-        { subject: 'Logic', A: 85 },
-        { subject: 'Sáng tạo', A: 70 },
-        { subject: 'Giao tiếp', A: 75 },
-        { subject: 'Kỹ thuật', A: 80 },
-        { subject: 'Lãnh đạo', A: 65 },
-      ]);
-
-      setPersonalityTraits([
-        { name: 'Tư duy hệ thống', value: 85, desc: 'Khả năng nhìn nhận vấn đề tổng quát' },
-        { name: 'Thích nghi', value: 92, desc: 'Luôn sẵn sàng với những thay đổi mới' },
-        { name: 'Kỹ thuật', value: 78, desc: 'Nền tảng kiến thức công cụ tốt' },
-        { name: 'Sáng tạo', value: 65, desc: 'Cách tiếp cận vấn đề độc đáo' },
-      ]);
-
-      loadedResultKeyRef.current = requestKey;
-      setIsLoadingResult(false);
-      void loadCareerDetails(mapped, requestId);
-    } catch (error) {
-      if (requestId === resultRequestSeqRef.current) {
-        setResultError(getErrorMessage(error, 'Không tải được kết quả assessment.'));
-      }
-    } finally {
-      if (inFlightResultKeyRef.current === requestKey) {
-        inFlightResultKeyRef.current = null;
-      }
-      if (requestId === resultRequestSeqRef.current) {
+  const loadResults = useCallback(
+    async (sessionId?: string, force = false) => {
+      if (!accessToken) {
         setIsLoadingResult(false);
+        return;
       }
-    }
-  }, [accessToken, loadCareerDetails, replaceDetailedAnalyses]);
+
+      const requestKey = sessionId || 'latest';
+      if (
+        !force &&
+        (inFlightResultKeyRef.current === requestKey || loadedResultKeyRef.current === requestKey)
+      ) {
+        return;
+      }
+
+      inFlightResultKeyRef.current = requestKey;
+      const requestId = resultRequestSeqRef.current + 1;
+      resultRequestSeqRef.current = requestId;
+      setIsLoadingResult(true);
+      setResultError('');
+
+      try {
+        const results = await assessmentService.getMyResults(accessToken, { sessionId });
+        if (requestId !== resultRequestSeqRef.current) {
+          return;
+        }
+
+        if (!Array.isArray(results) || results.length === 0) {
+          setTopCareers([]);
+          setBarData([]);
+          replaceDetailedAnalyses({});
+          setDetailErrors({});
+          loadedResultKeyRef.current = requestKey;
+          return;
+        }
+        setSelectedSessionId(sessionId || results[0]?.assessmentSessionId || '');
+
+        const palette = [
+          { gradient: 'from-violet-600 to-indigo-600', icon: '💻' },
+          { gradient: 'from-fuchsia-600 to-purple-600', icon: '🤖' },
+          { gradient: 'from-blue-600 to-cyan-500', icon: '📊' },
+          { gradient: 'from-emerald-600 to-teal-500', icon: '🧭' },
+          { gradient: 'from-amber-500 to-orange-500', icon: '🚀' },
+        ];
+
+        // Map careers
+        const mapped = results.slice(0, 5).map((item, idx) => {
+          const style = palette[idx] || palette[0];
+          const rank = Number(item.rank || item.recommendationRank || idx + 1);
+          const isLocked = item.isLocked === true;
+          const fallbackTitle = `Nghề #${rank}`;
+          return {
+            title: isLocked ? fallbackTitle : item.careerTitle || fallbackTitle,
+            match: isLocked ? null : Math.round(Number(item.overallFitScore || 0)),
+            icon: style.icon,
+            insight: isLocked
+              ? ''
+              : item.aiExplanation ||
+                'AI đánh giá ngành này có sự tương đồng lớn với phong cách làm việc của bạn.',
+            growth: 'Tăng trưởng mạnh',
+            demandLabel: 'Rất cao',
+            skills: isLocked ? [] : (item.strengths || []).slice(0, 3),
+            gradient: style.gradient,
+            rank,
+            isLocked,
+          };
+        });
+        setTopCareers(mapped);
+
+        // Map bar data
+        setBarData(
+          mapped
+            .filter((r) => !r.isLocked)
+            .slice(0, 5)
+            .map((r) => ({
+              name: r.title || 'Nghề nghiệp',
+              score: Math.round(Number(r.match || 0)),
+              color: '#7c3aed',
+            })),
+        );
+
+        // Mock radar & personality (can be replaced with real data if available in backend)
+        setRadarData([
+          { subject: 'Logic', A: 85 },
+          { subject: 'Sáng tạo', A: 70 },
+          { subject: 'Giao tiếp', A: 75 },
+          { subject: 'Kỹ thuật', A: 80 },
+          { subject: 'Lãnh đạo', A: 65 },
+        ]);
+
+        setPersonalityTraits([
+          { name: 'Tư duy hệ thống', value: 85, desc: 'Khả năng nhìn nhận vấn đề tổng quát' },
+          { name: 'Thích nghi', value: 92, desc: 'Luôn sẵn sàng với những thay đổi mới' },
+          { name: 'Kỹ thuật', value: 78, desc: 'Nền tảng kiến thức công cụ tốt' },
+          { name: 'Sáng tạo', value: 65, desc: 'Cách tiếp cận vấn đề độc đáo' },
+        ]);
+
+        loadedResultKeyRef.current = requestKey;
+        setIsLoadingResult(false);
+        void loadCareerDetails(mapped, requestId);
+      } catch (error) {
+        if (requestId === resultRequestSeqRef.current) {
+          setResultError(getErrorMessage(error, 'Không tải được kết quả assessment.'));
+        }
+      } finally {
+        if (inFlightResultKeyRef.current === requestKey) {
+          inFlightResultKeyRef.current = null;
+        }
+        if (requestId === resultRequestSeqRef.current) {
+          setIsLoadingResult(false);
+        }
+      }
+    },
+    [accessToken, loadCareerDetails, replaceDetailedAnalyses],
+  );
 
   useEffect(() => {
     if (!accessToken) {
@@ -577,25 +620,30 @@ const AssessmentResult = () => {
   return (
     <div className="bg-background min-h-screen pb-20">
       {/* Header Section */}
-      <div className="relative overflow-hidden bg-linear-to-b from-primary/10 via-transparent to-transparent px-4 pt-12 pb-10 text-center">
+      <div className="from-primary/10 relative overflow-hidden bg-linear-to-b via-transparent to-transparent px-4 pt-12 pb-10 text-center">
         <div className="absolute top-0 left-1/2 h-64 w-full -translate-x-1/2 bg-purple-500/5 blur-3xl" />
-        
+
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
-            <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold">
-            <CheckCircle2 className="h-4 w-4" /> Phân tích AI hoàn tất
-          </span>
-            <span className="bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" /> Phân tích AI hoàn tất
+            </span>
+            <span className="bg-primary/10 border-primary/20 text-primary inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-semibold">
               <History className="h-4 w-4" /> {getHistoryLabel(activeHistoryItem)}
             </span>
           </div>
           <h1 className="font-display text-foreground text-3xl font-extrabold sm:text-5xl">
             Kết quả của bạn đã sẵn sàng
           </h1>
-          <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm sm:text-base leading-relaxed">
-            Dựa trên 20 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ trình sự nghiệp tối ưu nhất dành riêng cho bạn.
+          <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
+            Dựa trên 20 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ
+            trình sự nghiệp tối ưu nhất dành riêng cho bạn.
           </p>
-          <Button variant="hero" className="mt-7 gap-2 rounded-2xl px-6 py-5" onClick={handleRetake}>
+          <Button
+            variant="hero"
+            className="mt-7 gap-2 rounded-2xl px-6 py-5"
+            onClick={handleRetake}
+          >
             <RotateCcw className="h-4 w-4" />
             Làm lại bài kiểm tra
           </Button>
@@ -604,10 +652,14 @@ const AssessmentResult = () => {
 
       <div className="container mt-4 space-y-12 px-4">
         {/* Top Careers Grid */}
-        <motion.section initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.1 } } }}>
+        <motion.section
+          initial="hidden"
+          animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.1 } } }}
+        >
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-foreground flex items-center gap-2 text-2xl font-bold">
-              <TrendingUp className="h-6 w-6 text-primary" />
+              <TrendingUp className="text-primary h-6 w-6" />
               Ngành nghề đề xuất
             </h2>
           </div>
@@ -634,33 +686,35 @@ const AssessmentResult = () => {
               </div>
             </div>
           )}
-          
+
           {isLoadingResult ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map(i => (
+              {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-muted h-64 animate-pulse rounded-2xl" />
               ))}
             </div>
           ) : topCareers.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {topCareers.map((career, idx) => (
-                <CareerCard 
+                <CareerCard
                   key={career.isLocked ? `locked-${career.rank}` : career.title}
-                  career={career} 
-                  index={idx} 
+                  career={career}
+                  index={idx}
                   details={detailedAnalyses[career.title]}
                   detailError={detailErrors[career.title]}
-                  onNavigate={handleNavigate} 
+                  onNavigate={handleNavigate}
                   onUpgrade={handleUpgrade}
                   onRetryDetails={handleRetryDetails}
                 />
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border rounded-3xl">
+            <div className="border-border flex flex-col items-center justify-center rounded-3xl border-2 border-dashed py-20 text-center">
               <Rocket className="text-muted-foreground/30 mb-4 h-16 w-16" />
               <h3 className="text-xl font-bold">Chưa có dữ liệu</h3>
-              <p className="text-muted-foreground mt-2">Hãy bắt đầu bài trắc nghiệm để khám phá lộ trình của bạn.</p>
+              <p className="text-muted-foreground mt-2">
+                Hãy bắt đầu bài trắc nghiệm để khám phá lộ trình của bạn.
+              </p>
               <Link href="/personality-test" className="mt-6">
                 <Button variant="hero">Làm bài ngay</Button>
               </Link>
@@ -673,7 +727,7 @@ const AssessmentResult = () => {
             <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-foreground flex items-center gap-2 text-2xl font-bold">
-                  <History className="h-6 w-6 text-primary" />
+                  <History className="text-primary h-6 w-6" />
                   Lịch sử làm bài
                 </h2>
                 <p className="text-muted-foreground mt-1 text-sm">
@@ -707,7 +761,7 @@ const AssessmentResult = () => {
             )}
 
             {(isLoadingHistory || history.length > 0) && (
-              <div className="glass-card overflow-hidden rounded-2xl border border-border/50 shadow-soft">
+              <div className="glass-card border-border/50 shadow-soft overflow-hidden rounded-2xl border">
                 {isLoadingHistory ? (
                   <div className="space-y-3 p-5">
                     {[1, 2, 3].map((item) => (
@@ -715,7 +769,7 @@ const AssessmentResult = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="divide-y divide-border/60">
+                  <div className="divide-border/60 divide-y">
                     {history.map((item) => {
                       const isSelected = item.sessionId === selectedSessionId;
                       return (
@@ -731,7 +785,7 @@ const AssessmentResult = () => {
                                 {item.isLatest ? 'Mới nhất' : `Lượt #${item.attemptNumber || '-'}`}
                               </span>
                               {isSelected && (
-                                <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                                <span className="border-primary/20 bg-primary/10 text-primary rounded-full border px-2.5 py-0.5 text-xs font-semibold">
                                   Đang xem
                                 </span>
                               )}
@@ -740,7 +794,9 @@ const AssessmentResult = () => {
                               {formatHistoryDate(item.completedAt || item.generatedAt)}
                             </p>
                             <p className="text-muted-foreground mt-1 text-xs">
-                              Top 1: {item.topCareerTitle || 'Chưa có nghề'} · {Math.round(Number(item.topFitScore || 0))}% · {item.resultCount} gợi ý
+                              Top 1: {item.topCareerTitle || 'Chưa có nghề'} ·{' '}
+                              {Math.round(Number(item.topFitScore || 0))}% · {item.resultCount} gợi
+                              ý
                             </p>
                           </div>
                           <Button
@@ -764,17 +820,17 @@ const AssessmentResult = () => {
 
         {/* Charts Section */}
         {!isLoadingResult && topCareers.length > 0 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="grid gap-6 md:grid-cols-2"
           >
             {/* Competency Radar */}
             {/* Competency Radar */}
-            <div className="glass-card rounded-2xl p-6 border-border/50 shadow-soft hover:shadow-elevated transition-all duration-500">
+            <div className="glass-card border-border/50 shadow-soft hover:shadow-elevated rounded-2xl p-6 transition-all duration-500">
               <div className="mb-6 flex items-center gap-2">
                 <div className="bg-primary/10 rounded-xl p-2.5">
-                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <BarChart3 className="text-primary h-5 w-5" />
                 </div>
                 <h3 className="text-foreground font-bold">Biểu đồ năng lực</h3>
               </div>
@@ -782,14 +838,14 @@ const AssessmentResult = () => {
                 <ResponsiveContainer width="100%" height={280}>
                   <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
                     <PolarGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
-                    <PolarAngleAxis 
-                      dataKey="subject" 
-                      tick={{ 
-                        fontSize: 10, 
-                        fill: tickColor, 
+                    <PolarAngleAxis
+                      dataKey="subject"
+                      tick={{
+                        fontSize: 10,
+                        fill: tickColor,
                         fontWeight: 700,
-                        className: "uppercase tracking-tight"
-                      }} 
+                        className: 'uppercase tracking-tight',
+                      }}
                     />
                     <Radar
                       name="Năng lực"
@@ -798,11 +854,11 @@ const AssessmentResult = () => {
                       strokeWidth={3}
                       fill="hsl(var(--primary))"
                       fillOpacity={0.15}
-                      dot={{ 
-                        r: 4, 
-                        fill: 'hsl(var(--primary))', 
-                        strokeWidth: 2, 
-                        stroke: 'hsl(var(--background))' 
+                      dot={{
+                        r: 4,
+                        fill: 'hsl(var(--primary))',
+                        strokeWidth: 2,
+                        stroke: 'hsl(var(--background))',
                       }}
                     />
                     <Tooltip contentStyle={tooltipStyle} />
@@ -812,48 +868,50 @@ const AssessmentResult = () => {
             </div>
 
             {/* Fit Score - Modernized List */}
-            <div className="glass-card rounded-2xl p-6 border-border/50 shadow-soft hover:shadow-elevated transition-all duration-500">
+            <div className="glass-card border-border/50 shadow-soft hover:shadow-elevated rounded-2xl p-6 transition-all duration-500">
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="bg-primary/10 rounded-xl p-2.5">
-                    <Bot className="h-5 w-5 text-primary" />
+                    <Bot className="text-primary h-5 w-5" />
                   </div>
                   <h3 className="text-foreground font-bold">Phân tích độ phù hợp</h3>
                 </div>
-                <span className="text-primary text-[10px] font-extrabold uppercase tracking-widest bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20">
+                <span className="text-primary bg-primary/10 border-primary/20 rounded-full border px-2.5 py-1 text-[10px] font-extrabold tracking-widest uppercase">
                   Top {barData.length}
                 </span>
               </div>
-              
+
               <div className="space-y-6 py-2">
                 {barData.map((item, i) => (
                   <div key={i} className="group">
                     <div className="mb-2.5 flex items-end justify-between">
                       <div className="flex flex-col gap-1">
-                        <span className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                           Xếp hạng #{i + 1}
                         </span>
-                        <span className="text-foreground text-sm font-bold group-hover:text-primary transition-colors line-clamp-1">
+                        <span className="text-foreground group-hover:text-primary line-clamp-1 text-sm font-bold transition-colors">
                           {item.name}
                         </span>
                       </div>
-                      <span className="text-primary font-display text-lg font-black leading-none">
-                        {item.score}<span className="text-[10px] ml-0.5">%</span>
+                      <span className="text-primary font-display text-lg leading-none font-black">
+                        {item.score}
+                        <span className="ml-0.5 text-[10px]">%</span>
                       </span>
                     </div>
-                    <div className="bg-muted/40 relative h-3 w-full overflow-hidden rounded-full border border-border/20 shadow-inner">
+                    <div className="bg-muted/40 border-border/20 relative h-3 w-full overflow-hidden rounded-full border shadow-inner">
                       {/* Background track shimmer */}
-                      <div className="absolute inset-0 opacity-10 bg-linear-to-r from-transparent via-white to-transparent -translate-x-full animate-[shimmer_3s_infinite]" />
-                      
+                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_3s_infinite] bg-linear-to-r from-transparent via-white to-transparent opacity-10" />
+
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${item.score}%` }}
                         transition={{ duration: 1.5, delay: i * 0.1, ease: [0.34, 1.56, 0.64, 1] }}
                         className="relative h-full rounded-full shadow-lg"
-                        style={{ 
-                          background: i === 0 
-                            ? 'linear-gradient(90deg, hsl(var(--primary)), hsl(var(--secondary)))' 
-                            : 'hsl(var(--primary))'
+                        style={{
+                          background:
+                            i === 0
+                              ? 'linear-gradient(90deg, hsl(var(--primary)), hsl(var(--secondary)))'
+                              : 'hsl(var(--primary))',
                         }}
                       >
                         {/* Subtle inner glow */}
@@ -869,32 +927,44 @@ const AssessmentResult = () => {
 
         {/* Personality Profile */}
         {!isLoadingResult && topCareers.length > 0 && (
-          <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
             <div className="mb-6">
               <h2 className="text-foreground text-2xl font-bold">🧠 Hồ sơ tính cách</h2>
-              <p className="text-muted-foreground mt-1 text-sm">Các đặc điểm nổi bật tạo nên thế mạnh của bạn</p>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Các đặc điểm nổi bật tạo nên thế mạnh của bạn
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {personalityTraits.map((trait, idx) => (
-                <div 
-                  key={trait.name} 
-                  className="glass-card group flex flex-col rounded-2xl p-5 border-border/40 shadow-soft hover:shadow-elevated hover:border-primary/30 transition-all duration-500"
+                <div
+                  key={trait.name}
+                  className="glass-card group border-border/40 shadow-soft hover:shadow-elevated hover:border-primary/30 flex flex-col rounded-2xl p-5 transition-all duration-500"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <span className="text-foreground text-sm font-bold group-hover:text-primary transition-colors">{trait.name}</span>
-                    <span className="text-primary text-xs font-black bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">
+                    <span className="text-foreground group-hover:text-primary text-sm font-bold transition-colors">
+                      {trait.name}
+                    </span>
+                    <span className="text-primary bg-primary/5 border-primary/10 rounded-lg border px-2 py-0.5 text-xs font-black">
                       {trait.value}%
                     </span>
                   </div>
-                  <div className="bg-muted/50 mb-4 h-2 w-full overflow-hidden rounded-full border border-border/20 shadow-inner">
+                  <div className="bg-muted/50 border-border/20 mb-4 h-2 w-full overflow-hidden rounded-full border shadow-inner">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${trait.value}%` }}
-                      transition={{ duration: 1.5, delay: 0.2 + (idx * 0.1), ease: [0.34, 1.56, 0.64, 1] }}
-                      className="h-full bg-linear-to-r from-primary to-secondary rounded-full"
+                      transition={{
+                        duration: 1.5,
+                        delay: 0.2 + idx * 0.1,
+                        ease: [0.34, 1.56, 0.64, 1],
+                      }}
+                      className="from-primary to-secondary h-full rounded-full bg-linear-to-r"
                     />
                   </div>
-                  <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-2 italic">
+                  <p className="text-muted-foreground line-clamp-2 text-[11px] leading-relaxed italic">
                     &quot;{trait.desc}&quot;
                   </p>
                 </div>

@@ -5,7 +5,6 @@ import {
   IsMongoId,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsString,
   Min,
   ValidateNested,
@@ -72,13 +71,10 @@ export class UpdateLearningRoadmapDto extends PartialType(CreateLearningRoadmapD
 
 // 👇 DTO MỚI BỔ SUNG ĐỂ FIX LỖI ĐỒNG BỘ FE-BE
 export class GenerateAIRoadmapDto {
-  @ApiProperty({ description: 'ID của ngành nghề (Nếu đã có)' })
-  @IsOptional()
-  @IsMongoId()
-  careerId?: string;
 
-  @ApiProperty({ description: 'Tên ngành nghề (Bắt buộc để AI đọc)' })
-  @IsNotEmpty()
+
+  @ApiProperty({ description: 'Tên hiển thị ngành nghề chính xác' })
   @IsString()
+  @IsNotEmpty()
   careerTitle!: string;
 }
