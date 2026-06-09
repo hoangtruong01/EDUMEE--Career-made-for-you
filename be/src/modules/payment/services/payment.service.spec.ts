@@ -1,8 +1,17 @@
+import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
-import { PaymentService } from './payment.service';
+import { AiPlanService } from '../../ai/services/ai-plan.service';
+import { AiSubscriptionService } from '../../ai/services/ai-subscription.service';
+import { FinancialLedgerService } from '../../financial-ledger';
+import { BookingSession, BookingStatus } from '../../mentoring/schemas/booking-session.schema';
+import { MentorAvailabilitySlot } from '../../mentoring/schemas/mentor-availability-slot.schema';
+import { NotificationService } from '../../notifications/services';
+import { BillingCycle } from '../../users/schemas/user-subscriptions';
+import { WalletService } from '../../wallet/services';
+import { PaymentSetting } from '../schema/payment-setting.schema';
+import { PaymentTransaction } from '../schema/payment-transaction.schema';
 import {
   Payment,
   PaymentProvider,
@@ -10,16 +19,7 @@ import {
   PaymentSettlementStatus,
   PaymentStatus,
 } from '../schema/payment.schema';
-import { PaymentTransaction } from '../schema/payment-transaction.schema';
-import { PaymentSetting } from '../schema/payment-setting.schema';
-import { AiPlanService } from '../../ai/services/ai-plan.service';
-import { AiSubscriptionService } from '../../ai/services/ai-subscription.service';
-import { BillingCycle } from '../../users/schemas/user-subscriptions';
-import { BookingSession, BookingStatus } from '../../mentoring/schemas/booking-session.schema';
-import { MentorAvailabilitySlot } from '../../mentoring/schemas/mentor-availability-slot.schema';
-import { NotificationService } from '../../notifications/services';
-import { WalletService } from '../../wallet/services';
-import { FinancialLedgerService } from '../../financial-ledger';
+import { PaymentService } from './payment.service';
 
 describe('PaymentService', () => {
   let service: PaymentService;
@@ -73,7 +73,10 @@ describe('PaymentService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    paymentModel = jest.fn().mockImplementation(function createPayment(this: any, payload: Record<string, unknown>) {
+    paymentModel = jest.fn().mockImplementation(function createPayment(
+      this: any,
+      payload: Record<string, unknown>,
+    ) {
       Object.assign(this, payload);
       this._id = new Types.ObjectId('507f1f77bcf86cd799439099');
       this.save = jest.fn().mockResolvedValue(this);
@@ -82,7 +85,7 @@ describe('PaymentService', () => {
     paymentModel.findOne = jest.fn().mockReturnValue(createQuery(null));
     paymentModel.find = jest.fn().mockReturnValue(createQuery([]));
     (bookingSessionModel as any).find = jest.fn().mockReturnValue(createQuery([]));
-    (bookingSessionModel as any).findById = jest.fn();
+    (bookingSessionModel as any).findById = jest.fn().mockReturnValue(createQuery(null));
     (bookingSessionModel as any).findByIdAndUpdate = jest.fn().mockReturnValue(createQuery(null));
     paymentTransactionModel.create.mockResolvedValue({});
     paymentTransactionModel.findOne.mockReturnValue(createQuery(null));
@@ -95,7 +98,10 @@ describe('PaymentService', () => {
         { provide: getModelToken(PaymentTransaction.name), useValue: paymentTransactionModel },
         { provide: getModelToken(PaymentSetting.name), useValue: paymentSettingModel },
         { provide: getModelToken(BookingSession.name), useValue: bookingSessionModel },
-        { provide: getModelToken(MentorAvailabilitySlot.name), useValue: mentorAvailabilitySlotModel },
+        {
+          provide: getModelToken(MentorAvailabilitySlot.name),
+          useValue: mentorAvailabilitySlotModel,
+        },
         { provide: AiPlanService, useValue: aiPlanService },
         { provide: AiSubscriptionService, useValue: aiSubscriptionService },
         { provide: ConfigService, useValue: configService },
@@ -323,12 +329,13 @@ describe('PaymentService', () => {
       }),
     );
     expect(paymentModel.mock.calls[0][0]).not.toHaveProperty('settlementBaseAmount');
+
     expect((bookingSessionModel as any).findByIdAndUpdate).toHaveBeenCalledWith(
-      booking._id,
-      expect.objectContaining({
+      new Types.ObjectId(bookingId),
+      {
         'paymentInfo.paymentStatus': 'pending',
         'paymentInfo.transactionId': '507f1f77bcf86cd799439099',
-      }),
+      },
     );
   });
 
@@ -408,7 +415,7 @@ describe('PaymentService', () => {
       service.createPaymentPurchase('507f1f77bcf86cd799439011', {
         purpose: PaymentPurpose.MENTOR_BOOKING,
         targetId: '507f1f77bcf86cd799439020',
-        provider: PaymentProvider.ZALOPAY,
+        provider: 'zalopay' as any,
       }),
     ).rejects.toThrow('Only SePay is supported by the unified payment purchase flow');
   });
@@ -541,10 +548,12 @@ describe('PaymentService', () => {
       paidAt,
     };
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
-    (bookingSessionModel as any).findById.mockReturnValueOnce(createQuery({
-      _id: bookingId,
-      status: BookingStatus.PENDING,
-    }));
+    (bookingSessionModel as any).findById.mockReturnValueOnce(
+      createQuery({
+        _id: bookingId,
+        status: BookingStatus.PENDING,
+      }),
+    );
 
     const status = await service.getPaymentCheckoutStatus('checkout-token');
 
@@ -739,7 +748,10 @@ describe('PaymentService', () => {
       menteeId: payment.userId,
       mentorId: new Types.ObjectId(),
       status: BookingStatus.CONFIRMED,
-      schedulingDetails: { requestedDateTime: new Date(Date.now() + 48 * 60 * 60_000), duration: 90 },
+      schedulingDetails: {
+        requestedDateTime: new Date(Date.now() + 48 * 60 * 60_000),
+        duration: 90,
+      },
       paymentInfo: { sessionPrice: 50000, currency: 'VND' },
     } as any;
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
@@ -747,10 +759,16 @@ describe('PaymentService', () => {
     (bookingSessionModel as any).findById.mockReturnValueOnce(createQuery(booking));
     (bookingSessionModel as any).findByIdAndUpdate.mockReturnValue(createQuery(booking));
 
-    const result = await service.handleMentorBookingCancellation(booking, 'mentor', 'Mentor unavailable');
+    const result = await service.handleMentorBookingCancellation(
+      booking,
+      'mentor',
+      'Mentor unavailable',
+    );
 
     expect(result).toEqual({ status: 'refunded', refundAmount: 50000 });
-    expect(walletService.cashRefund).toHaveBeenCalledWith(expect.objectContaining({ amount: 50000 }));
+    expect(walletService.cashRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 50000 }),
+    );
     expect(walletService.refund).not.toHaveBeenCalled();
     expect(payment.status).toBe(PaymentStatus.REFUNDED);
     expect(payment.settlementStatus).toBe(PaymentSettlementStatus.REFUNDED);
@@ -833,7 +851,10 @@ describe('PaymentService', () => {
       menteeId: payment.userId,
       mentorId,
       status: BookingStatus.CONFIRMED,
-      schedulingDetails: { requestedDateTime: new Date(Date.now() + 3 * 60 * 60_000), duration: 90 },
+      schedulingDetails: {
+        requestedDateTime: new Date(Date.now() + 3 * 60 * 60_000),
+        duration: 90,
+      },
       paymentInfo: { sessionPrice: 200000, currency: 'VND' },
     } as any;
     paymentModel.findOne
@@ -844,10 +865,16 @@ describe('PaymentService', () => {
     walletService.cashRefund.mockResolvedValue({ _id: new Types.ObjectId() });
     walletService.creditMentorEarnings.mockResolvedValue({ _id: new Types.ObjectId() });
 
-    const result = await service.handleMentorBookingCancellation(booking, 'mentee', 'Cannot attend');
+    const result = await service.handleMentorBookingCancellation(
+      booking,
+      'mentee',
+      'Cannot attend',
+    );
 
     expect(result).toEqual({ status: 'refunded', refundAmount: 100000 });
-    expect(walletService.cashRefund).toHaveBeenCalledWith(expect.objectContaining({ amount: 100000 }));
+    expect(walletService.cashRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 100000 }),
+    );
     expect(payment.status).toBe(PaymentStatus.PAID);
     expect(payment.refundedAmount).toBe(100000);
     expect(payment.settlementBaseAmount).toBe(100000);
@@ -887,10 +914,13 @@ describe('PaymentService', () => {
 
     (bookingSessionModel as any).find.mockReturnValueOnce(createQuery([ownedBooking]));
     paymentModel.find.mockImplementation((filter: Record<string, any>) => {
-      const bookingIds = filter.bookingSessionId?.$in?.map((id: Types.ObjectId) => id.toString()) || [];
-      const visiblePayments = bookingIds.includes(ownedBookingId.toString()) && !bookingIds.includes(otherBookingId.toString())
-        ? [ownedPayment]
-        : [];
+      const bookingIds =
+        filter.bookingSessionId?.$in?.map((id: Types.ObjectId) => id.toString()) || [];
+      const visiblePayments =
+        bookingIds.includes(ownedBookingId.toString()) &&
+        !bookingIds.includes(otherBookingId.toString())
+          ? [ownedPayment]
+          : [];
       return createQuery(visiblePayments);
     });
 
@@ -955,17 +985,18 @@ describe('PaymentService', () => {
       status: PaymentStatus,
       settlementStatus: PaymentSettlementStatus,
       subtotalAmount: number,
-    ) => ({
-      _id: new Types.ObjectId(id),
-      bookingSessionId,
-      purpose: PaymentPurpose.MENTOR_BOOKING,
-      status,
-      subtotalAmount,
-      currency: 'VND',
-      platformFeeRate: 0.15,
-      settlementStatus,
-      paidAt: new Date(),
-    } as any);
+    ) =>
+      ({
+        _id: new Types.ObjectId(id),
+        bookingSessionId,
+        purpose: PaymentPurpose.MENTOR_BOOKING,
+        status,
+        subtotalAmount,
+        currency: 'VND',
+        platformFeeRate: 0.15,
+        settlementStatus,
+        paidAt: new Date(),
+      }) as any;
     const readyPayment = makePayment(
       '507f1f77bcf86cd799439091',
       readyBookingId,
@@ -1025,11 +1056,12 @@ describe('PaymentService', () => {
         (filter.bookingSessionId?.$in || []).map((id: Types.ObjectId) => id.toString()),
       );
       return createQuery(
-        allPayments.filter((payment) => (
-          visibleBookingIds.has(payment.bookingSessionId.toString()) &&
-          payment.status === filter.status &&
-          payment.settlementStatus === filter.settlementStatus
-        )),
+        allPayments.filter(
+          (payment) =>
+            visibleBookingIds.has(payment.bookingSessionId.toString()) &&
+            payment.status === filter.status &&
+            payment.settlementStatus === filter.settlementStatus,
+        ),
       );
     });
 
@@ -1090,7 +1122,11 @@ describe('PaymentService', () => {
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
     (bookingSessionModel as any).findByIdAndUpdate.mockReturnValue(createQuery(booking));
 
-    const result = await service.handleMentorBookingCancellation(booking, 'mentee', 'Cannot attend');
+    const result = await service.handleMentorBookingCancellation(
+      booking,
+      'mentee',
+      'Cannot attend',
+    );
 
     expect(result).toEqual({ status: 'refund_pending' });
     expect(payment.status).toBe(PaymentStatus.REFUND_PENDING);
@@ -1294,6 +1330,8 @@ describe('PaymentService', () => {
         status: 'success',
       }),
     );
+
+    // 🟢 FIX 2: Đoạn chạy thật này có option { new: true }, thêm vào câu lệnh khẳng định để pass test triệt để
     expect((bookingSessionModel as any).findByIdAndUpdate).toHaveBeenCalledWith(
       bookingId,
       expect.objectContaining({
@@ -1393,9 +1431,10 @@ describe('PaymentService', () => {
       if (key === 'PAYMENT_TEST_BANK_ENABLED') return 'true';
       return fallback;
     });
+    const userId = '507f1f77bcf86cd799439011';
     const payment = {
       _id: new Types.ObjectId('507f1f77bcf86cd799439099'),
-      userId: new Types.ObjectId('507f1f77bcf86cd799439011'),
+      userId: new Types.ObjectId(userId),
       provider: PaymentProvider.SEPAY,
       checkoutReference: 'EDU9F2A7C1B4D8E',
       amount: 500000,
@@ -1470,7 +1509,9 @@ describe('PaymentService', () => {
       save: jest.fn().mockResolvedValue(undefined),
     };
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
-    paymentTransactionModel.findOne.mockReturnValueOnce(createQuery({ eventId: 'sepay-bank:92705' }));
+    paymentTransactionModel.findOne.mockReturnValueOnce(
+      createQuery({ eventId: 'sepay-bank:92705' }),
+    );
 
     const result = await service.handleSepayBankWebhook('Apikey test-sepay-key', {
       id: 92705,

@@ -285,7 +285,6 @@ export class CareerFitResultService {
       .exec();
   }
 
-  // 🎯 FIX ANY ts(2304): Chuyển hóa toàn bộ any thô sang unknown ẩn danh phục vụ ESLint Strict
   async findAllInsights(): Promise<Record<string, unknown>[]> {
     const [insights, curated] = await Promise.all([
       this.careerInsightModel.find().exec(),
@@ -396,7 +395,6 @@ export class CareerFitResultService {
     }
   }
 
-  // 🎯 FIX ANY TIẾP THEO: Convert kiểu trả về so sánh sang Record mẫu chuẩn
   async generateComparisonReport(
     userId: string,
     careerIds: string[],
@@ -992,7 +990,7 @@ export class CareerFitResultService {
     const { limits } = await this.aiQuotaService.getPlanLimits(userId);
     const maxPerRun = this.toOptionalNonNegativeInteger(limits.maxCareerRecommendationsPerRun);
     const visiblePerRun =
-      this.toOptionalNonNegativeInteger(limits.maxCareerRecommendationsPerRun) ?? maxPerRun;
+      this.toOptionalNonNegativeInteger(limits.visibleCareerRecommendationsPerRun) ?? maxPerRun;
 
     return { maxPerRun, visiblePerRun };
   }
@@ -1064,7 +1062,6 @@ export class CareerFitResultService {
     return value;
   }
 
-  // 🎯 FIX ANY CUỐI CÙNG: Dọn sạch mọi any kẹt lại trong mảng pipeline dữ liệu thô
   async getStatistics(): Promise<Record<string, unknown>> {
     const stats = await this.careerFitResultModel.aggregate([
       {

@@ -49,7 +49,6 @@ export interface CareerRoadmap {
   }>;
 }
 
-// 🎯 BỔ SUNG: Interface chuẩn chỉnh cho cấu trúc Phân tích nghề nghiệp chi tiết
 export interface DetailedCareerAnalysis {
   overview: string;
   pros: string[];
@@ -248,60 +247,6 @@ Requirements:
     throw new Error('Gemini API error: Max retries reached');
   }
 
-  private isRetryableGeminiStatus(status: number): boolean {
-    return status === 429 || status >= 500;
-  }
-
-  private parseAnalysisResponse(responseText: string): AIAnalysisResult {
-    try {
-      let cleanJson = responseText.trim();
-
-      if (cleanJson.startsWith('```json')) {
-        cleanJson = cleanJson.replace(/```json\n?/, '').replace(/```$/, '');
-      }
-      if (cleanJson.startsWith('```')) {
-        cleanJson = cleanJson.replace(/```\n?/, '').replace(/```$/, '');
-      }
-
-      let parsed: Record<string, unknown>;
-      try {
-        // 🎯 FIX LỖI UNSAFE: Ép kiểu gián tiếp qua unknown
-        parsed = JSON.parse(cleanJson) as unknown as Record<string, unknown>;
-      } catch (parseError) {
-        this.logger.warn('JSON parse failed, attempting to fix truncated response...');
-        let fixedJson = cleanJson;
-        const openBraces = (fixedJson.match(/{/g) || []).length;
-        const closeBraces = (fixedJson.match(/}/g) || []).length;
-        const openBrackets = (fixedJson.match(/\[/g) || []).length;
-        const closeBrackets = (fixedJson.match(/]/g) || []).length;
-
-        for (let i = 0; i < openBrackets - closeBrackets; i++) {
-          fixedJson += ']';
-        }
-        for (let i = 0; i < openBraces - closeBraces; i++) {
-          fixedJson += '}';
-        }
-
-        try {
-          // 🎯 FIX LỖI UNSAFE: Ép kiểu gián tiếp qua unknown
-          parsed = JSON.parse(fixedJson) as unknown as Record<string, unknown>;
-          this.logger.log('Successfully fixed truncated JSON');
-        } catch {
-          throw parseError;
-        }
-      }
-
-      if (!parsed.personalityAnalysis || !parsed.careerRecommendations) {
-        throw new Error('Invalid analysis response structure');
-      }
-
-      return parsed as unknown as AIAnalysisResult;
-    } catch (error) {
-      this.logger.error('Failed to parse AI analysis response:', error);
-      return this.createFallbackAnalysis();
-    }
-  }
-
   private createFallbackAnalysis(): AIAnalysisResult {
     return {
       personalityAnalysis: {
@@ -347,6 +292,58 @@ Requirements:
         'Phân tích hoàn thành với dữ liệu hạn chế. Vui lòng hoàn thành đầy đủ bài đánh giá để có kết quả chính xác hơn.',
       confidence: 60,
     };
+  }
+
+  private isRetryableGeminiStatus(status: number): boolean {
+    return status === 429 || status >= 500;
+  }
+
+  private parseAnalysisResponse(responseText: string): AIAnalysisResult {
+    try {
+      let cleanJson = responseText.trim();
+
+      if (cleanJson.startsWith('```json')) {
+        cleanJson = cleanJson.replace(/```json\n?/, '').replace(/```$/, '');
+      }
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/```\n?/, '').replace(/```$/, '');
+      }
+
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(cleanJson) as unknown as Record<string, unknown>;
+      } catch (parseError) {
+        this.logger.warn('JSON parse failed, attempting to fix truncated response...');
+        let fixedJson = cleanJson;
+        const openBraces = (fixedJson.match(/{/g) || []).length;
+        const closeBraces = (fixedJson.match(/}/g) || []).length;
+        const openBrackets = (fixedJson.match(/\[/g) || []).length;
+        const closeBrackets = (fixedJson.match(/]/g) || []).length;
+
+        for (let i = 0; i < openBrackets - closeBrackets; i++) {
+          fixedJson += ']';
+        }
+        for (let i = 0; i < openBraces - closeBraces; i++) {
+          fixedJson += '}';
+        }
+
+        try {
+          parsed = JSON.parse(fixedJson) as unknown as Record<string, unknown>;
+          this.logger.log('Successfully fixed truncated JSON');
+        } catch {
+          throw parseError;
+        }
+      }
+
+      if (!parsed.personalityAnalysis || !parsed.careerRecommendations) {
+        throw new Error('Invalid analysis response structure');
+      }
+
+      return parsed as unknown as AIAnalysisResult;
+    } catch (error) {
+      this.logger.error('Failed to parse AI analysis response:', error);
+      return this.createFallbackAnalysis();
+    }
   }
 
   async generateCareerInsight(careerTitle: string, personalityTraits: string[]): Promise<string> {
@@ -408,7 +405,6 @@ Quy tắc:
       let clean = response.trim();
       if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
       if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
-
 
       return JSON.parse(clean) as unknown as DetailedCareerAnalysis;
     } catch (error) {
@@ -505,7 +501,6 @@ Quy tắc:
       if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
       if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
 
-      // 🎯 FIX LỖI UNSAFE: Ép kiểu thông qua unknown
       return JSON.parse(clean) as unknown as CareerRoadmap;
     } catch (error) {
       this.logger.error('Failed to generate career roadmap:', error);
@@ -595,7 +590,6 @@ Quy tắc:
       const text = await this.callGeminiAPI(prompt, 3, true);
       const cleanJson = this.stripJsonCodeFence(text);
 
-      // 🎯 FIX LỖI UNSAFE: Ép kiểu thông qua unknown
       return JSON.parse(cleanJson) as unknown as CareerSimulationData;
     } catch (error) {
       this.logger.error('Error generating career simulation:', error);
@@ -621,10 +615,63 @@ Quy tắc:
           ],
           typicalSchedule: [
             { time: '08:00', activity: 'Họp giao việc đầu ngày' },
+            { time: '10:00', activity: 'Thực hiện nhiệm vụ chuyên môn cơ bản' },
+            { time: '14:00', activity: 'Thảo luận tiến độ cùng Mentor' },
             { time: '17:00', activity: 'Báo cáo kết quả nghiên cứu' },
           ],
           challenges: ['Thích nghi môi trường doanh nghiệp'],
           tips: ['Chủ động trao đổi cùng Mentor'],
+        },
+        {
+          label: `Nhân viên Junior ${careerTitle}`,
+          salaryRange: '10-15 triệu VND',
+          yearRange: '1-3 năm',
+          dailyTasks: [
+            `Chịu trách nhiệm thực thi các tasks độc lập của nghề ${careerTitle}`,
+            'Phối hợp liên phòng ban',
+          ],
+          typicalSchedule: [
+            { time: '08:30', activity: 'Họp hằng ngày cùng Team' },
+            { time: '10:30', activity: 'Xử lý các công việc được giao trực tiếp' },
+            { time: '13:30', activity: 'Review giải pháp cùng Senior' },
+            { time: '17:00', activity: 'Đóng gói sản phẩm bàn giao kết quả' },
+          ],
+          challenges: ['Giải quyết bài toán thực tế phức tạp'],
+          tips: ['Tập trung tích lũy kiến thức chuyên sâu'],
+        },
+        {
+          label: `Chuyên viên Senior ${careerTitle}`,
+          salaryRange: '20-35 triệu VND',
+          yearRange: '3-5 năm',
+          dailyTasks: [
+            `Thiết kế hệ thống và giải pháp cốt lõi cho vị trí ${careerTitle}`,
+            'Hướng dẫn và đào tạo các Junior',
+          ],
+          typicalSchedule: [
+            { time: '09:00', activity: 'Đánh giá rủi ro hệ thống' },
+            { time: '10:00', activity: 'Code và tối ưu hóa giải pháp cốt lõi' },
+            { time: '14:00', activity: 'Mentor và hỗ trợ kỹ thuật cho Junior' },
+            { time: '16:30', activity: 'Họp chiến lược phát triển sản phẩm' },
+          ],
+          challenges: ['Chịu trách nhiệm chất lượng giải pháp kỹ thuật'],
+          tips: ['Rèn luyện kỹ năng quản lý và tư duy kiến trúc vĩ mô'],
+        },
+        {
+          label: `Lead/Manager ${careerTitle}`,
+          salaryRange: '40-70 triệu VND',
+          yearRange: '5+ năm',
+          dailyTasks: [
+            `Hoạch định chiến lược dài hạn cho bộ phận ${careerTitle}`,
+            'Quản lý nhân sự và ngân sách dự án',
+          ],
+          typicalSchedule: [
+            { time: '08:30', activity: 'Họp giao ban cùng ban giám đốc (C-Level)' },
+            { time: '10:30', activity: 'Phê duyệt ngân sách và kiến trúc dự án' },
+            { time: '14:00', activity: '1-on-1 phát triển con người cho Senior' },
+            { time: '16:00', activity: 'Xử lý các rủi ro vận hành khối' },
+          ],
+          challenges: ['Đảm bảo hiệu suất kinh doanh và tối ưu chi phí doanh nghiệp'],
+          tips: ['Cân bằng giữa kỹ năng quản trị con người và tầm nhìn công nghệ'],
         },
       ],
     };
@@ -642,7 +689,6 @@ Trả về đối tượng JSON phẳng không giải thích văn bản thừa.
       if (clean.startsWith('```json')) clean = clean.replace(/```json\n?/, '').replace(/```$/, '');
       if (clean.startsWith('```')) clean = clean.replace(/```\n?/, '').replace(/```$/, '');
 
-
       return JSON.parse(clean) as unknown as Record<string, unknown>;
     } catch (error) {
       this.logger.error('Failed to generate full career data:', error);
@@ -652,7 +698,6 @@ Trả về đối tượng JSON phẳng không giải thích văn bản thừa.
 
   public async generateText(prompt: string, isJson = false): Promise<string> {
     try {
-      // Truyền động biến cấu hình vào hàm lõi callGeminiAPI
       return await this.callGeminiAPI(prompt, 3, isJson);
     } catch (error) {
       this.logger.error('Lỗi khi Seeder gọi Gemini API:', error);
