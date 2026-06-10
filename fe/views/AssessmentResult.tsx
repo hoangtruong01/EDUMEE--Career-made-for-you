@@ -639,14 +639,6 @@ const AssessmentResult = () => {
             Dựa trên 20 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ
             trình sự nghiệp tối ưu nhất dành riêng cho bạn.
           </p>
-          <Button
-            variant="hero"
-            className="mt-7 gap-2 rounded-2xl px-6 py-5"
-            onClick={handleRetake}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Làm lại bài kiểm tra
-          </Button>
         </motion.div>
       </div>
 
@@ -972,6 +964,14 @@ const AssessmentResult = () => {
             </div>
           </motion.section>
         )}
+
+        {/* Retake Button at the bottom */}
+        <div className="flex justify-center pt-8 pb-4">
+          <Button variant="hero" className="gap-2 rounded-2xl px-8 py-6 text-sm shadow-lg shadow-primary/20" onClick={handleRetake}>
+            <RotateCcw className="h-4.5 w-4.5" />
+            Làm lại bài kiểm tra
+          </Button>
+        </div>
       </div>
     </div>
   );
