@@ -237,7 +237,7 @@ describe('BookingSessionService', () => {
     const menteeAvailabilityWindows = [
       {
         startAt: startAt.toISOString(),
-        endAt: new Date(startAt.getTime() + 30 * 60 * 1000).toISOString(),
+        endAt: trialEndAt.toISOString(),
       },
     ];
     const createDto = {
