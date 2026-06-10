@@ -1,7 +1,7 @@
+// be/scripts/seed-ai-plans.ts
+import mongoose, { Model } from 'mongoose';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
-import mongoose, { Model, Types } from 'mongoose';
 
 import { AiPlan, AiPlanSchema } from '../src/modules/ai/schema/ai-plan.schema';
 import { Payment, PaymentSchema } from '../src/modules/payment/schema/payment.schema';
@@ -239,14 +239,12 @@ async function migrateLegacyProPlan(
   }
 
   await Promise.all([
-    subscriptionModel.updateMany(
-      { planId: legacyProPlan._id as Types.ObjectId },
-      { $set: { planId: existingPlusPlan._id as Types.ObjectId } },
-    ).exec(),
-    paymentModel.updateMany(
-      { planId: legacyProPlan._id as Types.ObjectId },
-      { $set: { planId: existingPlusPlan._id as Types.ObjectId } },
-    ).exec(),
+    subscriptionModel
+      .updateMany({ planId: legacyProPlan._id }, { $set: { planId: existingPlusPlan._id } })
+      .exec(),
+    paymentModel
+      .updateMany({ planId: legacyProPlan._id }, { $set: { planId: existingPlusPlan._id } })
+      .exec(),
   ]);
 
   await aiPlanModel.deleteOne({ _id: legacyProPlan._id }).exec();
@@ -255,11 +253,7 @@ async function migrateLegacyProPlan(
 
 async function upsertPlans(aiPlanModel: AiPlanDocumentModel): Promise<void> {
   for (const plan of PLAN_SEEDS) {
-    await aiPlanModel.updateOne(
-      { name: plan.name },
-      { $set: plan },
-      { upsert: true },
-    ).exec();
+    await aiPlanModel.updateOne({ name: plan.name }, { $set: plan }, { upsert: true }).exec();
     console.log(`[seed:ai-plans] Upserted ${plan.name}.`);
   }
 }
@@ -267,23 +261,24 @@ async function upsertPlans(aiPlanModel: AiPlanDocumentModel): Promise<void> {
 export async function backfillLegacyVisibleCareerRecommendationLimits(
   aiPlanModel: AiPlanDocumentModel,
 ): Promise<number> {
-  const result = await aiPlanModel.updateMany(
-    {
-      'limits.maxCareerRecommendationsPerRun': { $type: 'number' },
-      $or: [
-        { 'limits.visibleCareerRecommendationsPerRun': { $exists: false } },
-        { 'limits.visibleCareerRecommendationsPerRun': null },
-      ],
-    },
-    [
+  const result = await aiPlanModel
+    .updateMany(
       {
-        $set: {
-          'limits.visibleCareerRecommendationsPerRun':
-            '$limits.maxCareerRecommendationsPerRun',
-        },
+        'limits.maxCareerRecommendationsPerRun': { $type: 'number' },
+        $or: [
+          { 'limits.visibleCareerRecommendationsPerRun': { $exists: false } },
+          { 'limits.visibleCareerRecommendationsPerRun': null },
+        ],
       },
-    ],
-  ).exec();
+      [
+        {
+          $set: {
+            'limits.visibleCareerRecommendationsPerRun': '$limits.maxCareerRecommendationsPerRun',
+          },
+        },
+      ],
+    )
+    .exec();
 
   const modifiedCount = result.modifiedCount || 0;
   if (modifiedCount > 0) {
@@ -360,15 +355,17 @@ async function main(): Promise<void> {
   await backfillLegacyVisibleCareerRecommendationLimits(aiPlanModel);
   await backfillLegacyMentorBookingEntitlements(aiPlanModel);
 
-  await aiPlanModel.updateMany(
-    { name: { $nin: PLAN_SEEDS.map((plan) => plan.name) }, isDefaultPlan: true },
-    { $set: { isDefaultPlan: false } },
-  ).exec();
+  await aiPlanModel
+    .updateMany(
+      { name: { $nin: PLAN_SEEDS.map((plan) => plan.name) }, isDefaultPlan: true },
+      { $set: { isDefaultPlan: false } },
+    )
+    .exec();
 
   console.log('[seed:ai-plans] Completed.');
 }
 
-if (require.main === module) {
+if (require.main === (module as any)) {
   void main()
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -376,7 +373,7 @@ if (require.main === module) {
       process.exitCode = 1;
     })
     .finally(async () => {
-      if (mongoose.connection.readyState !== 0) {
+      if (mongoose.connection.readyState !== mongoose.ConnectionStates.disconnected) {
         await mongoose.disconnect();
       }
     });

@@ -11,6 +11,15 @@ const ACTIVE_SLOT_BOOKING_STATUSES = [
   'rescheduled',
 ];
 
+type AwaitingBookingSlot = {
+  _id: mongoose.Types.ObjectId;
+  availabilitySlotId?: mongoose.Types.ObjectId | null;
+};
+
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
+
 function getDatabaseUri(): string {
   const uri = process.env.DATABASE_URI?.trim() || process.env.MONGODB_URI?.trim();
   if (!uri) {
@@ -24,7 +33,7 @@ async function migrateBookingSlotIndex(): Promise<void> {
   const collection = mongoose.connection.collection(COLLECTION_NAME);
   const availabilityCollection = mongoose.connection.collection(AVAILABILITY_COLLECTION_NAME);
 
-  const indexes = await collection.indexes();
+  const indexes = (await collection.indexes()) as Array<{ name?: string }>;
   const hasLegacyIndex = indexes.some((index) => index.name === LEGACY_INDEX_NAME);
 
   if (hasLegacyIndex) {
@@ -34,8 +43,10 @@ async function migrateBookingSlotIndex(): Promise<void> {
     console.log(`Legacy index ${LEGACY_INDEX_NAME} was not present.`);
   }
 
-  const refreshedIndexes = await collection.indexes();
-  const hasActiveSlotIndex = refreshedIndexes.some((index) => index.name === ACTIVE_SLOT_INDEX_NAME);
+  const refreshedIndexes = (await collection.indexes()) as Array<{ name?: string }>;
+  const hasActiveSlotIndex = refreshedIndexes.some(
+    (index) => index.name === ACTIVE_SLOT_INDEX_NAME,
+  );
 
   if (hasActiveSlotIndex) {
     await collection.dropIndex(ACTIVE_SLOT_INDEX_NAME);
@@ -56,7 +67,7 @@ async function migrateBookingSlotIndex(): Promise<void> {
   console.log(`Created partial unique index ${ACTIVE_SLOT_INDEX_NAME}.`);
 
   const awaitingBookings = await collection
-    .find(
+    .find<AwaitingBookingSlot>(
       {
         status: 'awaiting_payment',
         availabilitySlotId: { $exists: true, $ne: null },
@@ -68,10 +79,10 @@ async function migrateBookingSlotIndex(): Promise<void> {
   const bookingIdCandidates = awaitingBookings.flatMap((booking) => [
     booking._id,
     booking._id?.toString?.(),
-  ]).filter(Boolean);
+  ]).filter(isPresent);
   const slotIds = awaitingBookings
     .map((booking) => booking.availabilitySlotId)
-    .filter(Boolean);
+    .filter(isPresent);
 
   if (bookingIdCandidates.length && slotIds.length) {
     const releaseResult = await availabilityCollection.updateMany(
@@ -92,12 +103,12 @@ async function migrateBookingSlotIndex(): Promise<void> {
 }
 
 migrateBookingSlotIndex()
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (mongoose.connection.readyState !== 0) {
+    if ((mongoose.connection.readyState as number) !== 0) {
       await mongoose.disconnect();
     }
   });

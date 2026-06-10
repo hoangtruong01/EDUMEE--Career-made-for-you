@@ -1,9 +1,9 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
-import { Home, Compass, Map, Users, MessageSquare, User } from 'lucide-react-native';
-import { COLORS } from '../../src/theme';
 import { BlurView } from 'expo-blur';
-import { StyleSheet, Platform } from 'react-native';
+import { Tabs } from 'expo-router';
+import { Compass, Home, Map, MessageSquare, User, Users } from 'lucide-react-native';
+import React from 'react';
+import { Platform, StyleSheet } from 'react-native';
+import { COLORS } from '../../src/theme';
 
 export default function TabLayout() {
   return (
@@ -41,12 +41,19 @@ export default function TabLayout() {
         },
         // Show labels only when active for a modern minimal look with 6 tabs
         tabBarShowLabel: true,
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Trang chủ',
           tabBarIcon: ({ color }) => <Home size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="orientation"
+        options={{
+          title: 'Lộ trình',
         }}
       />
       <Tabs.Screen
@@ -87,5 +94,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-
-

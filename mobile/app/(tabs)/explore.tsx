@@ -1,38 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator,
-  RefreshControl,
-  Dimensions,
-  Platform,
-  Alert
-} from 'react-native';
-import { COLORS, SPACING, RADIUS } from '../../src/theme';
-import { GlassView } from '../../src/components/GlassView';
-import { 
-  Search, 
-  Sparkles, 
-  SlidersHorizontal, 
-  ArrowRight, 
-  Scale, 
-  Check, 
-  Plus, 
-  X, 
-  TrendingUp, 
-  Coins, 
-  ShieldAlert,
-  ChevronDown,
-  ChevronUp,
-  Award,
-  Clock,
-  Compass
+import {
+    Award,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Compass,
+    Plus,
+    Scale,
+    Search,
+    SlidersHorizontal,
+    Sparkles,
+    TrendingUp,
+    X
 } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { GlassView } from '../../src/components/GlassView';
 import { api } from '../../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../../src/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -94,13 +90,13 @@ export default function ExploreScreen() {
           careersData = careersResponse.data;
         } else if (careersResponse.data.success && careersResponse.data.data) {
           const innerData = careersResponse.data.data;
-          careersData = Array.isArray(innerData) 
-            ? innerData 
+          careersData = Array.isArray(innerData)
+            ? innerData
             : (Array.isArray(innerData.data) ? innerData.data : []);
         } else if (careersResponse.data.data) {
           const innerData = careersResponse.data.data;
-          careersData = Array.isArray(innerData) 
-            ? innerData 
+          careersData = Array.isArray(innerData)
+            ? innerData
             : (Array.isArray(innerData.data) ? innerData.data : []);
         }
       }
@@ -247,8 +243,8 @@ export default function ExploreScreen() {
           transferableSkills: ['Tư duy phản biện', 'Giải quyết vấn đề', 'Làm việc nhóm', 'Giao tiếp'],
           gapAnalysis: selectedCareers.map(c => ({
             careerId: c.id,
-            missingSkills: c.title.includes('CNTT') || c.title.includes('Kỹ sư') 
-              ? ['Python', 'SQL', 'System Architecture'] 
+            missingSkills: c.title.includes('CNTT') || c.title.includes('Kỹ sư')
+              ? ['Python', 'SQL', 'System Architecture']
               : ['UI/UX Principles', 'Figma', 'User Research']
           }))
         },
@@ -297,7 +293,7 @@ export default function ExploreScreen() {
   const filteredCareers = careers.filter(career => {
     const matchesSearch = career.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           career.category.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     if (!matchesSearch) return false;
     if (selectedFilter === 'all') return true;
     if (selectedFilter === 'match') return career.match >= 80;
@@ -305,10 +301,10 @@ export default function ExploreScreen() {
     if (selectedFilter === 'salary') {
       const maxSal = parseInt(career.salary.replace(/[^0-9]/g, '')) || 0;
       return maxSal >= 20 || career.salary.includes('M') && (
-        career.salary.includes('25M') || 
-        career.salary.includes('30M') || 
-        career.salary.includes('35M') || 
-        career.salary.includes('45M') || 
+        career.salary.includes('25M') ||
+        career.salary.includes('30M') ||
+        career.salary.includes('35M') ||
+        career.salary.includes('45M') ||
         career.salary.includes('60M')
       );
     }
@@ -329,14 +325,14 @@ export default function ExploreScreen() {
       {/* Dynamic Segment Header */}
       <View style={styles.segmentHeader}>
         <View style={styles.segmentWrapper}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => setActiveTab('explore')}
             style={[styles.segmentBtn, activeTab === 'explore' && styles.segmentBtnActive]}
           >
             <Compass size={16} color={activeTab === 'explore' ? COLORS.primary : COLORS.muted} style={{ marginRight: 6 }} />
             <Text style={[styles.segmentBtnText, activeTab === 'explore' && styles.segmentBtnTextActive]}>Khám phá nghề</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               setActiveTab('compare');
               if (compareIds.length >= 2 && !compareData) {
@@ -356,8 +352,8 @@ export default function ExploreScreen() {
         </View>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.content} 
+      <ScrollView
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           activeTab === 'explore' ? (
@@ -391,9 +387,9 @@ export default function ExploreScreen() {
             </View>
 
             {/* Filter Pills */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
               style={styles.filtersScroll}
               contentContainerStyle={styles.filtersContainer}
             >
@@ -429,7 +425,7 @@ export default function ExploreScreen() {
 
             {/* Career List */}
             <Text style={styles.sectionTitle}>Nghề nghiệp phù hợp ({filteredCareers.length})</Text>
-            
+
             <View style={styles.careerList}>
               {filteredCareers.map((item) => {
                 const isSelected = compareIds.includes(item.id);
@@ -443,10 +439,10 @@ export default function ExploreScreen() {
                         <Text style={styles.cardTitle}>{item.title}</Text>
                         <Text style={styles.cardCategory}>{item.category}</Text>
                       </View>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         onPress={() => toggleCompareSelect(item.id)}
                         style={[
-                          styles.checkboxBtn, 
+                          styles.checkboxBtn,
                           isSelected && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
                         ]}
                       >
@@ -483,7 +479,7 @@ export default function ExploreScreen() {
                 <Scale size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
                 <Text style={styles.compareSelectorTitle}>So sánh định hướng (Tối đa 3)</Text>
               </View>
-              
+
               <Text style={styles.compareSelectorDesc}>
                 Chọn các nghề nghiệp ở tab Khám phá nghề để đưa vào bảng so sánh phân tích chuyên sâu của AI.
               </Text>
@@ -507,8 +503,8 @@ export default function ExploreScreen() {
               )}
 
               {compareIds.length >= 2 && (
-                <TouchableOpacity 
-                  onPress={handleCompareSubmit} 
+                <TouchableOpacity
+                  onPress={handleCompareSubmit}
                   disabled={isComparing}
                   style={styles.runCompareBtn}
                 >
@@ -537,7 +533,7 @@ export default function ExploreScreen() {
               <View style={styles.comparisonResultsContainer}>
                 {/* 1. Score Breakdown Accordion */}
                 <GlassView style={styles.resultBlock}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setExpandedSection(expandedSection === 'score' ? null : 'score')}
                     style={styles.resultBlockHeader}
                   >
@@ -556,7 +552,7 @@ export default function ExploreScreen() {
                               <Text style={styles.compareItemTitle}>{item.careerTitle}</Text>
                               <Text style={styles.compareItemOverallScore}>{item.overallScore}đ</Text>
                             </View>
-                            
+
                             {/* Skills score */}
                             <View style={styles.progressRow}>
                               <Text style={styles.progressLabel}>Kỹ năng phù hợp</Text>
@@ -592,7 +588,7 @@ export default function ExploreScreen() {
 
                 {/* 2. Skills Alignment Accordion */}
                 <GlassView style={styles.resultBlock}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setExpandedSection(expandedSection === 'skills' ? null : 'skills')}
                     style={styles.resultBlockHeader}
                   >
@@ -636,7 +632,7 @@ export default function ExploreScreen() {
 
                 {/* 3. Market Demand Accordion */}
                 <GlassView style={styles.resultBlock}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setExpandedSection(expandedSection === 'market' ? null : 'market')}
                     style={styles.resultBlockHeader}
                   >

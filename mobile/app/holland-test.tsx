@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  Pressable, 
-  ActivityIndicator, 
-  Dimensions,
-  Animated,
-  Platform,
-  Alert,
-  TouchableOpacity
-} from 'react-native';
+// mobile/app/holland-test.tsx
 import { useRouter } from 'expo-router';
-import { COLORS, SPACING, RADIUS } from '../src/theme';
+import { ArrowLeft, Check, ChevronRight, Rocket } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { GlassView } from '../src/components/GlassView';
-import { ArrowLeft, Check, X, ChevronRight, Rocket } from 'lucide-react-native';
 import { api } from '../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../src/theme';
 
 const { width } = Dimensions.get('window');
 
 interface Question {
   _id: string;
+  id?: string; // 🟢 ĐÃ FIX: Bổ sung trường id tùy chọn do cơ chế Serialization của NestJS
   questionText: string;
   dimension: string;
   options: {
@@ -38,7 +39,7 @@ export default function HollandTestScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  
+
   const fadeAnim = useState(new Animated.Value(1))[0];
   const progressAnim = useState(new Animated.Value(0))[0];
 
@@ -70,7 +71,7 @@ export default function HollandTestScreen() {
   const fetchQuestions = async () => {
     try {
       const response = await api.get('/assessment-questions', {
-        params: { limit: 100 }
+        params: { limit: 100 },
       });
       setQuestions(response.data.data.questions);
     } catch (error) {
@@ -85,9 +86,12 @@ export default function HollandTestScreen() {
     if (!selectedOption) return;
 
     const newAnswers = [...answers];
+    // 🟢 ĐÃ FIX: Trích xuất ID an toàn (fallback) để chống chuỗi lạc danh undefined
+    const qId = questions[currentIndex].id || questions[currentIndex]._id;
+
     newAnswers[currentIndex] = {
-      questionId: questions[currentIndex]._id,
-      answer: selectedOption,
+      questionId: String(qId),
+      answer: String(selectedOption),
     };
     setAnswers(newAnswers);
 
@@ -97,7 +101,7 @@ export default function HollandTestScreen() {
         Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
-      
+
       setTimeout(() => {
         setCurrentIndex(currentIndex + 1);
         setSelectedOption(newAnswers[currentIndex + 1]?.answer || null);
@@ -124,18 +128,44 @@ export default function HollandTestScreen() {
 
     setIsSubmitting(true);
     try {
-      const answersForSession = finalAnswers.map((answer) => ({
-        ...answer,
-        sessionId,
+      // 🟢 ĐÃ FIX: Chuẩn hóa payload khớp khít 100% với BulkAnswerDto[] phía NestJS Backend
+      const answersForSession = finalAnswers.map((item) => ({
+        sessionId: String(sessionId),
+        questionId: String(item.questionId),
+        answer: String(item.answer),
       }));
+
+      // In thử cấu trúc Json ra Terminal của Expo để giám sát dữ liệu thô bắn đi
+      console.log(
+        '📦 PAYLOAD HOLLAND TEST MOBILE GỬI LÊN BE:',
+        JSON.stringify(answersForSession, null, 2),
+      );
 
       await api.post('/assessment-answers/bulk', answersForSession);
       await api.post('/career-fit-results/generate-my-analysis');
       await api.post(`/assessment-sessions/${sessionId}/finish`);
+
+      // Đồng bộ cờ Onboarding mở khóa tài khoản tương tự luồng xử lý trên bản Web
+      await api.patch('/users/me', { onboarding_completed: true });
+
       router.replace('/test-result');
     } catch (error: any) {
       console.error('Submit test error:', error);
-      Alert.alert('Lỗi', 'Gửi bài làm thất bại. Vui lòng thử lại.');
+
+      // 🟢 THÊM LOG: In tường minh chi tiết bắt lỗi từ Class-validator trả về từ server
+      if (error.response?.data) {
+        console.log(
+          '❌ CHI TIẾT PHẢN HỒI LỖI TỪ SERVER BE:',
+          JSON.stringify(error.response.data, null, 2),
+        );
+      }
+
+      const serverMessage =
+        error.response?.data?.message || 'Gửi bài làm thất bại. Vui lòng thử lại.';
+      Alert.alert(
+        'Lỗi nộp bài',
+        Array.isArray(serverMessage) ? serverMessage.join('\n') : String(serverMessage),
+      );
       setIsSubmitting(false);
     }
   };
@@ -159,14 +189,16 @@ export default function HollandTestScreen() {
         </Pressable>
         <View style={styles.progressContainer}>
           <View style={styles.progressBarBackground}>
-            <Animated.View 
+            <Animated.View
               style={[
-                styles.progressBarFill, 
-                { width: progressAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0%', '100%']
-                })}
-              ]} 
+                styles.progressBarFill,
+                {
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                  }),
+                },
+              ]}
             />
           </View>
           <Text style={styles.progressText}>
@@ -183,37 +215,38 @@ export default function HollandTestScreen() {
 
         <View style={styles.optionsContainer}>
           {currentQuestion?.options.map((option) => (
-            <Pressable 
+            <Pressable
               key={option.value}
               onPress={() => setSelectedOption(option.value)}
               style={[
-                styles.optionButton, 
-                selectedOption === option.value && styles.optionButtonSelected
+                styles.optionButton,
+                selectedOption === option.value && styles.optionButtonSelected,
               ]}
             >
-              <View style={[
-                styles.radioButton,
-                selectedOption === option.value && styles.radioButtonSelected
-              ]}>
+              <View
+                style={[
+                  styles.radioButton,
+                  selectedOption === option.value && styles.radioButtonSelected,
+                ]}
+              >
                 {selectedOption === option.value && <Check size={12} color="#fff" />}
               </View>
-              <Text style={[
-                styles.optionLabel,
-                selectedOption === option.value && styles.optionLabelSelected
-              ]}>
+              <Text
+                style={[
+                  styles.optionLabel,
+                  selectedOption === option.value && styles.optionLabelSelected,
+                ]}
+              >
                 {option.value}. {option.label}
               </Text>
             </Pressable>
           ))}
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={handleNext}
           disabled={!selectedOption}
-          style={[
-            styles.nextButton,
-            !selectedOption && styles.nextButtonDisabled
-          ]}
+          style={[styles.nextButton, !selectedOption && styles.nextButtonDisabled]}
         >
           <Text style={styles.nextButtonText}>
             {currentIndex === questions.length - 1 ? 'Xem kết quả' : 'Tiếp theo'}
@@ -390,5 +423,5 @@ const styles = StyleSheet.create({
   },
   rocketIcon: {
     marginTop: SPACING.xxl,
-  }
+  },
 });

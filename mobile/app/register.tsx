@@ -1,22 +1,31 @@
-import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  KeyboardAvoidingView, 
-  Platform, 
-  ImageBackground,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  ScrollView
-} from 'react-native';
+// app/register.tsx
 import { useRouter } from 'expo-router';
-import { COLORS, SPACING, RADIUS } from '../src/theme';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  Lock,
+  Mail,
+  User,
+  UserCircle2,
+} from 'lucide-react-native';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { GlassView } from '../src/components/GlassView';
-import { Mail, Lock, User, Calendar, ArrowLeft, ArrowRight, UserCircle2 } from 'lucide-react-native';
 import { api } from '../src/services/api';
+import { COLORS, RADIUS, SPACING } from '../src/theme';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -31,8 +40,8 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRegister = async () => {
-    const { name, email, password, confirmPassword, gender, date_of_birth } = formData;
-    
+    const { name, email, password, confirmPassword } = formData;
+
     if (!name || !email || !password || !confirmPassword) {
       const msg = 'Vui lòng điền đầy đủ các thông tin bắt buộc';
       Platform.OS === 'web' ? alert(msg) : Alert.alert('Lỗi', msg);
@@ -70,15 +79,20 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.flex}>
-      <ImageBackground 
-        source={{ uri: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070&auto=format&fit=crop' }}
+      <ImageBackground
+        source={{
+          uri: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070&auto=format&fit=crop',
+        }}
         style={styles.backgroundImage}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.container}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <Pressable onPress={() => router.back()} style={styles.backButton}>
               <ArrowLeft size={24} color={COLORS.foreground} />
             </Pressable>
@@ -90,7 +104,7 @@ export default function RegisterScreen() {
 
             <GlassView style={styles.formContainer}>
               <Text style={styles.welcomeText}>Tạo tài khoản</Text>
-              
+
               <View style={styles.inputGroup}>
                 <View style={styles.inputWrapper}>
                   <User size={20} color={COLORS.muted} style={styles.inputIcon} />
@@ -99,7 +113,9 @@ export default function RegisterScreen() {
                     placeholderTextColor={COLORS.muted}
                     style={styles.input}
                     value={formData.name}
-                    onChangeText={(val) => setFormData({...formData, name: val})}
+                    onChangeText={(val) => setFormData({ ...formData, name: val })}
+                    autoCorrect={false}
+                    spellCheck={false}
                   />
                 </View>
 
@@ -110,9 +126,11 @@ export default function RegisterScreen() {
                     placeholderTextColor={COLORS.muted}
                     style={styles.input}
                     value={formData.email}
-                    onChangeText={(val) => setFormData({...formData, email: val})}
+                    onChangeText={(val) => setFormData({ ...formData, email: val })}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    autoCorrect={false}
+                    spellCheck={false}
                   />
                 </View>
 
@@ -123,8 +141,10 @@ export default function RegisterScreen() {
                     placeholderTextColor={COLORS.muted}
                     style={styles.input}
                     value={formData.password}
-                    onChangeText={(val) => setFormData({...formData, password: val})}
+                    onChangeText={(val) => setFormData({ ...formData, password: val })}
                     secureTextEntry
+                    autoCorrect={false}
+                    spellCheck={false}
                   />
                 </View>
 
@@ -135,8 +155,10 @@ export default function RegisterScreen() {
                     placeholderTextColor={COLORS.muted}
                     style={styles.input}
                     value={formData.confirmPassword}
-                    onChangeText={(val) => setFormData({...formData, confirmPassword: val})}
+                    onChangeText={(val) => setFormData({ ...formData, confirmPassword: val })}
                     secureTextEntry
+                    autoCorrect={false}
+                    spellCheck={false}
                   />
                 </View>
 
@@ -148,7 +170,9 @@ export default function RegisterScreen() {
                       placeholderTextColor={COLORS.muted}
                       style={styles.input}
                       value={formData.gender}
-                      onChangeText={(val) => setFormData({...formData, gender: val})}
+                      onChangeText={(val) => setFormData({ ...formData, gender: val })}
+                      autoCorrect={false} // 🟢
+                      spellCheck={false}
                     />
                   </View>
                   <View style={[styles.inputWrapper, { flex: 1 }]}>
@@ -158,18 +182,20 @@ export default function RegisterScreen() {
                       placeholderTextColor={COLORS.muted}
                       style={styles.input}
                       value={formData.date_of_birth}
-                      onChangeText={(val) => setFormData({...formData, date_of_birth: val})}
+                      onChangeText={(val) => setFormData({ ...formData, date_of_birth: val })}
+                      autoCorrect={false}
+                      spellCheck={false}
                     />
                   </View>
                 </View>
               </View>
 
-              <Pressable 
+              <Pressable
                 onPress={handleRegister}
                 disabled={isLoading}
                 style={({ pressed }) => [
                   styles.registerButton,
-                  { opacity: pressed || isLoading ? 0.7 : 1 }
+                  { opacity: pressed || isLoading ? 0.7 : 1 },
                 ]}
               >
                 {isLoading ? (
@@ -197,56 +223,22 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  backgroundImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
-  },
-  scrollContent: {
-    padding: SPACING.lg,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  backButton: {
-    marginBottom: SPACING.lg,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: COLORS.foreground,
-    letterSpacing: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginTop: -SPACING.xs,
-  },
-  formContainer: {
-    padding: SPACING.xl,
-    borderRadius: RADIUS.xl * 1.5,
-  },
+  flex: { flex: 1 },
+  backgroundImage: { flex: 1, width: '100%', height: '100%' },
+  container: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)' },
+  scrollContent: { padding: SPACING.lg, paddingTop: 60, paddingBottom: 40 },
+  backButton: { marginBottom: SPACING.lg },
+  header: { alignItems: 'center', marginBottom: SPACING.xl },
+  title: { fontSize: 40, fontWeight: '900', color: COLORS.foreground, letterSpacing: 4 },
+  subtitle: { fontSize: 14, color: COLORS.primary, fontWeight: '600', marginTop: -SPACING.xs },
+  formContainer: { padding: SPACING.xl, borderRadius: RADIUS.xl * 1.5 },
   welcomeText: {
     fontSize: 22,
     fontWeight: '700',
     color: COLORS.foreground,
     marginBottom: SPACING.xl,
   },
-  inputGroup: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
+  inputGroup: { gap: SPACING.md, marginBottom: SPACING.xl },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -256,12 +248,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: SPACING.md,
   },
-  row: {
-    flexDirection: 'row',
-  },
-  inputIcon: {
-    marginRight: SPACING.sm,
-  },
+  row: { flexDirection: 'row' },
+  inputIcon: { marginRight: SPACING.sm },
   input: {
     flex: 1,
     height: 50,
@@ -269,11 +257,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    ...Platform.select({
-      web: {
-        outlineStyle: 'none' as any,
-      },
-    }),
+    ...Platform.select({ web: { outlineStyle: 'none' as any } }),
   },
   registerButton: {
     height: 56,
@@ -281,25 +265,17 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
+
     justifyContent: 'center',
     marginTop: SPACING.sm,
   },
-  registerButtonText: {
-    color: COLORS.foreground,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  registerButtonText: { color: COLORS.foreground, fontSize: 16, fontWeight: '600' },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: SPACING.xl,
   },
-  footerText: {
-    color: COLORS.muted,
-  },
-  loginLink: {
-    color: COLORS.secondary,
-    fontWeight: '700',
-  },
+  footerText: { color: COLORS.muted },
+  loginLink: { color: COLORS.secondary, fontWeight: '700' },
 });

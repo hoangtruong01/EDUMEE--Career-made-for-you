@@ -1,20 +1,21 @@
-import {
-  Injectable,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
-import { AiFeature, AiUsageLog, AiUsageLogDocument } from '../schema/ai-usage-logs.schema';
-import { CareerFitResult, CareerFitResultDocument } from '../../assessment/schemas/career-fit-result.schema';
+import {
+  AssessmentSession,
+  AssessmentSessionDocument,
+} from '../../assessment/schemas/assessment-sesions.schema';
+import {
+  CareerFitResult,
+  CareerFitResultDocument,
+} from '../../assessment/schemas/career-fit-result.schema';
 import {
   SubscriptionStatus,
   UserSubscription,
   UserSubscriptionDocument,
 } from '../../users/schemas/user-subscriptions';
-
+import { AiPlan, AiPlanDocument } from '../schema/ai-plan.schema';
+import { AiFeature, AiUsageLog, AiUsageLogDocument } from '../schema/ai-usage-logs.schema';
 type LimitKey =
   | 'assessmentsPerMonth'
   | 'chatMessagesPerMonth'
@@ -42,7 +43,6 @@ const FEATURE_TO_FLAG_KEY: Partial<Record<AiFeature, keyof AiPlan['features']>> 
   [AiFeature.MENTOR_BOOKING]: 'mentorBooking',
   [AiFeature.CHATBOT]: 'aiChatbot',
 };
-
 type QuotaPeriodContext = {
   periodStart: Date;
   periodEnd: Date;
@@ -87,6 +87,8 @@ export class AiQuotaService {
     private readonly aiPlanModel: Model<AiPlanDocument>,
     @InjectModel(AiUsageLog.name)
     private readonly aiUsageLogModel: Model<AiUsageLogDocument>,
+    @InjectModel(AssessmentSession.name)
+    private readonly assessmentSessionModel: Model<AssessmentSessionDocument>,
     @InjectModel(CareerFitResult.name)
     private readonly careerFitResultModel: Model<CareerFitResultDocument>,
   ) {}
@@ -94,24 +96,29 @@ export class AiQuotaService {
   async getActivePlanForUser(userId: string): Promise<AiPlanDocument | null> {
     if (!Types.ObjectId.isValid(userId)) return null;
     await this.expireStaleSubscriptions(userId);
-    const sub = await this.findActiveSubscription(userId);
+    const sub = await this.userSubscriptionModel
+      .findOne({ userId: new Types.ObjectId(userId), status: SubscriptionStatus.ACTIVE })
+      .sort({ startDate: -1, createdAt: -1 })
+      .exec();
     if (!sub) return null;
-    await this.ensureSubscriptionQuotaPeriod(sub, new Date());
     return this.aiPlanModel.findById(sub.planId).exec();
   }
-
-  async getPlanForUserOrFree(userId: string): Promise<AiPlanDocument | null> {
-    const context = await this.getPlanContext(userId);
-    return context?.plan || null;
-  }
-
-  async assertFeatureAvailable(userId: string, feature: AiFeature, now = new Date()): Promise<void> {
+  async assertFeatureAvailable(
+    userId: string,
+    feature: AiFeature,
+    now = new Date(),
+  ): Promise<void> {
     const context = await this.getPlanContext(userId, now);
     if (!context) {
       this.throwPlanRequired(feature);
     }
 
     this.assertFeatureEnabled(context.plan, feature);
+  }
+  async getPlanForUserOrFree(userId: string): Promise<AiPlanDocument | null> {
+    const active = await this.getActivePlanForUser(userId);
+    if (active) return active;
+    return this.aiPlanModel.findOne({ isDefaultPlan: true }).exec();
   }
 
   async checkQuota(userId: string, feature: AiFeature, now = new Date()): Promise<void> {
@@ -146,7 +153,13 @@ export class AiQuotaService {
       this.throwQuotaExceeded(plan, this.buildQuotaView(feature, limit, used, quotaPeriod));
     }
   }
+  // async checkQuota(userId: string, feature: AiFeature): Promise<void> {
+  //   // 🚀 GIẢI PHÁP VƯỢT RÀO ESLINT & BYPASS QUOTA TUYỆT ĐỐI
+  //   await Promise.resolve();
 
+  //   this.logger.log(`[Bypass Quota Active] User ${userId} requested feature: ${feature}`);
+  //   return;
+  // }
   async consumeQuota(
     userId: string,
     feature: AiFeature,
@@ -239,7 +252,7 @@ export class AiQuotaService {
     usage: QuotaUsageInput = { requestCount: 1, tokensUsed: 0 },
     now = new Date(),
   ): Promise<T> {
-    await this.checkQuota(userId, feature, now);
+    await this.checkQuota(userId, feature);
     const result = await action();
     await this.consumeQuota(userId, feature, usage, now);
     return result;
@@ -298,7 +311,8 @@ export class AiQuotaService {
         planName: plan.name,
         quota: this.toQuotaErrorView(quota),
         nextResetAt: quota.nextResetAt,
-        recommendedAction: quota.resetPolicy === 'periodic' ? 'wait_for_reset_or_upgrade' : 'upgrade_plan',
+        recommendedAction:
+          quota.resetPolicy === 'periodic' ? 'wait_for_reset_or_upgrade' : 'upgrade_plan',
       },
       HttpStatus.TOO_MANY_REQUESTS,
     );
@@ -338,7 +352,9 @@ export class AiQuotaService {
     };
   }
 
-  private resolveCurrentPlanCode(plan: Pick<AiPlan, 'name' | 'price' | 'isDefaultPlan' | 'features' | 'seatLimit'>): 'free' | 'plus' | 'business' {
+  private resolveCurrentPlanCode(
+    plan: Pick<AiPlan, 'name' | 'price' | 'isDefaultPlan' | 'features' | 'seatLimit'>,
+  ): 'free' | 'plus' | 'business' {
     if (plan.isDefaultPlan || (typeof plan.price === 'number' && plan.price <= 0)) {
       return 'free';
     }
@@ -357,7 +373,11 @@ export class AiQuotaService {
     return { month: now.getMonth() + 1, year: now.getFullYear() };
   }
 
-  async getRemainingQuota(userId: string, feature: AiFeature, now = new Date()): Promise<QuotaView> {
+  async getRemainingQuota(
+    userId: string,
+    feature: AiFeature,
+    now = new Date(),
+  ): Promise<QuotaView> {
     const context = await this.getPlanContext(userId, now);
     if (!context) this.throwPlanRequired(feature);
     const { plan, quotaPeriod } = context;
@@ -425,7 +445,7 @@ export class AiQuotaService {
     const used = usage?.requestCount || 0;
 
     const unlimited = typeof limit !== 'number';
-    const remaining = unlimited ? undefined : Math.max(0, (limit) - used);
+    const remaining = unlimited ? undefined : Math.max(0, limit - used);
     return {
       feature,
       month: quotaPeriod.month,
@@ -433,7 +453,7 @@ export class AiQuotaService {
       periodStart: quotaPeriod.periodStart,
       periodEnd: quotaPeriod.periodEnd,
       nextResetAt: quotaPeriod.nextResetAt,
-      limit: unlimited ? undefined : (limit),
+      limit: unlimited ? undefined : limit,
       used,
       remaining,
       unlimited,
@@ -538,7 +558,9 @@ export class AiQuotaService {
     }
 
     const freePlan = await this.aiPlanModel.findOne({ isDefaultPlan: true }).exec();
-    return freePlan ? { plan: freePlan, subscription: null, quotaPeriod: this.getCalendarMonthPeriod(now) } : null;
+    return freePlan
+      ? { plan: freePlan, subscription: null, quotaPeriod: this.getCalendarMonthPeriod(now) }
+      : null;
   }
 
   private findActiveSubscription(userId: string): Promise<UserSubscriptionDocument | null> {
@@ -586,7 +608,10 @@ export class AiQuotaService {
       periodEnd = this.minDate(this.addMonths(periodStart, 1), subscriptionEnd);
     }
 
-    while (periodEnd.getTime() <= now.getTime() && periodEnd.getTime() < subscriptionEnd.getTime()) {
+    while (
+      periodEnd.getTime() <= now.getTime() &&
+      periodEnd.getTime() < subscriptionEnd.getTime()
+    ) {
       periodStart = new Date(periodEnd);
       periodEnd = this.minDate(this.addMonths(periodStart, 1), subscriptionEnd);
     }

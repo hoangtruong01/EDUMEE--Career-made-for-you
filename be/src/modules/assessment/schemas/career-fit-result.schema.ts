@@ -164,3 +164,7 @@ CareerFitResultSchema.index({ assessmentSessionId: 1 });
 CareerFitResultSchema.index({ generatedAt: -1 });
 CareerFitResultSchema.index({ userId: 1, recommendationRank: 1 });
 CareerFitResultSchema.index({ 'careerRecommendations.careerId': 1 });
+
+// Đặt Index tăng tốc truy vấn tìm kiếm cho Dashboard
+CareerFitResultSchema.index({ userId: 1, isLatest: 1 });
+CareerFitResultSchema.index({ careerId: 1 });

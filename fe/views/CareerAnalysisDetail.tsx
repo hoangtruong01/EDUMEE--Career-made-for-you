@@ -2,22 +2,22 @@
 
 import { useAuth } from '@/context/auth-context';
 import { usePlanGate } from '@/context/plan-gate-context';
-import { roadmapService, CareerDetailedAnalysis } from '@/lib/roadmap.service';
-import { motion, AnimatePresence } from 'framer-motion';
+import { CareerDetailedAnalysis, roadmapService } from '@/lib/roadmap.service';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
-  TrendingUp,
-  CheckCircle2,
-  XCircle,
-  Calendar,
-  DollarSign,
-  Zap,
-  Building2,
-  Rocket,
-  Loader2,
-  ChevronRight,
   BarChart3,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  DollarSign,
+  Loader2,
+  Rocket,
   Star,
+  TrendingUp,
+  XCircle,
+  Zap,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -33,10 +33,9 @@ const stagger = {
 
 /* ── Demand badge ── */
 const DemandBadge = ({ level }: { level: string }) => {
-  const cfg =
-    level.toLowerCase().includes('rất cao')
-      ? { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', label: level }
-      : level.toLowerCase().includes('cao')
+  const cfg = level.toLowerCase().includes('rất cao')
+    ? { color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', label: level }
+    : level.toLowerCase().includes('cao')
       ? { color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', label: level }
       : { color: 'bg-amber-500/15 text-amber-400 border-amber-500/30', label: level };
   return (
@@ -80,16 +79,23 @@ export default function CareerAnalysisDetail() {
     void load();
   }, [accessToken, careerTitle, handlePlanError]);
 
-  /* Generate roadmap and redirect */
+  // fe/views/CareerAnalysisDetail.tsx
+
+  // fe/views/CareerAnalysisDetail.tsx
+
   const handleStartRoadmap = async () => {
-    if (!accessToken) return;
+    if (!accessToken || !analysis) return;
     const allowed = await ensureFeatureAvailable('roadmap');
     if (!allowed) return;
 
     try {
       setIsGenerating(true);
+
       const roadmap = await roadmapService.generateAIRoadmap(accessToken, careerTitle);
-      const id = roadmap.id ?? (roadmap as { _id?: string })._id ?? '';
+
+      const targetRoadmap = roadmap as { id?: string; _id?: string };
+      const id = targetRoadmap.id ?? targetRoadmap._id ?? '';
+
       router.push(`/learning-roadmap?id=${id}&career=${encodeURIComponent(careerTitle)}`);
     } catch (error) {
       if (handlePlanError(error, 'roadmap')) {
@@ -111,13 +117,13 @@ export default function CareerAnalysisDetail() {
           className="flex flex-col items-center gap-4 text-center"
         >
           <div className="relative">
-            <div className="h-16 w-16 rounded-full bg-violet-500/20 flex items-center justify-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-violet-500/20">
               <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
             </div>
-            <div className="absolute inset-0 rounded-full animate-ping bg-violet-500/10" />
+            <div className="absolute inset-0 animate-ping rounded-full bg-violet-500/10" />
           </div>
-          <p className="text-foreground font-semibold text-lg">AI đang phân tích nghề nghiệp...</p>
-          <p className="text-muted-foreground text-sm max-w-xs">
+          <p className="text-foreground text-lg font-semibold">AI đang phân tích nghề nghiệp...</p>
+          <p className="text-muted-foreground max-w-xs text-sm">
             Đang phân tích xu hướng thị trường và phù hợp với hồ sơ của bạn
           </p>
         </motion.div>
@@ -128,13 +134,13 @@ export default function CareerAnalysisDetail() {
   return (
     <div className="bg-background min-h-screen pb-24">
       {/* Hero header */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-violet-600/20 via-purple-500/10 to-pink-500/10 border-b border-border/50">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-600/10 via-transparent to-transparent pointer-events-none" />
+      <div className="border-border/50 relative overflow-hidden border-b bg-gradient-to-br from-violet-600/20 via-purple-500/10 to-pink-500/10">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-600/10 via-transparent to-transparent" />
         <div className="container py-8">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
             <button
               onClick={() => router.back()}
-              className="mb-6 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground mb-6 flex items-center gap-2 text-sm transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               Quay lại kết quả
@@ -143,7 +149,7 @@ export default function CareerAnalysisDetail() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-violet-500/15 border border-violet-500/30 px-3 py-1 text-xs font-semibold text-violet-400">
+                  <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-3 py-1 text-xs font-semibold text-violet-400">
                     Phân tích AI
                   </span>
                   {analysis && <DemandBadge level={analysis.demandLevel} />}
@@ -195,7 +201,7 @@ export default function CareerAnalysisDetail() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-red-500/10 border-b border-red-500/20 px-4 py-3 text-center text-sm text-red-400"
+            className="border-b border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm text-red-400"
           >
             {error}
           </motion.div>
@@ -269,7 +275,7 @@ export default function CareerAnalysisDetail() {
               </h2>
               <div className="relative">
                 {/* Timeline line */}
-                <div className="absolute left-[19px] top-0 h-full w-0.5 bg-gradient-to-b from-violet-500 to-pink-500 opacity-30" />
+                <div className="absolute top-0 left-[19px] h-full w-0.5 bg-gradient-to-b from-violet-500 to-pink-500 opacity-30" />
                 <div className="space-y-5">
                   {analysis.trends.map((trend, i) => (
                     <motion.div
@@ -356,13 +362,14 @@ export default function CareerAnalysisDetail() {
                       <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-violet-500/20 text-sm font-bold text-blue-400">
                         {company.charAt(0)}
                       </span>
-                      <span className="text-foreground/80 text-sm font-medium truncate">{company}</span>
+                      <span className="text-foreground/80 truncate text-sm font-medium">
+                        {company}
+                      </span>
                     </motion.div>
                   ))}
                 </div>
               </div>
             </motion.div>
-
           </motion.div>
         ) : (
           /* Fallback: no data */
@@ -374,7 +381,7 @@ export default function CareerAnalysisDetail() {
             <p className="text-muted-foreground">Không thể tải dữ liệu phân tích.</p>
             <button
               onClick={() => router.back()}
-              className="mt-4 text-sm text-violet-400 hover:text-violet-300 underline"
+              className="mt-4 text-sm text-violet-400 underline hover:text-violet-300"
             >
               Quay lại
             </button>

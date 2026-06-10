@@ -2189,16 +2189,16 @@ export default function MentorMatching() {
   return (
     <>
       <div className="min-h-screen bg-muted/20 pb-20">
-        <section className="border-b border-border bg-background">
-          <div className="container py-5 md:py-7">
-            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="relative overflow-hidden border-b border-border/60 bg-gradient-card">
+          <div className="container relative z-10 py-12">
+            <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
               <div className="min-w-0">
-                <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                  <GraduationCap className="h-4 w-4" />
+                <span className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md text-primary">
+                  <GraduationCap className="h-3.5 w-3.5" />
                   Mentor được admin xác thực
                 </span>
-                <h1 className="font-display text-2xl font-bold leading-tight md:text-4xl">Kết nối với mentor</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
+                <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-5xl lg:text-6xl">Kết nối với mentor</h1>
+                <p className="text-muted-foreground mt-2 max-w-2xl text-base leading-relaxed font-medium md:text-lg">
                   Đặt lịch 1-1, thanh toán qua SePay và theo dõi trạng thái xác nhận từ mentor.
                 </p>
 

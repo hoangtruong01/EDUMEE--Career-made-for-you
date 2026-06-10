@@ -22,7 +22,10 @@ function loadEnvFiles(): void {
       const separatorIndex = line.indexOf('=');
       if (separatorIndex === -1) continue;
       const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, '');
+      const value = line
+        .slice(separatorIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       if (key && !externallyProvidedKeys.has(key)) process.env[key] = value;
     }
   }
@@ -30,7 +33,8 @@ function loadEnvFiles(): void {
 
 async function main() {
   loadEnvFiles();
-  const uri = process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/edumee';
+  const uri =
+    process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/edumee';
   await mongoose.connect(uri);
 
   const CareerModel = mongoose.model<Career>('Career', CareerSchema);

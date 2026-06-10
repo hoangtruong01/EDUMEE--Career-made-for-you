@@ -2,11 +2,12 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
-import { AiQuotaService } from './ai-quota.service';
-import { AiPlan } from '../schema/ai-plan.schema';
-import { AiUsageLog, AiFeature } from '../schema/ai-usage-logs.schema';
-import { UserSubscription } from '../../users/schemas/user-subscriptions';
+import { AssessmentSession } from '../../assessment/schemas/assessment-sesions.schema';
 import { CareerFitResult } from '../../assessment/schemas/career-fit-result.schema';
+import { UserSubscription } from '../../users/schemas/user-subscriptions';
+import { AiPlan } from '../schema/ai-plan.schema';
+import { AiFeature, AiUsageLog } from '../schema/ai-usage-logs.schema';
+import { AiQuotaService } from './ai-quota.service';
 
 describe('AiQuotaService', () => {
   let service: AiQuotaService;
@@ -37,6 +38,10 @@ describe('AiQuotaService', () => {
         { provide: getModelToken(AiPlan.name), useValue: aiPlanModel },
         { provide: getModelToken(AiUsageLog.name), useValue: aiUsageLogModel },
         { provide: getModelToken(CareerFitResult.name), useValue: careerFitResultModel },
+        {
+          provide: getModelToken(AssessmentSession.name),
+          useValue: { findOne: jest.fn(), updateOne: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -45,13 +50,15 @@ describe('AiQuotaService', () => {
 
   it('blocks Free assessment after the lifetime limit is reached', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {
-        assessmentsLifetimeLimit: 1,
-      },
-      features: {},
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {
+          assessmentsLifetimeLimit: 1,
+        },
+        features: {},
+      }),
+    );
     careerFitResultModel.distinct.mockReturnValue(createQuery([new Types.ObjectId()]));
 
     await expect(
@@ -68,14 +75,16 @@ describe('AiQuotaService', () => {
 
   it('allows monthly assessment quota to override a stale lifetime limit', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {
-        assessmentsPerMonth: 1,
-        assessmentsLifetimeLimit: 1,
-      },
-      features: {},
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {
+          assessmentsPerMonth: 1,
+          assessmentsLifetimeLimit: 1,
+        },
+        features: {},
+      }),
+    );
     careerFitResultModel.distinct
       .mockReturnValue(createQuery([new Types.ObjectId()]))
       .mockReturnValueOnce(createQuery([]));
@@ -94,13 +103,15 @@ describe('AiQuotaService', () => {
   it('counts monthly assessment usage from distinct result sessions and ignores usage logs', async () => {
     const sessionId = new Types.ObjectId();
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {
-        assessmentsPerMonth: 3,
-      },
-      features: {},
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {
+          assessmentsPerMonth: 3,
+        },
+        features: {},
+      }),
+    );
     careerFitResultModel.distinct.mockReturnValue(createQuery([sessionId]));
     aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 3 }));
 
@@ -123,17 +134,17 @@ describe('AiQuotaService', () => {
 
   it('blocks monthly assessment quota from result sessions before reading usage logs', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {
-        assessmentsPerMonth: 1,
-        assessmentsLifetimeLimit: 1,
-      },
-      features: {},
-    }));
-    careerFitResultModel.distinct.mockReturnValue(createQuery([
-      new Types.ObjectId(),
-    ]));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {
+          assessmentsPerMonth: 1,
+          assessmentsLifetimeLimit: 1,
+        },
+        features: {},
+      }),
+    );
+    careerFitResultModel.distinct.mockReturnValue(createQuery([new Types.ObjectId()]));
     aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 0 }));
 
     await expect(
@@ -151,11 +162,13 @@ describe('AiQuotaService', () => {
   it('reports unlimited assessment quota from result sessions without usage logs', async () => {
     const sessionId = new Types.ObjectId();
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {},
-      features: {},
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {},
+        features: {},
+      }),
+    );
     careerFitResultModel.distinct.mockReturnValue(createQuery([sessionId]));
     aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 99 }));
 
@@ -173,15 +186,17 @@ describe('AiQuotaService', () => {
 
   it('blocks career comparison when the plan disables it', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      limits: {
-        careerComparisonsPerMonth: 0,
-      },
-      features: {
-        careerComparison: false,
-      },
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        limits: {
+          careerComparisonsPerMonth: 0,
+        },
+        features: {
+          careerComparison: false,
+        },
+      }),
+    );
 
     await expect(
       service.checkQuota('507f1f77bcf86cd799439011', AiFeature.CAREER_COMPARISON),
@@ -190,17 +205,19 @@ describe('AiQuotaService', () => {
 
   it('returns standardized metadata when the plan disables a feature', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Free',
-      price: 0,
-      isDefaultPlan: true,
-      limits: {
-        careerComparisonsPerMonth: 0,
-      },
-      features: {
-        careerComparison: false,
-      },
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Free',
+        price: 0,
+        isDefaultPlan: true,
+        limits: {
+          careerComparisonsPerMonth: 0,
+        },
+        features: {
+          careerComparison: false,
+        },
+      }),
+    );
 
     try {
       await service.checkQuota('507f1f77bcf86cd799439011', AiFeature.CAREER_COMPARISON);
@@ -219,16 +236,18 @@ describe('AiQuotaService', () => {
 
   it('treats a zero finite limit as exhausted quota', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Plus',
-      price: 129000,
-      limits: {
-        careerComparisonsPerMonth: 0,
-      },
-      features: {
-        careerComparison: true,
-      },
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Plus',
+        price: 129000,
+        limits: {
+          careerComparisonsPerMonth: 0,
+        },
+        features: {
+          careerComparison: true,
+        },
+      }),
+    );
     aiUsageLogModel.findOne.mockReturnValue(createQuery(null));
 
     try {
@@ -253,15 +272,17 @@ describe('AiQuotaService', () => {
 
   it('gates career comparison availability without reading usage logs', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Plus',
-      limits: {
-        careerComparisonsPerMonth: 0,
-      },
-      features: {
-        careerComparison: true,
-      },
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Plus',
+        limits: {
+          careerComparisonsPerMonth: 0,
+        },
+        features: {
+          careerComparison: true,
+        },
+      }),
+    );
     aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 99 }));
 
     await expect(
@@ -326,11 +347,13 @@ describe('AiQuotaService', () => {
       endDate: new Date('2026-07-16T00:00:00.000Z'),
     });
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(subscription));
-    aiPlanModel.findById.mockReturnValue(createQuery({
-      name: 'Plus',
-      limits: { chatMessagesPerMonth: 1 },
-      features: { aiChatbot: true },
-    }));
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({
+        name: 'Plus',
+        limits: { chatMessagesPerMonth: 1 },
+        features: { aiChatbot: true },
+      }),
+    );
     aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 1 }));
 
     await expect(
@@ -345,23 +368,21 @@ describe('AiQuotaService', () => {
 
   it('does not consume quota when the protected action fails', async () => {
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(null));
-    aiPlanModel.findOne.mockReturnValue(createQuery({
-      name: 'Plus',
-      price: 129000,
-      limits: { chatMessagesPerMonth: 5 },
-      features: { aiChatbot: true },
-    }));
+    aiPlanModel.findOne.mockReturnValue(
+      createQuery({
+        name: 'Plus',
+        price: 129000,
+        limits: { chatMessagesPerMonth: 5 },
+        features: { aiChatbot: true },
+      }),
+    );
     aiUsageLogModel.findOne.mockReturnValue(createQuery(null));
     aiUsageLogModel.updateOne.mockReturnValue(createQuery({ modifiedCount: 1 }));
 
     await expect(
-      service.runWithQuota(
-        '507f1f77bcf86cd799439011',
-        AiFeature.CHATBOT,
-        async () => {
-          throw new Error('AI provider failed');
-        },
-      ),
+      service.runWithQuota('507f1f77bcf86cd799439011', AiFeature.CHATBOT, async () => {
+        throw new Error('AI provider failed');
+      }),
     ).rejects.toThrow('AI provider failed');
 
     expect(aiUsageLogModel.updateOne).not.toHaveBeenCalled();
@@ -375,11 +396,13 @@ describe('AiQuotaService', () => {
       endDate: new Date('2026-07-16T00:00:00.000Z'),
     });
     userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(subscription));
-    aiPlanModel.findById.mockReturnValue(createQuery({
-      name: 'Plus',
-      limits: { chatMessagesPerMonth: 1 },
-      features: { aiChatbot: true },
-    }));
+    aiPlanModel.findById.mockReturnValue(
+      createQuery({
+        name: 'Plus',
+        limits: { chatMessagesPerMonth: 1 },
+        features: { aiChatbot: true },
+      }),
+    );
     aiUsageLogModel.findOne.mockReturnValue(createQuery(null));
 
     await expect(
