@@ -1,14 +1,6 @@
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import {
-  Compass,
-  Home,
-  LayoutDashboard,
-  Map,
-  MessageSquare,
-  User,
-  Users,
-} from 'lucide-react-native';
+import { Compass, Home, Map, MessageSquare, User, Users } from 'lucide-react-native';
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { COLORS } from '../../src/theme';
@@ -59,10 +51,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="dashboard"
+        name="orientation"
         options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <LayoutDashboard size={20} color={color} />, // Hoặc icon nào ông thích trong lucide-react-native
+          title: 'Lộ trình',
         }}
       />
       <Tabs.Screen

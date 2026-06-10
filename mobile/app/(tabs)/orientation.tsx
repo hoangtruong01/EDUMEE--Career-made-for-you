@@ -1,15 +1,13 @@
 // app/(tabs)/orientation.tsx
 import {
   Award,
-  BookOpen,
   CheckCircle2,
-  CheckSquare,
   ChevronDown,
   ChevronUp,
   FileText,
-  Layers,
+  GraduationCap,
+  Play,
   Sparkles,
-  Square,
   X,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -18,7 +16,9 @@ import {
   Alert,
   Dimensions,
   Modal,
+  Platform,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -29,7 +29,7 @@ import { GlassView } from '../../src/components/GlassView';
 import { api } from '../../src/services/api';
 import { COLORS, SPACING } from '../../src/theme';
 
-const { height } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface IQuizOption {
   value: number;
@@ -50,6 +50,9 @@ interface IMappedTask {
   formatType: string;
   quizQuestions: IQuizQuestion[];
   isCompleted: boolean;
+  displayBadge: string;
+  isTest: boolean;
+  estimatedHours: number;
 }
 
 interface IMappedMilestone {
@@ -84,20 +87,17 @@ export default function OrientationScreen() {
   const [activeTask, setActiveTask] = useState<IMappedTask | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Lưu câu trả lời bài tập trên Mobile
+  // Khảo thí states
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [textAnswer, setTextAnswer] = useState<string>('');
 
   useEffect(() => {
-    fetchActiveRoadmap();
+    void fetchActiveRoadmap();
   }, []);
 
-  // 📡 ĐỒNG BỘ 100% VỚI KHUNG ĐƯỜNG TRUYỀN BẢN WEB VÀ BACKEND
   const fetchActiveRoadmap = async () => {
     try {
       setLoading(true);
-
-      // 🎯 FIX GỐC RỄ: Đổi từ '/learning-roadmaps/active' sang '/learning-roadmaps/latest' theo bản Web để tránh trùng route findOne ObjectId
       const response = await api.get('/learning-roadmaps/latest');
       const responseData = response.data?.data || response.data;
 
@@ -112,12 +112,17 @@ export default function OrientationScreen() {
 
         const mappedPhases: IRoadmapPhase[] = responseData.phases.map((p: any, index: number) => {
           const mappedMilestones = (p.milestones || []).map((m: any) => {
-            // Xử lý map danh sách bài tập thô từ DB sang dạng hiển thị Clean
             const mappedTasks = (m.tasks || []).map((t: any) => {
               const matchState = rawProgress.find(
                 (prog: any) => prog.taskId === (t.taskId || t.id || t._id),
               );
               const isDone = matchState ? matchState.status === 'COMPLETED' : false;
+              const isTestComponent = t.formatType !== 'READ';
+
+              let displayBadge = 'Lý thuyết';
+              if (t.formatType === 'QUIZ') displayBadge = 'Trắc nghiệm';
+              if (t.formatType === 'TEXT') displayBadge = 'Tự luận';
+              if (t.formatType === 'HYBRID') displayBadge = 'Tổng hợp';
 
               return {
                 id: t.taskId || t.id || t._id,
@@ -126,6 +131,9 @@ export default function OrientationScreen() {
                 formatType: t.formatType || 'READ',
                 quizQuestions: Array.isArray(t.quizQuestions) ? t.quizQuestions : [],
                 isCompleted: isDone,
+                displayBadge,
+                isTest: isTestComponent,
+                estimatedHours: t.estimatedHours || 2,
               };
             });
 
@@ -136,12 +144,11 @@ export default function OrientationScreen() {
               milestoneId: m.milestoneId || m.id || m._id,
               title: m.title || `Mục tiêu mốc ${m.order || ''}`,
               desc: m.description || 'Hoàn thành năng lực chặng thực tế.',
-              done: m.isCompleted || countriesAllTasksDone(mappedTasks, allTasksDone),
+              done: m.isCompleted || (mappedTasks.length > 0 ? allTasksDone : false),
               tasks: mappedTasks,
             };
           });
 
-          // Tính toán phần trăm tiến độ giai đoạn dựa trên tasks thực tế
           const totalTasks = mappedMilestones.reduce(
             (acc: number, mItem: IMappedMilestone) => acc + mItem.tasks.length,
             0,
@@ -154,14 +161,13 @@ export default function OrientationScreen() {
           const CalculatedProgress =
             totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-          // 🟢 ĐỊNH VỊ TRẠNG THÁI PHASE: Tự động mở khóa chặng tiếp theo khi chặng trước đạt 100%
           let status: 'current' | 'locked' | 'completed' = 'locked';
-
           if (CalculatedProgress === 100 || p.isCompleted || p.status === 'completed') {
             status = 'completed';
           } else if (!foundCurrent) {
             status = 'current';
             foundCurrent = true;
+            setExpandedPhaseId(p.phaseId || p.id || p._id); // Tự động bung chặng hiện tại cực thông minh
           } else {
             status = 'locked';
           }
@@ -178,7 +184,6 @@ export default function OrientationScreen() {
           };
         });
 
-        // Phòng hờ nếu toàn bộ lộ trình xong xuôi sạch sẽ
         if (!foundCurrent && mappedPhases.length > 0) {
           mappedPhases[mappedPhases.length - 1].status = 'current';
         }
@@ -187,18 +192,10 @@ export default function OrientationScreen() {
       }
     } catch (error) {
       console.error('Lỗi khi tải ma trận lộ trình học:', error);
-      Alert.alert(
-        'Lỗi đồng bộ',
-        'Không thể nạp dữ liệu lộ trình học. Vui lòng kéo nhẹ màn hình để thử lại.',
-      );
+      Alert.alert('Lỗi đồng bộ', 'Không thể nạp dữ liệu lộ trình học. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
-  };
-
-  // Hàm helper tránh lỗi biến cục bộ lồng nhau
-  const countriesAllTasksDone = (tasks: IMappedTask[], allDone: boolean) => {
-    return tasks.length > 0 ? allDone : false;
   };
 
   const handleOpenWorkspace = (task: IMappedTask) => {
@@ -208,7 +205,6 @@ export default function OrientationScreen() {
     setWorkspaceVisible(true);
   };
 
-  // Hàm bắn dữ liệu khảo thí lên Server NestJS
   const handleSubmitWorkspace = async () => {
     if (!activeTask || !roadmapId) return;
 
@@ -232,13 +228,11 @@ export default function OrientationScreen() {
 
     try {
       setSubmitting(true);
-
       const quizAnswersPayload = activeTask.quizQuestions.map((_, idx) => ({
         questionIndex: idx,
         selectedValue: selectedAnswers[idx] || 0,
       }));
 
-      // Bắn payload khớp 100% DTO TaskSubmission
       await api.post('/task-submissions', {
         taskId: activeTask.id,
         roadmapId: roadmapId,
@@ -249,16 +243,15 @@ export default function OrientationScreen() {
         },
       });
 
-      // Tạo Alert chặn luồng thông minh, bấm OK mới load để tránh lệch cache DB
       Alert.alert(
         'Thành công 🎉',
-        'Hệ thống AI Mentor đã chấm điểm bài làm của bạn!',
+        'Hệ thống AI Mentor đã ghi nhận và chấm điểm bài làm của bạn!',
         [
           {
-            text: 'OK',
+            text: 'Tuyệt vời',
             onPress: () => {
               setWorkspaceVisible(false);
-              fetchActiveRoadmap(); // Đồng bộ bẻ chặng ngay lập tức
+              void fetchActiveRoadmap();
             },
           },
         ],
@@ -271,7 +264,7 @@ export default function OrientationScreen() {
           text: 'OK',
           onPress: () => {
             setWorkspaceVisible(false);
-            fetchActiveRoadmap();
+            void fetchActiveRoadmap();
           },
         },
       ]);
@@ -283,36 +276,40 @@ export default function OrientationScreen() {
   const totalOverallProgress = useMemo(() => {
     if (phases.length === 0) return 0;
     const current = phases.find((p) => p.status === 'current');
-    return current ? current.progress : 56;
+    return current ? current.progress : 0;
   }, [phases]);
 
   if (loading) {
     return (
       <View style={[styles.mainWrapper, styles.centerBox]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Đang đồng bộ Sơ đồ bài học AI...</Text>
+        <ActivityIndicator size="large" color={COLORS.secondary} />
+        <Text style={styles.loadingText}>Đang đồng bộ sơ đồ học tập AI...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.mainWrapper}>
-      {/* HEADER TABS CHUYỂN ĐỔI PHÂN HỆ */}
+      <StatusBar barStyle="light-content" />
+
+      {/* 🌟 UPGRADE 1: TABS CHUYỂN ĐỔI CAO CẤP DIỆN DIỆN ĐẸP MẮT */}
       <View style={styles.tabHeaderRow}>
         <TouchableOpacity
           onPress={() => setActiveTab('roadmap')}
+          activeOpacity={0.8}
           style={[styles.tabButton, activeTab === 'roadmap' && styles.tabButtonActive]}
         >
           <Text style={[styles.tabText, activeTab === 'roadmap' && styles.tabTextActive]}>
-            Lộ Trình Học
+            Lộ Trình Học AI
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setActiveTab('simulation')}
+          activeOpacity={0.8}
           style={[styles.tabButton, activeTab === 'simulation' && styles.tabButtonActive]}
         >
           <Text style={[styles.tabText, activeTab === 'simulation' && styles.tabTextActive]}>
-            Không Gian Thực Tế
+            Không Gian Giả Lập
           </Text>
         </TouchableOpacity>
       </View>
@@ -323,16 +320,22 @@ export default function OrientationScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* BANNER GLASSMORPHISM TỔNG QUAN TIẾN ĐỘ */}
-          <GlassView style={styles.topOverviewCard}>
-            <View style={styles.careerTitleRow}>
-              <Award size={20} color="#FBBF24" style={{ marginRight: 8 }} />
-              <Text style={styles.careerTitleText} numberOfLines={1}>
-                {careerTitle}
-              </Text>
+          {/* 🌟 UPGRADE 2: BANNER GLASSMORPHISM TOÀN DIỆN, THOÁNG ĐÃNG, HIỆN ĐẠI */}
+          <GlassView intensity={40} style={styles.topOverviewCard}>
+            <View className="mb-3 flex-row items-center">
+              <View style={styles.iconWrapper}>
+                <Award size={22} color="#FBBF24" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.careerTitleText} numberOfLines={1}>
+                  {careerTitle}
+                </Text>
+                <Text style={styles.progressLabel}>Hệ thống học tăng tiến Edumee</Text>
+              </View>
             </View>
+
             <View style={styles.progressDataRow}>
-              <Text style={styles.progressLabel}>Tiến độ chặng hiện tại</Text>
+              <Text style={styles.progressDataTitle}>Tiến độ chặng hiện tại</Text>
               <Text style={styles.progressPercentText}>{totalOverallProgress}%</Text>
             </View>
             <View style={styles.progressBarTrack}>
@@ -340,33 +343,47 @@ export default function OrientationScreen() {
             </View>
           </GlassView>
 
-          <Text style={styles.sectionHeaderTitle}>Các chặng năng lực</Text>
+          <Text style={styles.sectionHeaderTitle}>BẢN ĐỒ PHÁT TRIỂN NĂNG LỰC</Text>
 
-          {/* HIỂN THỊ DANH SÁCH PHASES */}
-          {phases.map((phase) => {
+          {/* 🌟 UPGRADE 3: DANH SÁCH CHẶNG PHASES HIỂN THỊ RỘNG RÃI, KHÔNG CÒN CHẬT CHỘI */}
+          {phases.map((phase, pIndex) => {
             const isExpanded = expandedPhaseId === phase.phaseId;
             const isLocked = phase.status === 'locked';
 
             return (
-              <GlassView
+              <View
                 key={phase.phaseId}
-                style={[styles.phaseCard, isLocked && styles.phaseCardLocked]}
+                style={[
+                  styles.phaseCard,
+                  isExpanded && styles.phaseCardActive,
+                  isLocked && styles.phaseCardLocked,
+                ]}
               >
                 <TouchableOpacity
                   onPress={() => !isLocked && setExpandedPhaseId(isExpanded ? null : phase.phaseId)}
                   style={styles.phaseHeaderTouch}
+                  activeOpacity={0.7}
                   disabled={isLocked}
                 >
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.phaseNumberBadge}>
+                    <Text style={styles.phaseNumberText}>0{pIndex + 1}</Text>
+                  </View>
+
+                  {/* 🟢 ĐÃ FIX ts(17002): Thay thế thẻ <div> bằng thẻ <View> chuẩn React Native */}
+                  <View style={{ flex: 1, marginLeft: 14 }}>
                     <Text style={styles.phaseTag}>THỜI LƯỢNG: {phase.phase.toUpperCase()}</Text>
                     <Text style={styles.phaseTitle}>{phase.title}</Text>
                   </View>
-                  {!isLocked &&
-                    (isExpanded ? (
-                      <ChevronUp size={18} color="#FFF" />
-                    ) : (
-                      <ChevronDown size={18} color={COLORS.muted} />
-                    ))}
+
+                  {!isLocked && (
+                    <View style={styles.arrowIconCircle}>
+                      {isExpanded ? (
+                        <ChevronUp size={16} color="#FFF" />
+                      ) : (
+                        <ChevronDown size={16} color="#94A3B8" />
+                      )}
+                    </View>
+                  )}
                 </TouchableOpacity>
 
                 {isExpanded && !isLocked && (
@@ -375,17 +392,19 @@ export default function OrientationScreen() {
                       <View key={milestone.milestoneId} style={styles.milestoneBlock}>
                         <View style={styles.milestoneTitleLine}>
                           <CheckCircle2
-                            size={15}
-                            color={milestone.done ? '#10B981' : COLORS.muted}
-                            style={{ marginRight: 6 }}
+                            size={16}
+                            color={milestone.done ? '#10B981' : '#475569'}
+                            style={{ marginRight: 8 }}
                           />
                           <Text style={styles.milestoneTitleText}>{milestone.title}</Text>
                         </View>
 
+                        {/* 🎯 UPGRADE 4: XÓA BỎ HOÀN TOÀN ĐƯỜNG LINE MỜ BÊN HÔNG NHIỆM VỤ */}
                         <View style={styles.taskListContainer}>
                           {milestone.tasks.map((task) => (
                             <TouchableOpacity
                               key={task.id}
+                              activeOpacity={0.7}
                               style={[
                                 styles.taskItemTouch,
                                 task.isCompleted && styles.taskCompleted,
@@ -393,32 +412,73 @@ export default function OrientationScreen() {
                               onPress={() => handleOpenWorkspace(task)}
                             >
                               <View style={styles.taskInfoRow}>
-                                <Layers
-                                  size={14}
-                                  color={task.isCompleted ? '#10B981' : COLORS.primary}
-                                  style={{ marginRight: 8 }}
-                                />
-                                <Text
+                                <View
                                   style={[
-                                    styles.taskItemTitleText,
-                                    task.isCompleted && styles.taskTextDone,
+                                    styles.taskTypeIconOuter,
+                                    task.isCompleted && styles.taskTypeIconCompleted,
                                   ]}
-                                  numberOfLines={1}
                                 >
-                                  [{task.formatType}] {task.title}
-                                </Text>
+                                  {task.isTest ? (
+                                    <Sparkles
+                                      size={14}
+                                      color={task.isCompleted ? '#10B981' : '#F59E0B'}
+                                    />
+                                  ) : (
+                                    <GraduationCap
+                                      size={14}
+                                      color={task.isCompleted ? '#10B981' : '#3B82F6'}
+                                    />
+                                  )}
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                  <Text
+                                    style={[
+                                      styles.taskItemTitleText,
+                                      task.isCompleted && styles.taskTextDone,
+                                    ]}
+                                    numberOfLines={2}
+                                  >
+                                    {task.title}
+                                  </Text>
+                                  <View
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    <BadgeLabel isTest={task.isTest} text={task.displayBadge} />
+                                    <Text style={styles.estimatedHoursText}>
+                                      • ~{task.estimatedHours} giờ
+                                    </Text>
+                                  </View>
+                                </View>
                               </View>
-                              <Text style={styles.actionBtnText}>
-                                {task.isCompleted ? 'Xem lại' : 'Cày ngay'}
-                              </Text>
+                              <View
+                                style={[
+                                  styles.actionBtnBlock,
+                                  task.isCompleted && styles.actionBtnBlockCompleted,
+                                ]}
+                              >
+                                <Play
+                                  size={10}
+                                  color={task.isCompleted ? '#10B981' : '#FFF'}
+                                  fill={task.isCompleted ? '#10B981' : '#FFF'}
+                                />
+                              </View>
                             </TouchableOpacity>
                           ))}
                         </View>
                       </View>
                     ))}
+
+                    <View style={styles.kpiInfoBox}>
+                      <Text style={styles.kpiBoxTitle}>🎯 TIÊU CHÍ QUA CHẶNG KHẢO THÍ</Text>
+                      <Text style={styles.kpiBoxContent}>{phase.kpi}</Text>
+                    </View>
                   </View>
                 )}
-              </GlassView>
+              </View>
             );
           })}
         </ScrollView>
@@ -426,280 +486,422 @@ export default function OrientationScreen() {
 
       {activeTab === 'simulation' && (
         <View style={[styles.container, styles.centerBox]}>
-          <Sparkles size={40} color={COLORS.secondary} style={{ marginBottom: 12 }} />
-          <Text style={styles.emptyText}>Không gian giả lập Agent nâng cao đang đồng bộ...</Text>
+          <Sparkles size={44} color={COLORS.secondary} style={{ marginBottom: 16 }} />
+          <Text style={styles.emptyText}>Hệ thống Không gian giả lập Agent nâng cao...</Text>
+          <Text style={{ color: '#64748B', fontSize: 12, marginTop: 4 }}>
+            Đang đồng bộ dữ liệu đồ họa độc quyền
+          </Text>
         </View>
       )}
 
-      {/* ================= WORKSPACE MODAL LÀM BÀI KHẢO THÍ CHUYÊN SÂU ================= */}
-      <Modal visible={workspaceVisible} animationType="slide" transparent statusBarTranslucent>
-        <View style={styles.modalOverlay}>
-          <GlassView intensity={65} style={styles.modalContent}>
-            <View style={styles.modalHeaderRow}>
-              <View style={{ flex: 1, marginRight: SPACING.md }}>
-                <Text style={styles.modalTag}>WORKSPACE THỰC HÀNH AI</Text>
-                <Text style={styles.modalMainTitle} numberOfLines={1}>
-                  {activeTask?.title}
-                </Text>
+      {/* ================= 🌟 UPGRADE 5: WORKSPACE MODAL FULL-SCREEN TRÀN VIỀN RỘNG RÃI ================= */}
+      <Modal
+        visible={workspaceVisible}
+        animationType="slide"
+        transparent={false}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlayFullScreen}>
+          {/* Header vùng đỉnh rộng rãi */}
+          <View style={styles.modalHeaderRowNew}>
+            <View style={{ flex: 1, marginRight: 16 }}>
+              <Text style={styles.modalTagNew}>WORKSPACE KHẢO THÍ ĐỘC QUYỀN</Text>
+              <Text style={styles.modalMainTitleNew} numberOfLines={1}>
+                {activeTask?.title}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setWorkspaceVisible(false)}
+              style={styles.closeModalBtnNew}
+              activeOpacity={0.7}
+            >
+              <X size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Body cuộn mượt độc lập hoàn toàn, không lồng ghép chật chội */}
+          <ScrollView
+            style={styles.modalBodyScrollNew}
+            contentContainerStyle={styles.modalScrollContentNew}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.docSectionBoxNew}>
+              <View className="mb-2 flex-row items-center">
+                <FileText size={14} color={COLORS.secondary} />
+                <Text style={styles.sectionSubHeaderNew}>Giáo trình hướng dẫn nghiệp vụ:</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setWorkspaceVisible(false)}
-                style={styles.closeModalBtn}
-              >
-                <X size={20} color="#FFF" />
-              </TouchableOpacity>
+              <Text style={styles.markdownBodyNew}>{activeTask?.description}</Text>
             </View>
 
-            <ScrollView
-              style={styles.modalBodyScroll}
-              contentContainerStyle={styles.modalScrollContent}
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled={true}
-              bounces={true}
-              overScrollMode="never"
-            >
-              <View style={styles.docSectionBox}>
-                <Text style={styles.sectionSubHeader}>
-                  <BookOpen size={12} color={COLORS.secondary} /> Giáo trình hướng dẫn:
-                </Text>
-                <Text style={styles.markdownBody}>{activeTask?.description}</Text>
-              </View>
+            {activeTask?.quizQuestions && activeTask.quizQuestions.length > 0 && (
+              <View style={styles.interactiveZoneNew}>
+                <View className="mb-3 flex-row items-center">
+                  <Sparkles size={14} color="#A78BFA" />
+                  <Text style={styles.sectionSubHeaderNew}>Lưới câu hỏi trắc nghiệm tự động:</Text>
+                </View>
 
-              {activeTask?.quizQuestions && activeTask.quizQuestions.length > 0 && (
-                <View style={styles.interactiveZone}>
-                  <Text style={styles.sectionSubHeader}>
-                    <Sparkles size={12} color="#A78BFA" /> Lưới câu hỏi trắc nghiệm tự động:
-                  </Text>
-                  {activeTask.quizQuestions.map((q, qIdx) => (
-                    <View key={qIdx} style={styles.quizQuestionCard}>
-                      <Text style={styles.quizPromptText}>
-                        {qIdx + 1}. {q.questionText}
-                      </Text>
-                      <View style={styles.optionsList}>
-                        {q.options.map((opt) => {
-                          const isSelected = selectedAnswers[qIdx] === opt.value;
-                          return (
-                            <TouchableOpacity
-                              key={opt.value}
-                              activeOpacity={0.7}
-                              onPress={() =>
-                                setSelectedAnswers((prev) => ({ ...prev, [qIdx]: opt.value }))
-                              }
+                {activeTask.quizQuestions.map((q, qIdx) => (
+                  <View key={qIdx} style={styles.quizQuestionCardNew}>
+                    <Text style={styles.quizPromptTextNew}>
+                      {qIdx + 1}. {q.questionText}
+                    </Text>
+                    <View style={styles.optionsListNew}>
+                      {q.options.map((opt) => {
+                        const isSelected = selectedAnswers[qIdx] === opt.value;
+                        return (
+                          <TouchableOpacity
+                            key={opt.value}
+                            activeOpacity={0.7}
+                            onPress={() =>
+                              setSelectedAnswers((prev) => ({ ...prev, [qIdx]: opt.value }))
+                            }
+                            style={[
+                              styles.optionItemRowNew,
+                              isSelected && styles.optionItemSelectedNew,
+                            ]}
+                          >
+                            <View
                               style={[
-                                styles.optionItemRow,
-                                isSelected && styles.optionItemSelected,
+                                styles.customRadioCircle,
+                                isSelected && styles.customRadioCircleSelected,
                               ]}
                             >
-                              {isSelected ? (
-                                <CheckSquare size={16} color={COLORS.primary} />
-                              ) : (
-                                <Square size={16} color={COLORS.muted} />
-                              )}
-                              <Text
-                                style={[
-                                  styles.optionText,
-                                  isSelected && { color: '#FFF', fontWeight: '700' },
-                                ]}
-                              >
-                                {opt.label}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
+                              {isSelected && <View style={styles.customRadioInnerDot} />}
+                            </View>
+                            <Text
+                              style={[
+                                styles.optionTextNew,
+                                isSelected && { color: '#FFF', fontWeight: '600' },
+                              ]}
+                            >
+                              {opt.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
-                  ))}
-                </View>
-              )}
+                  </View>
+                ))}
+              </View>
+            )}
 
-              {(activeTask?.formatType === 'TEXT' || activeTask?.formatType === 'HYBRID') && (
-                <View style={styles.interactiveZone}>
-                  <Text style={styles.sectionSubHeader}>
-                    <FileText size={12} color="#60A5FA" /> IDE biên soạn mã nguồn / Phân tích tự
-                    luận:
+            {(activeTask?.formatType === 'TEXT' || activeTask?.formatType === 'HYBRID') && (
+              <View style={styles.interactiveZoneNew}>
+                <View className="mb-2 flex-row items-center">
+                  <FileText size={14} color="#60A5FA" />
+                  <Text style={styles.sectionSubHeaderNew}>
+                    IDE biên soạn mã nguồn / Phân tích tự luận:
                   </Text>
-                  <TextInput
-                    multiline
-                    value={textAnswer}
-                    onChangeText={setTextAnswer}
-                    placeholder="Nhập đoạn mã nguồn thực hành hoặc nội dung phân tích nghiệp vụ của bạn vào đây..."
-                    placeholderTextColor="rgba(255,255,255,0.2)"
-                    style={styles.codeTextInput}
-                    scrollEnabled={false}
-                  />
                 </View>
-              )}
-            </ScrollView>
+                <TextInput
+                  multiline
+                  value={textAnswer}
+                  onChangeText={setTextAnswer}
+                  placeholder="Nhập đoạn mã nguồn code thực hành hoặc nội dung phân tích nghiệp vụ của bạn vào đây..."
+                  placeholderTextColor="#475569"
+                  style={styles.codeTextInputNew}
+                  scrollEnabled={false}
+                />
+              </View>
+            )}
+          </ScrollView>
 
-            <View style={styles.modalFooterFixed}>
-              <TouchableOpacity
-                style={styles.submitTaskButton}
-                onPress={handleSubmitWorkspace}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Text style={styles.submitTaskButtonText}>Nộp bài lên AI Mentor</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </GlassView>
+          {/* Khối Footer cố định tràn cạnh dưới nút bấm to rõ ràng */}
+          <View style={styles.modalFooterFixedNew}>
+            <TouchableOpacity
+              style={styles.submitTaskButtonNew}
+              onPress={void handleSubmitWorkspace}
+              activeOpacity={0.8}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.submitTaskButtonTextNew}>Nộp bài lên AI Mentor</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>
   );
 }
 
-// --- THAY THẾ KHỐI STYLESHEET SẠCH LỖI KHÔNG GIAN BẬT ĐƯỜNG TRUYỀN ---
+/* ── THÀNH PHẦN BADGE PHÂN LOẠI NHIỆM VỤ ĐẸP MẮT ── */
+const BadgeLabel = ({ isTest, text }: { isTest: boolean; text: string }) => {
+  return (
+    <View style={[styles.badgeContainer, isTest ? styles.badgeTest : styles.badgeRead]}>
+      <Text style={[styles.badgeText, isTest ? styles.badgeTextTest : styles.badgeTextRead]}>
+        {text}
+      </Text>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
-  mainWrapper: { flex: 1, backgroundColor: '#090D1A', paddingTop: 60 },
-  tabHeaderRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 12, gap: 12 },
+  mainWrapper: { flex: 1, backgroundColor: '#05070F', paddingTop: 50 },
+  tabHeaderRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 16, gap: 10 },
   tabButton: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: '#1E293B',
   },
-  tabButtonActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  tabButtonActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
   tabText: { fontSize: 13, fontWeight: '700', color: '#64748B' },
   tabTextActive: { color: '#FFF' },
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
-  centerBox: { justifyContent: 'center', alignItems: 'center', height: height * 0.5 },
-  loadingText: { color: COLORS.muted, fontSize: 13, marginTop: 10, fontWeight: '600' },
-  emptyText: { color: COLORS.muted, fontSize: 13 },
-  topOverviewCard: { padding: 16, marginBottom: 20 },
-  careerTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  careerTitleText: { fontSize: 15, fontWeight: '800', color: '#FFF', flex: 1 },
+  centerBox: { justifyContent: 'center', alignItems: 'center', height: SCREEN_HEIGHT * 0.5 },
+  loadingText: { color: COLORS.muted, fontSize: 13, marginTop: 12, fontWeight: '600' },
+  emptyText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+
+  topOverviewCard: {
+    padding: 20,
+    marginBottom: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  iconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  careerTitleText: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+  progressLabel: { fontSize: 12, color: '#475569', marginTop: 2 },
   progressDataRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
-  },
-  progressLabel: { fontSize: 12, color: '#64748B' },
-  progressPercentText: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
-  progressBarTrack: { height: 6, borderRadius: 3, backgroundColor: '#1E293B', overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 3 },
-  sectionHeaderTitle: { fontSize: 14, fontWeight: '800', color: '#FFF', marginBottom: 12 },
-  phaseCard: {
-    marginBottom: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.03)',
-  },
-  phaseCardLocked: { opacity: 0.35 },
-  phaseHeaderTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  phaseTag: { fontSize: 9, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
-  phaseTitle: { fontSize: 14, fontWeight: '700', color: '#FFF', marginTop: 4 },
-  phaseExpandedContent: {
+    marginBottom: SPACING.xs,
     marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
   },
-  milestoneBlock: { marginBottom: 14 },
-  milestoneTitleLine: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  milestoneTitleText: { fontSize: 13, fontWeight: '700', color: '#FFF' },
-  taskListContainer: { gap: 8, marginTop: SPACING.xs, paddingLeft: 6 },
+  progressDataTitle: { fontSize: 13, color: '#94A3B8', fontWeight: '500' },
+  progressPercentText: { fontSize: 16, fontWeight: '900', color: '#3B82F6' },
+  progressBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0F172A',
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  progressBarFill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 4 },
+
+  sectionHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 12,
+    letterSpacing: 1,
+  },
+
+  phaseCard: {
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 20,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  phaseCardActive: { borderColor: 'rgba(59,130,246,0.2)', backgroundColor: '#0B132B' },
+  phaseCardLocked: { opacity: 0.25 },
+  phaseHeaderTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  phaseNumberBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  phaseNumberText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  phaseTag: { fontSize: 9, fontWeight: '800', color: '#3B82F6', letterSpacing: 0.5 },
+  phaseTitle: { fontSize: 15, fontWeight: '800', color: '#FFF', marginTop: 2 },
+  arrowIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  phaseExpandedContent: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  milestoneBlock: { marginBottom: 18 },
+  milestoneTitleLine: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  milestoneTitleText: { fontSize: 14, fontWeight: '800', color: '#F8FAFC' },
+  taskListContainer: { gap: 10, marginTop: 4 },
+
   taskItemTouch: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.01)',
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: '#05070F',
+    padding: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: '#1E293B',
   },
-  taskCompleted: { backgroundColor: 'rgba(16,185,129,0.03)', borderColor: 'rgba(16,185,129,0.1)' },
-  taskInfoRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
-  taskItemTitleText: { fontSize: 12, color: '#E2E8F0', fontWeight: '500' },
-  taskTextDone: { color: '#64748B', textDecorationLine: 'line-through' },
-  actionBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.secondary },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  modalContent: {
-    height: height * 0.85,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    backgroundColor: '#0B0F19',
+  taskCompleted: { backgroundColor: 'rgba(16,185,129,0.02)', borderColor: 'rgba(16,185,129,0.15)' },
+  taskInfoRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  taskTypeIconOuter: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    display: 'flex',
   },
-  modalHeaderRow: {
+  taskTypeIconCompleted: { backgroundColor: 'rgba(16,185,129,0.08)' },
+  taskItemTitleText: { fontSize: 13, color: '#E2E8F0', fontWeight: '600', lineHeight: 17 },
+  taskTextDone: { color: '#475569', textDecorationLine: 'line-through' },
+  estimatedHoursText: { fontSize: 11, color: '#475569', marginLeft: 6, fontWeight: '500' },
+  actionBtnBlock: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 1,
+  },
+  actionBtnBlockCompleted: { backgroundColor: 'rgba(16,185,129,0.1)' },
+
+  kpiInfoBox: {
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(59,130,246,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.08)',
+    marginTop: 4,
+  },
+  kpiBoxTitle: { fontSize: 10, fontWeight: '800', color: '#3B82F6', letterSpacing: 0.5 },
+  kpiBoxContent: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+
+  badgeContainer: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  badgeTest: { backgroundColor: 'rgba(245,158,11,0.1)' },
+  badgeRead: { backgroundColor: 'rgba(59,130,246,0.1)' },
+  badgeText: { fontSize: 10, fontWeight: '700' },
+  badgeTextTest: { color: '#F59E0B' },
+  badgeTextRead: { color: '#3B82F6' },
+
+  /* NEW WORKSPACE TRÀN VIỀN PHẢN HỒI CAO CẤP */
+  modalOverlayFullScreen: { flex: 1, backgroundColor: '#05070F', paddingTop: 50 },
+  modalHeaderRowNew: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: '#1E293B',
   },
-  modalTag: { fontSize: 9, fontWeight: '800', color: COLORS.muted },
-  modalMainTitle: { fontSize: 16, fontWeight: '800', color: '#FFF', marginTop: 2 },
-  closeModalBtn: { padding: 6, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10 },
-  modalBodyScroll: { marginTop: 14 },
-  modalScrollContent: { paddingBottom: 30 },
-  docSectionBox: {
-    padding: 12,
+  modalTagNew: { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.5 },
+  modalMainTitleNew: { fontSize: 18, fontWeight: '800', color: '#FFF', marginTop: 4 },
+  closeModalBtnNew: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#0F172A',
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: '#1E293B',
   },
-  sectionSubHeader: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFF',
-    marginBottom: 8,
+  modalBodyScrollNew: { flex: 1, paddingHorizontal: 20, marginTop: 16 },
+  modalScrollContentNew: { paddingBottom: 40 },
+  docSectionBoxNew: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  sectionSubHeaderNew: { fontSize: 13, fontWeight: '800', color: '#F8FAFC', marginLeft: 8 },
+  markdownBodyNew: { fontSize: 13, color: '#94A3B8', lineHeight: 20, marginTop: 4 },
+  interactiveZoneNew: { marginTop: 24 },
+  quizQuestionCardNew: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 12,
+  },
+  quizPromptTextNew: { fontSize: 14, fontWeight: '700', color: '#FFF', lineHeight: 18 },
+  optionsListNew: { gap: 8, marginTop: 12 },
+  optionItemRowNew: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  markdownBody: { fontSize: 13, color: '#94A3B8', lineHeight: 19 },
-  interactiveZone: { marginTop: 20, gap: 10 },
-  quizQuestionCard: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    marginBottom: 10,
-  },
-  quizPromptText: { fontSize: 13, fontWeight: '700', color: '#FFF', marginBottom: SPACING.xs },
-  optionsList: { gap: 6, marginTop: 4 },
-  optionItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
-  },
-  optionItemSelected: { borderColor: COLORS.primary, backgroundColor: 'rgba(59,130,246,0.06)' },
-  optionText: { fontSize: 12, color: '#94A3B8' },
-  codeTextInput: {
-    height: 160,
+    gap: 12,
+    padding: 14,
     borderRadius: 12,
     backgroundColor: '#05070F',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  optionItemSelectedNew: { borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.04)' },
+  customRadioCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#475569',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customRadioCircleSelected: { borderColor: '#3B82F6' },
+  customRadioInnerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3B82F6' },
+  optionTextNew: { fontSize: 13, color: '#94A3B8', flex: 1 },
+  codeTextInputNew: {
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: '#05070F',
     color: '#10B981',
-    padding: 12,
-    fontSize: 12,
+    padding: 14,
+    fontSize: 13,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: '#1E293B',
+    marginTop: 4,
   },
-  modalFooterFixed: { paddingTop: 10, paddingBottom: 20, backgroundColor: '#0B0F19' },
-  submitTaskButton: {
-    height: 50,
+  modalFooterFixedNew: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    backgroundColor: '#05070F',
+  },
+  submitTaskButtonNew: {
+    height: 52,
     backgroundColor: '#10B981',
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
   },
-  submitTaskButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  submitTaskButtonTextNew: { color: '#FFF', fontSize: 15, fontWeight: '800' },
 });

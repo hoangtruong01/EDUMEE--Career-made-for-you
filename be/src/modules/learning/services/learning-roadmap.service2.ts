@@ -265,7 +265,9 @@ export class LearningRoadmapService {
 
       ⚠️ QUY MÔ VÀ ĐỊNH DẠNG JSON BẮT BUỘC:
       Sinh chính xác mảng "phases" gồm ĐÚNG 3 giai đoạn. Mỗi giai đoạn có ĐÚNG 1 "milestones". Mỗi "milestones" có ĐÚNG 3 "tasks".
-      Trong từng đối tượng task, bạn bắt buộc phải điền đầy đủ cả 2 trường "formatType" và "description" theo quy tắc phân bổ sau:
+      Trong từng đối tượng task, bạn bắt buộc phải điền đầy đủ cả 3 trường "title", "formatType" và "description" theo quy tắc phân bổ sau:
+
+      * Trường "title": Bắt buộc phải là tên đề mục/tên bài học rõ ràng, phản ánh chính xác nội dung kiến thức chuyên môn bài đó học về gì (Ví dụ: "Tổng quan về phân tích hành vi khách hàng ngành ${careerTitle}", "Kỹ thuật tối ưu hóa phễu chuyển đổi...", "Thiết lập kịch bản vận hành..."). TUYỆT ĐỐI KHÔNG đặt tên chung chung như "Nhiệm vụ mới" hoặc "Bài học lý thuyết".
 
       1. GIAI ĐOẠN 1 (Nền tảng):
          - Task 1 & Task 2: "formatType": "READ". Trường "description" viết lý thuyết súc tích (100-110 từ), chia làm 3 mục (### 1. Bản chất, ### 2. Thực tế, ### 3. Case study).
@@ -282,7 +284,7 @@ export class LearningRoadmapService {
              ### 1. TÌNH HUỐNG NGHIỆP VỤ THỰC CHIẾN (CASE STUDY)\\n[Biên soạn tình huống sự cố phức tạp ngành ${careerTitle} dài 40-50 từ]\\n\\n### 2. YÊU CẦU ĐẦU RA TỰ LUẬN (40% TRỌNG SỐ)\\n- Yêu cầu 1: Chỉ ra nguyên nhân.\\n- Yêu cầu 2: Đề xuất giải pháp.\\n\\n### 3. TIÊU CHÍ CHẤM ĐIỂM (RUBRIC)\\n- Tư duy hệ thống (20%)\\n- Tính khả thi giải pháp (20%)
            * Mảng "quizQuestions" phải chứa CHÍNH XÁC ĐÚNG 5 câu hỏi trắc nghiệm nâng cao.
 
-      ⚠️ QUY TẮC AN TOÀN CHUỒI JSON:
+      ⚠️ QUY TẮC AN TOÀN CHUỖI JSON:
       - TUYỆT ĐỐI KHÔNG dùng dấu ngoặc kép đôi (") ở bên trong nội dung văn bản. KHÔNG dùng phím Enter xuống dòng, dùng \\n.
       - Trả về DUY NHẤT chuỗi JSON phẳng, không bọc mảng học liệu bổ trợ hay giải thích ngoài.
     `;

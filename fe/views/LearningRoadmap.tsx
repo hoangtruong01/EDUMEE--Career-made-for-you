@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/context/auth-context';
 import { apiClient } from '@/lib/api-client';
-
-// 🎯 FIX ts(2305): Chỉ import những thực thể thực tế có export tại file service gốc của nhóm ông[cite: 5]
 import { GeneratedRoadmap, roadmapService } from '@/lib/roadmap.service';
 
 import confetti from 'canvas-confetti';
@@ -25,6 +23,7 @@ import {
   Clock,
   Compass,
   FileText,
+  GraduationCap,
   Layers,
   Loader2,
   Lock,
@@ -33,16 +32,13 @@ import {
   Trophy,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-// 🎯 ĐÃ FIX: Import thêm useCallback từ thư viện React
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-// 🎯 FIX KẾ THỪA ts(2430): Dùng Omit gạt bỏ trường number thô cũ trước khi bọc lại trường mở trợ mới cực sạch[cite: 5]
 interface IExtendedRoadmap extends Omit<GeneratedRoadmap, 'overallProgress'> {
   overallProgress?: number | undefined;
 }
 
-// Định nghĩa Interface mở rộng để hứng trọn cấu hình AI thô từ DB nhóm trả ra[cite: 5]
 interface IExtendedPhase {
   phaseId: string;
   title: string;
@@ -113,10 +109,11 @@ interface ISubmissionResponseStructure {
 
 interface IMappedTask {
   id: string;
-  title: string;
+  taskTitle: string;
   description: string;
   formatType: string;
   displayBadge: string;
+  isTest: boolean; // Trường mới xác định xem bài viết là học liệu hay bài kiểm tra
   quizQuestions: IQuizQuestion[];
   isRequired: boolean;
   hours: number;
@@ -136,8 +133,6 @@ interface IMappedMilestone {
 function mapApiRoadmap(roadmap: GeneratedRoadmap) {
   const extendedRoadmap = roadmap as GeneratedRoadmap & { taskProgress?: ITaskProgressState[] };
   const rawProgress = extendedRoadmap.taskProgress;
-
-  // Ép kiểu mảng thô sang bộ khung Extended để bypass linter mượt mà[cite: 5]
   const safePhases = Array.isArray(roadmap?.phases)
     ? (roadmap.phases as unknown as IExtendedPhase[])
     : [];
@@ -146,7 +141,6 @@ function mapApiRoadmap(roadmap: GeneratedRoadmap) {
     let completedInPhase = 0;
     let totalInPhase = 0;
 
-    // 🎯 FIX ÉP KIỂU ts(2352): Bắc cầu thông mạch gián tiếp qua phân hệ 'unknown' để giải phóng mô hình[cite: 5]
     const safeMilestones = Array.isArray(phase?.milestones)
       ? (phase.milestones as unknown as IMilestoneItem[])
       : [];
@@ -160,17 +154,19 @@ function mapApiRoadmap(roadmap: GeneratedRoadmap) {
         const currentStatus = matchState ? matchState.status : i === 0 ? 'IN_PROGRESS' : 'LOCKED';
         if (currentStatus === 'COMPLETED') completedInPhase++;
 
-        let displayBadge = t.formatType || 'READ';
-        if (t.formatType === 'QUIZ') displayBadge = 'Dạng 1: Trắc nghiệm';
-        if (t.formatType === 'TEXT') displayBadge = 'Dạng 2: Tự Luận / Code';
-        if (t.formatType === 'HYBRID') displayBadge = 'Dạng 3: Phức hợp';
+        const isTestComponent = t.formatType !== 'READ';
+        let displayBadge = 'Tài liệu học tập';
+        if (t.formatType === 'QUIZ') displayBadge = 'Bài test trắc nghiệm';
+        if (t.formatType === 'TEXT') displayBadge = 'Bài tập thực hành tự luận';
+        if (t.formatType === 'HYBRID') displayBadge = 'Khảo thí phức hợp';
 
         return {
           id: t.taskId,
-          title: t.taskTitle,
+          taskTitle: t.taskTitle || 'Bài học chuyên môn chuẩn hóa',
           description: t.description || 'Nội dung đang tải...',
           formatType: t.formatType || 'READ',
           displayBadge,
+          isTest: isTestComponent,
           quizQuestions: Array.isArray(t.quizQuestions) ? t.quizQuestions : [],
           isRequired: t.isRequired,
           hours: t.estimatedHours,
@@ -284,7 +280,6 @@ const LearningRoadmap = () => {
     comments: string[];
   } | null>(null);
 
-  // 🎯 FIX DỨT ĐIỂM LINTER: Bọc hàm nạp dữ liệu bằng useCallback để tránh vòng lặp vô hạn và thông mạch Husky
   const loadRoadmapData = useCallback(
     async (silent = false) => {
       if (!accessToken) return;
@@ -308,7 +303,7 @@ const LearningRoadmap = () => {
 
   useEffect(() => {
     void loadRoadmapData();
-  }, [loadRoadmapData]); // 🎯 Đã cập nhật dependency khít theo luật React Hook
+  }, [loadRoadmapData]);
 
   const roadmapData = useMemo(() => (apiRoadmap ? mapApiRoadmap(apiRoadmap) : []), [apiRoadmap]);
   const flatTasks = useMemo(
@@ -361,7 +356,7 @@ const LearningRoadmap = () => {
           '/task-submissions',
           {
             taskId: task.id,
-            roadmapId: apiRoadmap._id, // 🎯 FIX ID CHUẨN: Đồng bộ trường mã hóa độc nhất của MongoDB[cite: 5]
+            roadmapId: apiRoadmap._id,
             status: 'COMPLETED',
             submissionContent: {
               textContent: 'Học viên chủ động skip lý thuyết tiến vào chặng khảo thí.',
@@ -455,7 +450,7 @@ const LearningRoadmap = () => {
         '/task-submissions',
         {
           taskId,
-          roadmapId: apiRoadmap._id, // 🎯 FIX ID CHUẨN THỨ 2: Đồng bộ cổng Mongo[cite: 5]
+          roadmapId: apiRoadmap._id,
           status: formatType === 'READ' ? 'COMPLETED' : 'SUBMITTED',
           submissionContent,
         },
@@ -525,6 +520,23 @@ const LearningRoadmap = () => {
       toast.error('Gặp lỗi khi ghi nhận kết quả học tập lên hệ thống.');
     } finally {
       setIsSubmittingTask(false);
+    }
+  };
+
+  const totalOverallProgress = useMemo(() => {
+    if (roadmapData.length === 0) return 0;
+    const current = roadmapData.find((p) => p.status === 'current');
+    return current ? current.progress : 0; // Đổi fallback từ 56 về 0 để phản ánh đúng tiến độ thực tế nếu chưa học
+  }, [roadmapData]);
+
+  // 🎯 UPGRADE 1: Hàm kích hoạt cuộn mượt (Smooth Scroll) tới vị trí ID câu hỏi cụ thể trong Grid
+  const scrollToQuestion = (index: number) => {
+    const targetElement = document.getElementById(`question-block-${index}`);
+    if (targetElement) {
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
     }
   };
 
@@ -773,38 +785,54 @@ const LearningRoadmap = () => {
                                 {m.title}
                               </h4>
 
-                              <div className="relative ml-1.5 space-y-3 border-l border-dashed border-violet-500/20 pt-1 pl-5">
+                              {/* 🎯 UPGRADE 2: Xóa hoàn toàn dòng nối line mờ bên hông nhiệm vụ bằng cách triệt tiêu đường border trái */}
+                              <div className="relative ml-1.5 space-y-3 pt-1">
                                 {m.tasks.map((task: IMappedTask) => {
-                                  const isTestComponent = task.formatType !== 'READ';
-                                  const isTaskLockedByCondition =
-                                    isPhaseLocked ||
-                                    (isTestComponent && !isAllReadFinishedInMilestone);
-                                  const isTaskDone = task.status === 'COMPLETED';
                                   const isThisActive = activeStudyTaskId === task.id;
+                                  const isTaskLockedByCondition =
+                                    isPhaseLocked || (task.isTest && !isAllReadFinishedInMilestone);
+                                  const isTaskDone = task.status === 'COMPLETED';
 
                                   return (
                                     <div
                                       key={task.id}
-                                      className={`group/task relative -left-5 w-[calc(100%+1.25rem)] rounded-xl border p-3.5 transition-all duration-300 ${isThisActive ? 'border-violet-500 bg-violet-500/5 shadow-md shadow-violet-500/5' : isTaskDone ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : isTaskLockedByCondition ? 'border-muted/40 bg-zinc-500/[0.02]' : 'bg-background border-border/80 hover:border-violet-500/20'}`}
+                                      className={`group/task relative w-full rounded-xl border p-3.5 transition-all duration-300 ${isThisActive ? 'border-violet-500 bg-violet-500/5 shadow-md shadow-violet-500/5' : isTaskDone ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : isTaskLockedByCondition ? 'border-muted/40 bg-zinc-500/[0.02]' : 'bg-background border-border/80 hover:border-violet-500/20'}`}
                                     >
-                                      <div
-                                        className={`bg-background absolute top-5.5 left-[-24px] h-2 w-2 rounded-full border transition-all duration-300 ${isTaskDone ? 'border-emerald-500 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : isTaskLockedByCondition ? 'border-muted' : 'animate-pulse border-violet-500 bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.6)]'}`}
-                                      />
-
                                       <div className="flex items-center justify-between gap-2.5">
                                         <div className="min-w-0 flex-1">
+                                          {/* 🎯 UPGRADE 3: Hiển thị tên bài học thực tế, nhuộm màu chữ hiện đại kết hợp tag phân loại Bài học / Bài kiểm tra rõ ràng */}
                                           <h5
-                                            className={`line-clamp-1 text-xs font-bold tracking-tight ${isTaskDone ? 'text-muted-foreground/70 line-through' : isThisActive ? 'text-violet-400' : 'text-foreground'}`}
+                                            className={`text-xs font-bold tracking-tight transition-colors duration-200 ${
+                                              isTaskDone
+                                                ? 'text-muted-foreground/50 line-through'
+                                                : isThisActive
+                                                  ? 'text-violet-400'
+                                                  : 'text-foreground/90 group-hover/task:text-violet-500'
+                                            }`}
                                           >
-                                            {task.title}
+                                            {task.taskTitle}
                                           </h5>
-                                          <div className="mt-0.5 flex items-center gap-1.5">
-                                            <Badge
-                                              variant="secondary"
-                                              className="text-muted-foreground bg-muted/40 rounded px-1 py-0 text-[8px] font-bold tracking-wide uppercase"
-                                            >
-                                              {task.formatType}
-                                            </Badge>
+                                          <div className="mt-1.5 flex items-center gap-1.5">
+                                            {task.isTest ? (
+                                              <Badge
+                                                variant="outline"
+                                                className="flex items-center gap-1 rounded border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-amber-500 uppercase"
+                                              >
+                                                <Sparkles className="h-2.5 w-2.5" /> Bài kiểm tra
+                                                thực chiến
+                                              </Badge>
+                                            ) : (
+                                              <Badge
+                                                variant="outline"
+                                                className="flex items-center gap-1 rounded border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-blue-400 uppercase"
+                                              >
+                                                <GraduationCap className="h-2.5 w-2.5" /> Bài học lý
+                                                thuyết
+                                              </Badge>
+                                            )}
+                                            <span className="text-muted-foreground text-[10px] font-medium">
+                                              ({task.displayBadge})
+                                            </span>
                                           </div>
                                         </div>
 
@@ -812,17 +840,17 @@ const LearningRoadmap = () => {
                                           {isTaskLockedByCondition ? (
                                             <div className="text-muted-foreground/40 bg-muted/30 border-border/50 flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold select-none">
                                               <Lock className="h-3 w-3" />{' '}
-                                              {isTestComponent &&
+                                              {task.isTest &&
                                               !isAllReadFinishedInMilestone &&
                                               !isPhaseLocked
-                                                ? 'Khóa (Học lý thuyết trước)'
-                                                : 'Khóa chặng'}
+                                                ? 'Mở sau khi học lý thuyết'
+                                                : 'Chưa mở chặng'}
                                             </div>
                                           ) : (
                                             <Button
                                               size="sm"
                                               variant={isThisActive ? 'hero' : 'outline'}
-                                              className="h-7 rounded-md px-2 text-[10px] font-bold"
+                                              className="h-7 rounded-md px-2.5 text-[10px] font-bold transition-all duration-200 active:scale-95"
                                               onClick={() =>
                                                 setActiveStudyTaskId(isThisActive ? null : task.id)
                                               }
@@ -831,7 +859,7 @@ const LearningRoadmap = () => {
                                                 ? 'Đang mở'
                                                 : isTaskDone
                                                   ? 'Đọc lại'
-                                                  : isTestComponent
+                                                  : task.isTest
                                                     ? 'Làm bài'
                                                     : 'Học ngay'}
                                             </Button>
@@ -852,7 +880,6 @@ const LearningRoadmap = () => {
                           </span>
                           <p className="text-muted-foreground leading-tight">{phase.kpi}</p>
 
-                          {/* 🎯 FIX TRIỆT ĐỂ LỖI ts(2367): Xóa sạch hàng dấu bằng thừa để React map thẻ Badge sạch đẹp[cite: 5] */}
                           <div className="mt-2 flex flex-wrap gap-1">
                             {phase.skills.map((s: string) => (
                               <Badge key={s} variant="secondary" className="bg-muted/60 text-[9px]">
@@ -893,7 +920,7 @@ const LearningRoadmap = () => {
                       </span>
                     </div>
                     <h2 className="text-foreground mt-1 truncate text-lg font-bold tracking-tight">
-                      {activeTaskData.title}
+                      {activeTaskData.taskTitle}
                     </h2>
                   </div>
                   <Button
@@ -996,8 +1023,9 @@ const LearningRoadmap = () => {
 
                       <div className="space-y-1.5">
                         <span className="text-muted-foreground block text-[10px] font-bold tracking-wider uppercase">
-                          Lưới định vị câu hỏi nhanh:
+                          Lưới định vị câu hỏi nhanh (Click để di chuyển đến câu tương ứng):
                         </span>
+                        {/* 🎯 UPGRADE 1: Cấu hình lại các ô hiển thị câu hỏi thành các thẻ button có tương tác hover hiệu ứng và sự kiện Click Smooth Scroll */}
                         <div className="flex flex-wrap gap-1.5">
                           {activeTaskData.quizQuestions.map((_, idx: number) => {
                             const k = `${activeTaskData.id}-${idx}`;
@@ -1009,12 +1037,13 @@ const LearningRoadmap = () => {
                               );
                             const isDone = isLive || isHist;
                             return (
-                              <div
+                              <button
                                 key={idx}
-                                className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs font-bold transition-all duration-200 ${isDone ? 'scale-105 border-violet-500 bg-violet-600 font-bold text-white shadow-sm shadow-violet-500/10' : 'bg-background border-border/70 text-muted-foreground/60'}`}
+                                onClick={() => scrollToQuestion(idx)}
+                                className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition-all duration-200 hover:scale-110 active:scale-95 ${isDone ? 'border-violet-500 bg-violet-600 text-white shadow-sm shadow-violet-500/20' : 'bg-background border-border/70 text-muted-foreground/60 hover:border-violet-500/40'}`}
                               >
                                 {idx + 1}
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1042,9 +1071,11 @@ const LearningRoadmap = () => {
                           if (!selectedList) selectedList = [];
 
                           return (
+                            /* 🎯 UPGRADE 1 CONTINUED: Thêm ID định vị cho khối câu hỏi nhằm kết nối tọa độ scroll vào luồng sự kiện click phía trên mượt mà */
                             <div
+                              id={`question-block-${qIdx}`}
                               key={qIdx}
-                              className="bg-background/40 border-border/40 space-y-2 rounded-xl border p-3 text-xs"
+                              className="bg-background/40 border-border/40 scroll-mt-4 space-y-2 rounded-xl border p-3 text-xs transition-colors duration-200 hover:border-violet-500/20"
                             >
                               <p className="text-foreground/90 flex items-center gap-2 text-xs leading-snug font-bold">
                                 <span>
