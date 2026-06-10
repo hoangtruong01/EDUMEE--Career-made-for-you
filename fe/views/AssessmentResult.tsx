@@ -633,10 +633,10 @@ const AssessmentResult = () => {
             </span>
           </div>
           <h1 className="font-display text-foreground text-3xl font-extrabold sm:text-5xl">
-            Kết quả của bạn đã sẵn sàng
+            Nghề nghiệp phù hợp
           </h1>
           <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
-            Dựa trên 20 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ
+            Dựa trên 30 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ
             trình sự nghiệp tối ưu nhất dành riêng cho bạn.
           </p>
         </motion.div>
