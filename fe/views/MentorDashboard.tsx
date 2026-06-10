@@ -1,6 +1,15 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import {
+  MentorEmptyState,
+  MentorFilterChip,
+  MentorInfoBanner,
+  MentorMetricCard,
+  MentorPageHeader,
+  MentorPanel,
+  MentorStatusBadge,
+} from '@/components/mentor/mentor-workspace-ui';
 import { useAuth } from '@/context/auth-context';
 import { useBookingChat } from '@/context/booking-chat-context';
 import {
@@ -182,14 +191,9 @@ function TrialBookingBadge({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex w-fit items-center rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
-        className,
-      )}
-    >
+    <MentorStatusBadge tone="violet" className={className}>
       Trial {getTrialDuration(booking)} phút
-    </span>
+    </MentorStatusBadge>
   );
 }
 
@@ -302,21 +306,9 @@ function PortalPanel({
   className?: string;
 }) {
   return (
-    <section
-      id={id}
-      className={cn(
-        'rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5',
-        className,
-      )}
-    >
-      {(title || description) && (
-        <div className="mb-5">
-          {title && <h2 className="text-xl font-bold text-slate-950 dark:text-slate-50">{title}</h2>}
-          {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
-        </div>
-      )}
+    <MentorPanel id={id} title={title} description={description} className={className}>
       {children}
-    </section>
+    </MentorPanel>
   );
 }
 
@@ -332,17 +324,7 @@ function StatCard({
   tone: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>
-          <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">{value}</p>
-        </div>
-        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tone)}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-    </article>
+    <MentorMetricCard title={title} value={value} icon={Icon} iconClassName={tone} />
   );
 }
 
@@ -1954,27 +1936,14 @@ function MentorBookingList({
             {MENTOR_BOOKING_FILTERS.map((filter) => {
               const active = activeFilter === filter.value;
               return (
-                <button
+                <MentorFilterChip
                   key={filter.value}
-                  type="button"
                   onClick={() => setActiveFilter(filter.value)}
-                  className={cn(
-                    'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors',
-                    active
-                      ? 'bg-sky-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
-                  )}
+                  active={active}
+                  count={filterCounts[filter.value]}
                 >
-                  <span>{filter.label}</span>
-                  <span
-                    className={cn(
-                      'rounded-full px-1.5 py-0.5 text-[11px]',
-                      active ? 'bg-white/20 text-white' : 'bg-white text-slate-500 dark:bg-slate-900',
-                    )}
-                  >
-                    {filterCounts[filter.value]}
-                  </span>
-                </button>
+                  {filter.label}
+                </MentorFilterChip>
               );
             })}
           </div>
@@ -3377,6 +3346,99 @@ function ProfileSummary({
   );
 }
 
+function MentorWorkQueue({
+  bookings,
+  onOpenChat,
+}: {
+  bookings: BookingSession[];
+  onOpenChat: (booking: BookingSession) => void;
+}) {
+  const pendingCount = bookings.filter((booking) => booking.status === 'pending').length;
+
+  return (
+    <MentorPanel
+      title="Việc cần xử lý"
+      description="Các phiên gần nhất và booking đang cần mentor phản hồi."
+      action={
+        <Button asChild variant="outline" size="sm" className="rounded-lg">
+          <Link href="/mentor-dashboard/bookings">Mở tất cả booking</Link>
+        </Button>
+      }
+    >
+      {bookings.length === 0 ? (
+        <MentorEmptyState
+          icon={Calendar}
+          title="Chưa có phiên cần theo dõi"
+          description="Khi học viên đặt lịch, booking sẽ xuất hiện ở đây để bạn xác nhận, nhắn tin hoặc vào phòng call."
+        />
+      ) : (
+        <div className="space-y-3">
+          {pendingCount > 0 && (
+            <MentorInfoBanner
+              icon={Clock}
+              title={`${pendingCount} booking chờ xác nhận`}
+              description="Ưu tiên phản hồi sớm để học viên không bị treo lịch."
+              tone="amber"
+              className="py-3"
+            />
+          )}
+
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            {bookings.map((booking) => {
+              const start = getBookingStart(booking);
+              const meetingHref = getBookingMeetingHref(booking);
+              const isPending = booking.status === 'pending';
+              const canOpenMeeting = meetingHref && ['confirmed', 'rescheduled'].includes(booking.status);
+
+              return (
+                <div key={booking.id} className="grid gap-3 bg-white p-4 text-sm dark:bg-slate-900 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950 dark:text-slate-50">
+                        {booking.menteeUser?.name || 'Học viên'} · {booking.sessionType.replace(/_/g, ' ')}
+                      </p>
+                      <MentorStatusBadge tone={isPending ? 'amber' : 'blue'}>
+                        {statusLabel[booking.status] || booking.status}
+                      </MentorStatusBadge>
+                      {isTrialBooking(booking) ? <TrialBookingBadge booking={booking} /> : null}
+                    </div>
+                    <p className="mt-1 text-slate-600 dark:text-slate-300">
+                      {start.toLocaleString('vi-VN')} · {getBookingDuration(booking)} phút
+                    </p>
+                    <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {booking.bookingRequest.topicsToDiscuss?.join(', ') || 'Chưa có chủ đề'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    {canOpenMeeting && (
+                      <Button asChild size="sm" className="rounded-lg bg-sky-600 hover:bg-sky-700">
+                        <Link href={meetingHref}>
+                          <Video className="h-4 w-4" />
+                          Vào phòng call
+                        </Link>
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-lg"
+                      onClick={() => onOpenChat(booking)}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Nhắn tin
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </MentorPanel>
+  );
+}
+
 const reviewMetricLabels = [
   { key: 'communication', label: 'Giao tiếp' },
   { key: 'expertise', label: 'Chuyên môn' },
@@ -4463,6 +4525,18 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
     () => activeBookings.filter((booking) => isTrialBooking(booking)),
     [activeBookings],
   );
+  const upcomingBookings = useMemo(
+    () =>
+      activeBookings
+        .slice()
+        .sort((first, second) => {
+          const firstDate = getBookingStart(first);
+          const secondDate = getBookingStart(second);
+          return firstDate.getTime() - secondDate.getTime();
+        })
+        .slice(0, 5),
+    [activeBookings],
+  );
   const pendingBookings = bookings.filter((booking) => booking.status === 'pending').length;
   const pendingTrialBookings = activeTrialBookings.filter((booking) => booking.status === 'pending').length;
   const rate = getPrimaryRate(myProfile);
@@ -4547,16 +4621,22 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <section id="overview" className="border-b border-slate-200 pb-4 dark:border-slate-800">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
-            {pageTitle[view]}
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-            {pageDescription[view]}
-          </p>
-        </div>
-      </section>
+      <MentorPageHeader
+        title={pageTitle[view]}
+        description={pageDescription[view]}
+        eyebrow="Không gian mentor"
+        action={
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-lg border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            onClick={() => void refreshMentorPortalData()}
+          >
+            <Repeat className="h-4 w-4" />
+            Làm mới dữ liệu
+          </Button>
+        }
+      />
 
       {(reviewsError || incomeError) && (
         <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -4594,43 +4674,46 @@ export default function MentorDashboard({ view = 'overview' }: { view?: MentorDa
       )}
 
       {view === 'overview' && (
-        <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-          <ProfileSummary
-            profile={myProfile}
-            activeBookings={activeBookings.length}
-            activeTrialBookings={activeTrialBookings.length}
-          />
-          <PortalPanel title="Chuẩn phiên tư vấn" description="Các điểm cần giữ ổn định trước khi nhận thêm booking.">
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-slate-100">Xác nhận booking đúng hạn</p>
-                  <p className="mt-0.5 text-slate-500 dark:text-slate-400">Ưu tiên các phiên đang chờ để học viên không bị treo lịch.</p>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <MentorWorkQueue bookings={upcomingBookings} onOpenChat={openBookingChat} />
+          <div className="space-y-5">
+            <ProfileSummary
+              profile={myProfile}
+              activeBookings={activeBookings.length}
+              activeTrialBookings={activeTrialBookings.length}
+            />
+            <PortalPanel title="Chuẩn phiên tư vấn" description="Các điểm cần giữ ổn định trước khi nhận thêm booking.">
+              <div className="space-y-3 text-sm">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-slate-100">Xác nhận booking đúng hạn</p>
+                    <p className="mt-0.5 text-slate-600 dark:text-slate-300">Ưu tiên các phiên đang chờ để học viên không bị treo lịch.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-slate-100">Chuẩn bị trước nội dung</p>
+                    <p className="mt-0.5 text-slate-600 dark:text-slate-300">Đọc chủ đề học viên gửi trước khi vào buổi tư vấn.</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-slate-100">Chuẩn bị trước nội dung</p>
-                  <p className="mt-0.5 text-slate-500 dark:text-slate-400">Đọc chủ đề học viên gửi trước khi vào buổi tư vấn.</p>
+              {activeTrialBookings.length > 0 ? (
+                <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
+                  <TrialBookingBadge />
+                  <p className="mt-2 text-sm font-medium text-violet-800 dark:text-violet-100">
+                    {pendingTrialBookings > 0
+                      ? `${pendingTrialBookings} trial đang chờ bạn xác nhận.`
+                      : `${activeTrialBookings.length} trial đang được theo dõi trong lịch.`}
+                  </p>
+                  <p className="mt-1 text-xs text-violet-700 dark:text-violet-200">
+                    Trial miễn phí và không phát sinh doanh thu mentor.
+                  </p>
                 </div>
-              </div>
-            </div>
-            {activeTrialBookings.length > 0 ? (
-              <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
-                <TrialBookingBadge />
-                <p className="mt-2 text-sm font-medium text-violet-800 dark:text-violet-100">
-                  {pendingTrialBookings > 0
-                    ? `${pendingTrialBookings} trial đang chờ bạn xác nhận.`
-                    : `${activeTrialBookings.length} trial đang được theo dõi trong lịch.`}
-                </p>
-                <p className="mt-1 text-xs text-violet-700 dark:text-violet-200">
-                  Trial miễn phí và không phát sinh doanh thu mentor.
-                </p>
-              </div>
-            ) : null}
-          </PortalPanel>
+              ) : null}
+            </PortalPanel>
+          </div>
         </div>
       )}
       {view === 'profile' && (

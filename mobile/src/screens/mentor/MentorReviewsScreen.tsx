@@ -2,9 +2,9 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Star, ThumbsUp, Users } from 'lucide-react-native';
 import { summarizeReviews, useMentorPortalData, useMentorReviews } from '../../hooks/useMentorPortalData';
-import { COLORS, SPACING } from '../../theme';
+import { SPACING } from '../../theme';
 import { formatDateTime } from './mentorUtils';
-import { EmptyState, InfoCard, LoadingState, MetricCard, PortalScreen, SectionTitle } from './MentorPortalUI';
+import { EmptyState, InfoCard, LoadingState, MENTOR_COLORS as COLORS, MetricCard, PortalScreen, SectionTitle } from './MentorPortalUI';
 
 function getReviewRating(value?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   },
   reviewItem: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: COLORS.borderSoft,
     paddingTop: SPACING.md,
   },
   reviewHeader: {
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   comment: {
-    color: 'rgba(255,255,255,0.78)',
+    color: COLORS.muted,
     fontSize: 13,
     lineHeight: 20,
     marginTop: SPACING.sm,
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     fontSize: 11,
     fontWeight: '800',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.surfaceSubtle,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 5,

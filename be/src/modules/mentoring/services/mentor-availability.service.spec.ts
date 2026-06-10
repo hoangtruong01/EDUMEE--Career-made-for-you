@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
@@ -157,6 +157,94 @@ describe('MentorAvailabilityService', () => {
         status: MentorAvailabilitySlotStatus.AVAILABLE,
       }),
     );
+  });
+
+  it('splits before and after fragments when holding a trial inside a longer slot', async () => {
+    const slotId = new Types.ObjectId();
+    const tutorProfileId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const menteeId = new Types.ObjectId();
+    const startAt = new Date(Date.now() + 60 * 60_000);
+    const endAt = new Date(startAt.getTime() + 90 * 60_000);
+    const trialStartAt = new Date(startAt.getTime() + 30 * 60_000);
+    const trialEndAt = new Date(trialStartAt.getTime() + 15 * 60_000);
+    const availableSlot = {
+      _id: slotId,
+      tutorProfileId,
+      mentorId,
+      startAt,
+      endAt,
+      status: MentorAvailabilitySlotStatus.AVAILABLE,
+    };
+    const heldSlot = {
+      ...availableSlot,
+      startAt: trialStartAt,
+      endAt: trialEndAt,
+      status: MentorAvailabilitySlotStatus.HELD,
+    };
+    slotModel.findOne.mockReturnValue(createExecMock(availableSlot));
+    slotModel.findOneAndUpdate.mockReturnValue(createExecMock(heldSlot));
+
+    const result = await service.holdSlotForBooking(
+      slotId.toString(),
+      tutorProfileId.toString(),
+      menteeId.toString(),
+      { durationMinutes: 15, startAt: trialStartAt },
+    );
+
+    expect(result).toBe(heldSlot);
+    expect(slotModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ startAt: trialStartAt, endAt: trialEndAt }),
+      { new: true },
+    );
+    expect(slotModel).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        tutorProfileId,
+        mentorId,
+        startAt,
+        endAt: trialStartAt,
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+      }),
+    );
+    expect(slotModel).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        tutorProfileId,
+        mentorId,
+        startAt: trialEndAt,
+        endAt,
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+      }),
+    );
+  });
+
+  it('rejects requested hold ranges outside the selected slot', async () => {
+    const slotId = new Types.ObjectId();
+    const tutorProfileId = new Types.ObjectId();
+    const mentorId = new Types.ObjectId();
+    const menteeId = new Types.ObjectId();
+    const startAt = new Date(Date.now() + 60 * 60_000);
+    const endAt = new Date(startAt.getTime() + 30 * 60_000);
+    slotModel.findOne.mockReturnValue(createExecMock({
+      _id: slotId,
+      tutorProfileId,
+      mentorId,
+      startAt,
+      endAt,
+      status: MentorAvailabilitySlotStatus.AVAILABLE,
+    }));
+
+    await expect(
+      service.holdSlotForBooking(
+        slotId.toString(),
+        tutorProfileId.toString(),
+        menteeId.toString(),
+        { durationMinutes: 15, startAt: new Date(startAt.getTime() - 5 * 60_000) },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(slotModel.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   it('rejects a slot that is no longer available', async () => {

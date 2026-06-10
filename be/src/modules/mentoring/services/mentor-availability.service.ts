@@ -52,6 +52,8 @@ interface CreateBulkSlotsInput {
 
 interface HoldSlotOptions {
   durationMinutes?: number;
+  startAt?: string | Date;
+  expires?: boolean;
 }
 
 export interface SkippedBulkSlot {
@@ -194,6 +196,30 @@ export class MentorAvailabilityService {
       .exec();
   }
 
+  async getAvailableSlotForBooking(
+    slotId: string,
+    tutorProfileId: string,
+  ): Promise<MentorAvailabilitySlotDocument> {
+    if (!Types.ObjectId.isValid(slotId)) throw new BadRequestException('Invalid availabilitySlotId');
+    if (!Types.ObjectId.isValid(tutorProfileId)) throw new BadRequestException('Invalid tutorProfileId');
+
+    const slotObjectId = new Types.ObjectId(slotId);
+    const tutorProfileObjectId = new Types.ObjectId(tutorProfileId);
+    await this.releaseExpiredHeldSlots({ _id: slotObjectId });
+
+    const slot = await this.slotModel
+      .findOne({
+        _id: slotObjectId,
+        tutorProfileId: tutorProfileObjectId,
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+        startAt: { $gte: new Date() },
+      })
+      .exec();
+
+    if (!slot) throw new ConflictException('Khung gio da co nguoi dat');
+    return slot;
+  }
+
   async updateSlot(
     id: string,
     actor: AuthUserLike,
@@ -244,51 +270,80 @@ export class MentorAvailabilityService {
     if (!Types.ObjectId.isValid(tutorProfileId)) throw new BadRequestException('Invalid tutorProfileId');
     if (!Types.ObjectId.isValid(menteeId)) throw new BadRequestException('Invalid menteeId');
 
-    await this.releaseExpiredHeldSlots({ _id: new Types.ObjectId(slotId) });
-
     const slotObjectId = new Types.ObjectId(slotId);
     const tutorProfileObjectId = new Types.ObjectId(tutorProfileId);
-    const heldUntil = new Date(Date.now() + DEFAULT_HOLD_TTL_MS);
     const baseFilter = {
       _id: slotObjectId,
       tutorProfileId: tutorProfileObjectId,
       status: MentorAvailabilitySlotStatus.AVAILABLE,
       startAt: { $gte: new Date() },
     };
-    const availableSlot = await this.slotModel.findOne(baseFilter).exec();
-    if (!availableSlot) throw new ConflictException('Khung gio da co nguoi dat');
+    const availableSlot = await this.getAvailableSlotForBooking(slotId, tutorProfileId);
 
     const requestedDuration = Number(options.durationMinutes || 0);
-    const currentDuration = Math.round((availableSlot.endAt.getTime() - availableSlot.startAt.getTime()) / 60_000);
-    const shouldSplit =
-      Number.isFinite(requestedDuration) &&
-      requestedDuration > 0 &&
-      currentDuration > requestedDuration;
-    const heldEndAt = shouldSplit
-      ? new Date(availableSlot.startAt.getTime() + requestedDuration * 60_000)
-      : availableSlot.endAt;
+    const shouldUseRequestedDuration = Number.isFinite(requestedDuration) && requestedDuration > 0;
+    const availableStartAt = new Date(availableSlot.startAt);
+    const availableEndAt = new Date(availableSlot.endAt);
+    const heldStartAt = options.startAt !== undefined
+      ? new Date(options.startAt)
+      : availableStartAt;
+
+    if (options.startAt !== undefined && !shouldUseRequestedDuration) {
+      throw new BadRequestException('durationMinutes is required when startAt is provided');
+    }
+    if (Number.isNaN(heldStartAt.getTime())) {
+      throw new BadRequestException('Invalid hold start time');
+    }
+
+    const heldEndAt = shouldUseRequestedDuration
+      ? new Date(heldStartAt.getTime() + requestedDuration * 60_000)
+      : availableEndAt;
+    if (
+      heldEndAt <= heldStartAt ||
+      heldStartAt.getTime() < availableStartAt.getTime() ||
+      heldEndAt.getTime() > availableEndAt.getTime()
+    ) {
+      throw new BadRequestException('Hold range must be inside the availability slot');
+    }
+    const shouldCreateBeforeFragment = heldStartAt.getTime() > availableStartAt.getTime();
+    const shouldCreateAfterFragment = heldEndAt.getTime() < availableEndAt.getTime();
+
+    const update: Record<string, unknown> = {
+      status: MentorAvailabilitySlotStatus.HELD,
+      heldBy: new Types.ObjectId(menteeId),
+      startAt: heldStartAt,
+      endAt: heldEndAt,
+    };
+    if (options.expires !== false) {
+      update.heldUntil = new Date(Date.now() + DEFAULT_HOLD_TTL_MS);
+    }
 
     const slot = await this.slotModel
       .findOneAndUpdate(
         baseFilter,
-        {
-          status: MentorAvailabilitySlotStatus.HELD,
-          heldBy: new Types.ObjectId(menteeId),
-          heldUntil,
-          endAt: heldEndAt,
-        },
+        update,
         { new: true },
       )
       .exec();
 
     if (!slot) throw new ConflictException('Khung gio da co nguoi dat');
 
-    if (shouldSplit) {
+    if (shouldCreateBeforeFragment) {
+      await new this.slotModel({
+        tutorProfileId: availableSlot.tutorProfileId,
+        mentorId: availableSlot.mentorId,
+        startAt: availableStartAt,
+        endAt: heldStartAt,
+        status: MentorAvailabilitySlotStatus.AVAILABLE,
+      }).save();
+    }
+
+    if (shouldCreateAfterFragment) {
       await new this.slotModel({
         tutorProfileId: availableSlot.tutorProfileId,
         mentorId: availableSlot.mentorId,
         startAt: heldEndAt,
-        endAt: availableSlot.endAt,
+        endAt: availableEndAt,
         status: MentorAvailabilitySlotStatus.AVAILABLE,
       }).save();
     }

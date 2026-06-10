@@ -249,7 +249,6 @@ const Profile = () => {
   const [aiSubscription, setAiSubscription] = useState<MyAiSubscription | null>(null);
   const [aiPayments, setAiPayments] = useState<PaymentRecord[]>([]);
   const [selectedBillingCycles, setSelectedBillingCycles] = useState<Record<string, BillingCycle>>({});
-  const [billingBanner, setBillingBanner] = useState<BillingBanner | null>(null);
   const [isBillingRefreshing, setIsBillingRefreshing] = useState(false);
   const [billingError, setBillingError] = useState('');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
@@ -504,7 +503,6 @@ const Profile = () => {
 
       const toastId = `payment-return:${paymentId || paymentResult}`;
       const banner = buildPaymentReturnBanner(paymentResult, payment);
-      setBillingBanner(banner);
       showPaymentToast(banner, toastId);
       cleanUrl();
       await refreshAiBilling();
@@ -807,7 +805,6 @@ const Profile = () => {
               </label>
             </div>
 
-            {billingBanner ? <BillingReturnBanner banner={billingBanner} /> : null}
             {billingError ? (
               <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -1478,7 +1475,6 @@ const Profile = () => {
               onUpgrade={() => openModal('Upgrade AI')}
               onRefresh={handleRefreshBilling}
             />
-            {billingBanner ? <BillingReturnBanner banner={billingBanner} /> : null}
           </>
         ) : null}
 
@@ -2534,26 +2530,6 @@ function MentorCheckboxGroup<T extends string>({
   );
 }
 
-function BillingReturnBanner({ banner }: { banner: BillingBanner }) {
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-3 rounded-xl border p-4 text-sm',
-        banner.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        banner.tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-700',
-        banner.tone === 'error' && 'border-rose-200 bg-rose-50 text-rose-700',
-        banner.tone === 'info' && 'border-blue-200 bg-blue-50 text-blue-700',
-      )}
-    >
-      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-      <div>
-        <div className="font-bold">{banner.title}</div>
-        <div className="mt-1">{banner.description}</div>
-      </div>
-    </div>
-  );
-}
-
 function createMentorProfileForm(profile: TutorProfile | null): MentorProfileForm {
   const firstCareer = profile?.mentoringExpertise?.careerExpertise?.[0];
   const firstSkill = profile?.mentoringExpertise?.skillExpertise?.[0];
@@ -2958,19 +2934,20 @@ function actionLabel(action: string): string {
 }
 
 function showPaymentToast(banner: BillingBanner, toastId: string): void {
+  const options = { id: toastId, description: banner.description };
   if (banner.tone === 'success') {
-    toast.success(banner.title, { id: toastId });
+    toast.success(banner.title, options);
     return;
   }
   if (banner.tone === 'error') {
-    toast.error(banner.title, { id: toastId });
+    toast.error(banner.title, options);
     return;
   }
   if (banner.tone === 'warning') {
-    toast.warning(banner.title, { id: toastId });
+    toast.warning(banner.title, options);
     return;
   }
-  toast.info(banner.title, { id: toastId });
+  toast.info(banner.title, options);
 }
 
 function getPaymentStatusClassName(status: PaymentStatus): string {

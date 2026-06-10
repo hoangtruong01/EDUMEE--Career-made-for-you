@@ -271,6 +271,53 @@ describe('AiQuotaService', () => {
     expect(aiUsageLogModel.findOne).not.toHaveBeenCalled();
   });
 
+  it('returns mentor booking quota for an active Plus subscription', async () => {
+    const subscription = createSubscriptionDocument({
+      quotaPeriodStart: new Date('2026-06-01T00:00:00.000Z'),
+      quotaPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
+      nextQuotaResetAt: new Date('2026-07-01T00:00:00.000Z'),
+      endDate: new Date('2026-07-16T00:00:00.000Z'),
+    });
+    userSubscriptionModel.findOne.mockReturnValue(createSortableQuery(subscription));
+    aiPlanModel.findById.mockReturnValue(createQuery({
+      name: 'Plus',
+      price: 129000,
+      limits: { mentorBookingsPerMonth: 5 },
+      features: { mentorBooking: true },
+    }));
+    aiUsageLogModel.findOne.mockReturnValue(createQuery({ requestCount: 1 }));
+
+    const quota = await service.getRemainingQuota(
+      '507f1f77bcf86cd799439011',
+      AiFeature.MENTOR_BOOKING,
+      new Date('2026-06-10T00:00:00.000Z'),
+    );
+
+    expect(quota).toMatchObject({
+      limit: 5,
+      used: 1,
+      remaining: 4,
+      unlimited: false,
+      resetPolicy: 'periodic',
+    });
+    expect(aiUsageLogModel.findOne).toHaveBeenCalledWith({
+      userId: expect.any(Types.ObjectId),
+      feature: AiFeature.MENTOR_BOOKING,
+      $or: [
+        {
+          periodStart: new Date('2026-06-01T00:00:00.000Z'),
+          periodEnd: new Date('2026-07-01T00:00:00.000Z'),
+        },
+        {
+          periodStart: { $exists: false },
+          periodEnd: { $exists: false },
+          month: 6,
+          year: 2026,
+        },
+      ],
+    });
+  });
+
   it('blocks usage when the current subscription quota period is exhausted', async () => {
     const subscription = createSubscriptionDocument({
       quotaPeriodStart: new Date('2026-05-16T00:00:00.000Z'),

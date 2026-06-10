@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Flag, Heart, MessageSquare, Plus, Search, Send, Trash2, X } from 'lucide-react-native';
 import { communityService, type CommunityComment, type CommunityPost } from '../../services/community.service';
 import { useMentorPortalData } from '../../hooks/useMentorPortalData';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
 import { formatDateTime, getId, getMentorName, getMentorTitle } from './mentorUtils';
 import {
   ActionButton,
@@ -12,6 +12,7 @@ import {
   FormInput,
   InfoCard,
   LoadingState,
+  MENTOR_COLORS as COLORS,
   MessageBanner,
   Pill,
   PortalScreen,
@@ -270,7 +271,7 @@ function PostCard({
         </TouchableOpacity>
         {canDelete ? (
           <TouchableOpacity onPress={onDelete} style={styles.actionPill}>
-            <Trash2 size={16} color="#FCA5A5" />
+            <Trash2 size={16} color={COLORS.danger} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -514,8 +515,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
@@ -587,7 +588,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   postContent: {
-    color: 'rgba(255,255,255,0.78)',
+    color: COLORS.muted,
     fontSize: 13,
     lineHeight: 20,
     marginTop: SPACING.sm,
@@ -603,7 +604,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: COLORS.surfaceSubtle,
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
@@ -616,7 +617,7 @@ const styles = StyleSheet.create({
   actionPill: {
     height: 36,
     borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: COLORS.surfaceSubtle,
     paddingHorizontal: 11,
     flexDirection: 'row',
     alignItems: 'center',
@@ -641,7 +642,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.borderSoft,
     padding: SPACING.lg,
     gap: SPACING.md,
   },
@@ -664,7 +665,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -714,7 +717,7 @@ const styles = StyleSheet.create({
   commentBubble: {
     flex: 1,
     borderRadius: RADIUS.lg,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: COLORS.surfaceSubtle,
     padding: SPACING.md,
   },
   commentAuthor: {
@@ -723,7 +726,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   commentContent: {
-    color: 'rgba(255,255,255,0.78)',
+    color: COLORS.muted,
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4,
@@ -732,7 +735,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -746,8 +751,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 14,
     fontSize: 13,
@@ -768,7 +773,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: COLORS.border,
     padding: SPACING.lg,
     gap: SPACING.md,
   },
@@ -776,8 +781,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 12,
     fontSize: 13,

@@ -119,6 +119,7 @@ function getPreview(booking: BookingSession, currentSenderType: ChatSenderType) 
 export function BookingChatProvider({ children }: { children: ReactNode }) {
   const { accessToken, isAuthenticated, isHydrated, role } = useAuth();
   const { notifications } = useNotifications();
+  const pathname = usePathname();
   const currentSenderType = getCurrentSenderType(role);
   const [conversations, setConversations] = useState<Record<string, BookingSession>>({});
   const [conversationOrder, setConversationOrder] = useState<string[]>([]);
@@ -372,6 +373,8 @@ export function BookingChatProvider({ children }: { children: ReactNode }) {
 
   const shouldRenderDock = isHydrated && isAuthenticated && Boolean(currentSenderType);
   const dockSenderType: ChatSenderType = currentSenderType || 'mentee';
+  const isMentorPortal = pathname === '/mentor-dashboard' || pathname.startsWith('/mentor-dashboard/');
+  const isMentorCallRoom = pathname === '/mentor-call' || pathname.startsWith('/mentor-call/');
 
   return (
     <BookingChatContext.Provider value={value}>
@@ -379,8 +382,13 @@ export function BookingChatProvider({ children }: { children: ReactNode }) {
       <Suspense fallback={null}>
         <BookingChatDeepLinkBridge />
       </Suspense>
-      {shouldRenderDock ? (
-        <div className="fixed inset-x-3 bottom-3 z-[70] sm:inset-x-auto sm:right-6">
+      {shouldRenderDock && !isMentorCallRoom ? (
+        <div
+          className={cn(
+            'fixed inset-x-3 z-[70] sm:inset-x-auto sm:right-6',
+            isMentorPortal ? 'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-3' : 'bottom-3',
+          )}
+        >
           {!isExpanded ? (
             <button
               type="button"
@@ -399,7 +407,14 @@ export function BookingChatProvider({ children }: { children: ReactNode }) {
               Tin nhắn
             </button>
           ) : (
-            <section className="ml-auto flex h-[min(620px,calc(100vh-2rem))] w-full max-w-[760px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 sm:w-[760px]">
+            <section
+              className={cn(
+                'ml-auto flex w-full max-w-[760px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 sm:w-[760px]',
+                isMentorPortal
+                  ? 'h-[min(620px,calc(100vh-7.5rem-env(safe-area-inset-bottom)))] lg:h-[min(620px,calc(100vh-2rem))]'
+                  : 'h-[min(620px,calc(100vh-2rem))]',
+              )}
+            >
               <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-slate-50 sm:block">
                 <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
                   <p className="font-bold text-slate-950">Tin nhắn</p>

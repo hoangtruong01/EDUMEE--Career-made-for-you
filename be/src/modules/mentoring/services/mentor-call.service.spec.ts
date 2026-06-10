@@ -28,6 +28,16 @@ const buildBooking = (
     _id: bookingId,
     mentorId,
     menteeId,
+    mentorUser: {
+      id: mentorId.toString(),
+      name: 'Nguyễn Mentor',
+      email: 'mentor@example.com',
+    },
+    menteeUser: {
+      id: menteeId.toString(),
+      name: 'Trần Học Viên',
+      email: 'mentee@example.com',
+    },
     status: BookingStatus.CONFIRMED,
     sessionType: SessionType.CAREER_GUIDANCE,
     schedulingDetails: {
@@ -156,7 +166,11 @@ describe('MentorCallService', () => {
       'api-secret',
       expect.objectContaining({
         identity: mentorId.toString(),
-        name: `mentor-${mentorId.toString()}`,
+        name: 'Nguyễn Mentor',
+        metadata: JSON.stringify({
+          userId: mentorId.toString(),
+          role: 'mentor',
+        }),
         ttl: 1800,
       }),
     );

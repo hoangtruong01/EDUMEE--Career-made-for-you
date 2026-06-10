@@ -1,11 +1,11 @@
 import mongoose from 'mongoose';
 
 const COLLECTION_NAME = 'booking_sessions';
+const AVAILABILITY_COLLECTION_NAME = 'mentor_availability_slots';
 const LEGACY_INDEX_NAME = 'availabilitySlotId_1';
 const ACTIVE_SLOT_INDEX_NAME = 'booking_session_active_slot_unique';
 
 const ACTIVE_SLOT_BOOKING_STATUSES = [
-  'awaiting_payment',
   'pending',
   'confirmed',
   'rescheduled',
@@ -22,6 +22,7 @@ function getDatabaseUri(): string {
 async function migrateBookingSlotIndex(): Promise<void> {
   await mongoose.connect(getDatabaseUri());
   const collection = mongoose.connection.collection(COLLECTION_NAME);
+  const availabilityCollection = mongoose.connection.collection(AVAILABILITY_COLLECTION_NAME);
 
   const indexes = await collection.indexes();
   const hasLegacyIndex = indexes.some((index) => index.name === LEGACY_INDEX_NAME);
@@ -37,8 +38,8 @@ async function migrateBookingSlotIndex(): Promise<void> {
   const hasActiveSlotIndex = refreshedIndexes.some((index) => index.name === ACTIVE_SLOT_INDEX_NAME);
 
   if (hasActiveSlotIndex) {
-    console.log(`Index ${ACTIVE_SLOT_INDEX_NAME} already exists.`);
-    return;
+    await collection.dropIndex(ACTIVE_SLOT_INDEX_NAME);
+    console.log(`Dropped existing index ${ACTIVE_SLOT_INDEX_NAME}.`);
   }
 
   await collection.createIndex(
@@ -47,11 +48,47 @@ async function migrateBookingSlotIndex(): Promise<void> {
       unique: true,
       name: ACTIVE_SLOT_INDEX_NAME,
       partialFilterExpression: {
+        availabilitySlotId: { $exists: true },
         status: { $in: ACTIVE_SLOT_BOOKING_STATUSES },
       },
     },
   );
   console.log(`Created partial unique index ${ACTIVE_SLOT_INDEX_NAME}.`);
+
+  const awaitingBookings = await collection
+    .find(
+      {
+        status: 'awaiting_payment',
+        availabilitySlotId: { $exists: true, $ne: null },
+      },
+      { projection: { _id: 1, availabilitySlotId: 1 } },
+    )
+    .toArray();
+
+  const bookingIdCandidates = awaitingBookings.flatMap((booking) => [
+    booking._id,
+    booking._id?.toString?.(),
+  ]).filter(Boolean);
+  const slotIds = awaitingBookings
+    .map((booking) => booking.availabilitySlotId)
+    .filter(Boolean);
+
+  if (bookingIdCandidates.length && slotIds.length) {
+    const releaseResult = await availabilityCollection.updateMany(
+      {
+        _id: { $in: slotIds },
+        status: 'held',
+        bookingSessionId: { $in: bookingIdCandidates },
+      },
+      {
+        $set: { status: 'available' },
+        $unset: { bookingSessionId: 1, heldBy: 1, heldUntil: 1 },
+      },
+    );
+    console.log(`Released ${releaseResult.modifiedCount} held availability slots from awaiting-payment bookings.`);
+  } else {
+    console.log('No awaiting-payment held slots needed release.');
+  }
 }
 
 migrateBookingSlotIndex()

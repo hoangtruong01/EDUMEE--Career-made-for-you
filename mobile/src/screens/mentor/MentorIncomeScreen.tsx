@@ -2,9 +2,9 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { HandCoins, Percent, ReceiptText, WalletCards } from 'lucide-react-native';
 import { useMentorIncome, useMentorPortalData } from '../../hooks/useMentorPortalData';
-import { COLORS, SPACING } from '../../theme';
+import { SPACING } from '../../theme';
 import { formatCurrency, formatDateTime } from './mentorUtils';
-import { EmptyState, InfoCard, LoadingState, MetricCard, PortalScreen, SectionTitle } from './MentorPortalUI';
+import { EmptyState, InfoCard, LoadingState, MENTOR_COLORS as COLORS, MetricCard, PortalScreen, SectionTitle } from './MentorPortalUI';
 
 function settlementLabel(status: string) {
   const labels: Record<string, string> = {
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   },
   entryItem: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: COLORS.borderSoft,
     paddingTop: SPACING.md,
     gap: SPACING.sm,
   },

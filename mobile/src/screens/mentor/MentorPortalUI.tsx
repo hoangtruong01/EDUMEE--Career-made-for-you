@@ -14,8 +14,29 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LucideIcon } from 'lucide-react-native';
-import { GlassView } from '../../components/GlassView';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
+
+export const MENTOR_COLORS = {
+  primary: '#2563EB',
+  primarySoft: '#EFF6FF',
+  primaryBorder: '#BFDBFE',
+  background: '#F6F8FB',
+  surface: '#FFFFFF',
+  surfaceSubtle: '#F8FAFC',
+  foreground: '#0F172A',
+  muted: '#475569',
+  mutedSoft: '#64748B',
+  border: '#D8E0EA',
+  borderSoft: '#E2E8F0',
+  success: '#16A34A',
+  successSoft: '#ECFDF5',
+  warning: '#D97706',
+  warningSoft: '#FFFBEB',
+  danger: '#DC2626',
+  dangerSoft: '#FEF2F2',
+};
+
+const COLORS = MENTOR_COLORS;
 
 export function PortalScreen({
   title,
@@ -78,16 +99,16 @@ export function EmptyState({
   description?: string;
 }) {
   return (
-    <GlassView style={styles.emptyCard}>
+    <View style={styles.emptyCard}>
       {Icon ? <Icon size={30} color={COLORS.primary} /> : null}
       <Text style={styles.emptyTitle}>{title}</Text>
       {description ? <Text style={styles.emptyDescription}>{description}</Text> : null}
-    </GlassView>
+    </View>
   );
 }
 
 export function InfoCard({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <GlassView style={[styles.card, style]}>{children}</GlassView>;
+  return <View style={[styles.card, style]}>{children}</View>;
 }
 
 export function MetricCard({
@@ -102,15 +123,15 @@ export function MetricCard({
   color?: string;
 }) {
   return (
-    <GlassView style={styles.metricCard}>
-      <View style={[styles.metricIcon, { backgroundColor: `${color}22` }]}>
+    <View style={styles.metricCard}>
+      <View style={[styles.metricIcon, { backgroundColor: `${color}18` }]}>
         <Icon size={18} color={color} />
       </View>
       <Text style={styles.metricValue} numberOfLines={1}>
         {value}
       </Text>
       <Text style={styles.metricLabel}>{label}</Text>
-    </GlassView>
+    </View>
   );
 }
 
@@ -215,7 +236,7 @@ export function FormInput({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="rgba(226,232,240,0.45)"
+        placeholderTextColor={COLORS.mutedSoft}
         multiline={multiline}
         keyboardType={keyboardType}
         style={[styles.input, multiline && styles.textarea]}
@@ -282,10 +303,24 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   emptyCard: {
     alignItems: 'center',
     padding: SPACING.xl,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surface,
   },
   emptyTitle: {
     color: COLORS.foreground,
@@ -305,6 +340,10 @@ const styles = StyleSheet.create({
     width: '48.5%',
     minHeight: 112,
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
   },
   metricIcon: {
     width: 36,
@@ -341,8 +380,8 @@ const styles = StyleSheet.create({
   pill: {
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -352,7 +391,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   pillTextActive: {
-    color: COLORS.foreground,
+    color: COLORS.primary,
   },
   actionButton: {
     minHeight: 40,
@@ -368,20 +407,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   successButton: {
-    backgroundColor: '#16A34A',
+    backgroundColor: COLORS.success,
   },
   outlineButton: {
     borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    backgroundColor: 'rgba(59,130,246,0.08)',
+    borderColor: COLORS.primaryBorder,
+    backgroundColor: COLORS.primarySoft,
   },
   ghostButton: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.surfaceSubtle,
   },
   dangerButton: {
     borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.35)',
-    backgroundColor: 'rgba(248,113,113,0.12)',
+    borderColor: '#FECACA',
+    backgroundColor: COLORS.dangerSoft,
   },
   disabled: {
     opacity: 0.55,
@@ -397,7 +436,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   dangerButtonText: {
-    color: '#FCA5A5',
+    color: COLORS.danger,
     fontSize: 12,
     fontWeight: '900',
   },
@@ -413,8 +452,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 12,
     fontSize: 13,
@@ -431,16 +470,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   messageNeutral: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: COLORS.surfaceSubtle,
+    borderColor: COLORS.border,
   },
   messageDanger: {
-    backgroundColor: 'rgba(248,113,113,0.12)',
-    borderColor: 'rgba(248,113,113,0.35)',
+    backgroundColor: COLORS.dangerSoft,
+    borderColor: '#FECACA',
   },
   messageSuccess: {
-    backgroundColor: 'rgba(34,197,94,0.12)',
-    borderColor: 'rgba(34,197,94,0.3)',
+    backgroundColor: COLORS.successSoft,
+    borderColor: '#BBF7D0',
   },
   messageText: {
     color: COLORS.foreground,

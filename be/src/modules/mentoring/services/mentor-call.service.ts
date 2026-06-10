@@ -25,6 +25,18 @@ const DEFAULT_LIVEKIT_TOKEN_TTL_SECONDS = 60 * 60;
 
 type CallParticipantRole = 'mentor' | 'mentee';
 type JoinWindowReason = 'not_confirmed' | 'not_open' | 'ended' | null;
+type ParticipantSummary = {
+  id?: string;
+  _id?: string;
+  name?: string;
+  email?: string;
+  avatar?: string;
+};
+
+type PopulatableBookingQuery = {
+  populate?: (paths: { path: string; select: string }[]) => PopulatableBookingQuery;
+  exec: () => Promise<BookingSessionDocument | null>;
+};
 
 export interface MentorCallJoinWindow {
   opensAt: string;
@@ -89,7 +101,11 @@ export class MentorCallService {
     const expiresAt = new Date(Date.now() + livekit.ttlSeconds * 1000);
     const accessToken = new AccessToken(livekit.apiKey, livekit.apiSecret, {
       identity: userId,
-      name: `${userRole}-${userId}`,
+      name: this.getParticipantDisplayName(currentBooking, userRole),
+      metadata: JSON.stringify({
+        userId,
+        role: userRole,
+      }),
       ttl: livekit.ttlSeconds,
     });
 
@@ -112,14 +128,20 @@ export class MentorCallService {
   private async findBookingByMeetingCode(meetingCode: string): Promise<BookingSessionDocument> {
     const normalizedCode = this.normalizeMeetingCode(meetingCode);
 
-    const booking = await this.bookingSessionModel
+    const query = this.bookingSessionModel
       .findOne({
         $or: [
           { 'schedulingDetails.meetingCode': normalizedCode },
           { 'schedulingDetails.meetingLink': `/mentor-call/${normalizedCode}` },
         ],
-      })
-      .exec();
+      }) as unknown as PopulatableBookingQuery;
+    const populatedQuery = typeof query.populate === 'function'
+      ? query.populate([
+          { path: 'mentorUser', select: 'name email avatar' },
+          { path: 'menteeUser', select: 'name email avatar' },
+        ])
+      : query;
+    const booking = await populatedQuery.exec();
 
     if (!booking) {
       throw new NotFoundException('Mentor call not found');
@@ -198,6 +220,14 @@ export class MentorCallService {
     if (booking.mentorId.toString() === userId) return 'mentor';
     if (booking.menteeId.toString() === userId) return 'mentee';
     throw new ForbiddenException('Forbidden');
+  }
+
+  private getParticipantDisplayName(booking: BookingSessionDocument, role: CallParticipantRole): string {
+    const key = role === 'mentor' ? 'mentorUser' : 'menteeUser';
+    const participant = (booking as unknown as Record<string, ParticipantSummary | undefined>)[key];
+    const name = participant?.name?.trim();
+    if (name) return name;
+    return role === 'mentor' ? 'Mentor' : 'Học viên';
   }
 
   private requireUserId(user: AuthUserLike): string {

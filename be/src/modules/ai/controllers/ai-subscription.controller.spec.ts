@@ -99,8 +99,8 @@ describe('AiSubscriptionController', () => {
       month: 5,
       year: 2026,
       used: 0,
-      limit: 3,
-      remaining: 3,
+      limit: feature === AiFeature.MENTOR_BOOKING ? 5 : 3,
+      remaining: feature === AiFeature.MENTOR_BOOKING ? 5 : 3,
       unlimited: false,
     }));
 
@@ -109,6 +109,12 @@ describe('AiSubscriptionController', () => {
     expect(result.currentPlan).toBe('plus');
     expect(result.source).toBe('personal_subscription');
     expect(result.plan?.name).toBe('Plus (3 tháng)');
+    expect(result.features.mentorBooking).toBe(true);
+    expect(result.quotas.mentorBooking).toMatchObject({
+      limit: 5,
+      remaining: 5,
+      resetPolicy: 'periodic',
+    });
     expect(result.availableBillingCycles).toEqual([BillingCycle.THREE_MONTHS]);
   });
 });

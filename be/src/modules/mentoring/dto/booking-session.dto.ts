@@ -32,9 +32,10 @@ export class CreateBookingSessionDto {
   @IsString()
   tutorProfileId!: string;
 
-  @ApiProperty({ description: 'Mentor availability slot ID' })
+  @ApiPropertyOptional({ description: 'Mentor availability slot ID. Required for paid bookings; omitted for trial requests.' })
+  @IsOptional()
   @IsString()
-  availabilitySlotId!: string;
+  availabilitySlotId?: string;
 
   @ApiProperty({ enum: SessionType, description: 'Type of session' })
   @IsEnum(SessionType)
@@ -61,6 +62,10 @@ export class CreateBookingSessionDto {
     topicsToDiscuss: string[];
     currentSituation: string;
     desiredOutcomes: string[];
+    menteeAvailabilityWindows?: {
+      startAt: string;
+      endAt: string;
+    }[];
     isFirstSession: boolean;
   };
 
