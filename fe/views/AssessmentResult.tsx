@@ -620,22 +620,22 @@ const AssessmentResult = () => {
   return (
     <div className="bg-background min-h-screen pb-20">
       {/* Header Section */}
-      <div className="from-primary/10 relative overflow-hidden bg-linear-to-b via-transparent to-transparent px-4 pt-12 pb-10 text-center">
+      <div className="relative overflow-hidden bg-gradient-card border-border/60 border-b py-12 text-center">
         <div className="absolute top-0 left-1/2 h-64 w-full -translate-x-1/2 bg-purple-500/5 blur-3xl" />
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4" /> Phân tích AI hoàn tất
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Phân tích AI hoàn tất
             </span>
-            <span className="bg-primary/10 border-primary/20 text-primary inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-semibold">
-              <History className="h-4 w-4" /> {getHistoryLabel(activeHistoryItem)}
+            <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md text-primary">
+              <History className="h-3.5 w-3.5" /> {getHistoryLabel(activeHistoryItem)}
             </span>
           </div>
-          <h1 className="font-display text-foreground text-3xl font-extrabold sm:text-5xl">
+          <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
             Nghề nghiệp phù hợp
           </h1>
-          <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
+          <p className="text-muted-foreground mx-auto max-w-2xl text-base leading-relaxed font-medium md:text-lg">
             Dựa trên 30 câu trả lời về tính cách và sở thích, Edumee AI đã chọn lọc ra những lộ
             trình sự nghiệp tối ưu nhất dành riêng cho bạn.
           </p>

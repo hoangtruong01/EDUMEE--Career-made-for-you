@@ -134,16 +134,16 @@ const CareerSimulation = () => {
   return (
     <div className="min-h-screen pb-20">
       {/* Header */}
-      <div className="bg-gradient-card">
-        <div className="container py-10 text-center">
+      <div className="relative overflow-hidden bg-gradient-card border-border/60 border-b py-12 text-center">
+        <div className="container relative z-10">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
-              <Star className="h-4 w-4" /> Trải nghiệm thực tế
+            <span className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
+              <Star className="h-3.5 w-3.5" /> Trải nghiệm thực tế
             </span>
-            <h1 className="font-display text-3xl font-bold md:text-4xl">
+            <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
               Mô phỏng hành trình nghề nghiệp
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground mx-auto max-w-2xl text-base leading-relaxed font-medium md:text-lg">
               Khám phá cuộc sống thực tế ở từng cấp độ sự nghiệp trước khi quyết định
             </p>
           </motion.div>

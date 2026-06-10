@@ -331,16 +331,16 @@ const CareerCompare = () => {
   return (
     <div className="bg-background text-foreground min-h-screen pb-20">
       {/* Header */}
-      <div className="bg-gradient-card border-border/60 border-b">
-        <div className="container py-10 text-center">
+      <div className="relative overflow-hidden bg-gradient-card border-border/60 border-b py-12 text-center">
+        <div className="container relative z-10">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="bg-primary/10 text-primary mb-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium">
+            <span className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
               Phân tích bằng AI
             </span>
-            <h1 className="font-display text-3xl font-bold md:text-4xl">
+            <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
               So sánh nghề nghiệp chuyên sâu
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground mx-auto max-w-2xl text-base leading-relaxed font-medium md:text-lg">
               Dựa trên hồ sơ năng lực và tính cách của bạn, AI sẽ phân tích đâu là lựa chọn tối ưu
             </p>
           </motion.div>

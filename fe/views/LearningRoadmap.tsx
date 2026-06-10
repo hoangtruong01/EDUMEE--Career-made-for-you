@@ -577,7 +577,7 @@ const LearningRoadmap = () => {
 
   return (
     <div className="min-h-screen pb-20">
-      <div className="bg-gradient-card border-border/50 relative overflow-hidden border-b px-4 py-8">
+      <div className="relative overflow-hidden bg-gradient-card border-border/60 border-b px-4 py-12">
         <div className="pointer-events-none absolute top-0 right-0 p-8 opacity-5">
           <Compass className="h-64 w-64" />
         </div>
@@ -590,15 +590,15 @@ const LearningRoadmap = () => {
               <ArrowLeft className="h-4 w-4" /> Quay lại phân tích nghề
             </button>
           )}
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <div className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium">
-              <BookOpen className="h-4 w-4 text-violet-400" /> Không gian học thực chiến tích hợp AI
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
+              <BookOpen className="h-3.5 w-3.5 text-violet-400" /> Không gian học thực chiến tích hợp AI
             </div>
           </div>
-          <h1 className="text-foreground text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
             {apiRoadmap.title}
           </h1>
-          <p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-relaxed">
+          <p className="text-muted-foreground mt-2 max-w-3xl text-base leading-relaxed font-medium md:text-lg">
             Học tập tăng tiến qua 3 chặng doanh nghiệp cốt lộ. Trải nghiệm hệ thống ma trận câu hỏi
             và không gian biên soạn mã nguồn Code thực hành real-time.
           </p>
