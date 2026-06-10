@@ -523,11 +523,6 @@ const LearningRoadmap = () => {
     }
   };
 
-  const totalOverallProgress = useMemo(() => {
-    if (roadmapData.length === 0) return 0;
-    const current = roadmapData.find((p) => p.status === 'current');
-    return current ? current.progress : 0; // Đổi fallback từ 56 về 0 để phản ánh đúng tiến độ thực tế nếu chưa học
-  }, [roadmapData]);
 
   // 🎯 UPGRADE 1: Hàm kích hoạt cuộn mượt (Smooth Scroll) tới vị trí ID câu hỏi cụ thể trong Grid
   const scrollToQuestion = (index: number) => {
