@@ -15,7 +15,7 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react-native';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
 import {
   summarizeIncome,
   summarizeReviews,
@@ -30,6 +30,7 @@ import {
   EmptyState,
   InfoCard,
   LoadingState,
+  MENTOR_COLORS as COLORS,
   MessageBanner,
   MetricCard,
   PortalScreen,
@@ -223,7 +224,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -240,7 +243,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.primarySoft,
   },
   heroCopy: {
     flex: 1,
@@ -286,8 +289,8 @@ const styles = StyleSheet.create({
     minHeight: 72,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -331,7 +334,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: COLORS.borderSoft,
     paddingTop: SPACING.sm,
   },
   bookingIcon: {

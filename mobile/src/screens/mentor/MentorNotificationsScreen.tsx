@@ -3,9 +3,9 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Bell, CheckCircle2 } from 'lucide-react-native';
 import { notificationService, type AppNotification } from '../../services/notification.service';
-import { COLORS, SPACING } from '../../theme';
+import { SPACING } from '../../theme';
 import { formatCurrency, formatDateTime } from './mentorUtils';
-import { ActionButton, EmptyState, InfoCard, LoadingState, PortalScreen, SectionTitle } from './MentorPortalUI';
+import { ActionButton, EmptyState, InfoCard, LoadingState, MENTOR_COLORS as COLORS, PortalScreen, SectionTitle } from './MentorPortalUI';
 
 function notificationMeta(notification: AppNotification) {
   if (typeof notification.payload?.amount === 'number') {
@@ -84,8 +84,8 @@ const styles = StyleSheet.create({
     minHeight: 82,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
     flexDirection: 'row',
     gap: SPACING.md,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   itemBody: {
-    color: 'rgba(255,255,255,0.72)',
+    color: COLORS.muted,
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,

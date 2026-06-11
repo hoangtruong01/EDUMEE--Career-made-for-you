@@ -127,7 +127,7 @@ export interface BookingSession {
     avatar?: string;
   };
   tutorProfileId: string;
-  availabilitySlotId: string;
+  availabilitySlotId?: string;
   sessionType: string;
   status: BookingStatus;
   bookingType?: BookingType;
@@ -145,6 +145,10 @@ export interface BookingSession {
     currentSituation: string;
     desiredOutcomes: string[];
     additionalNotes?: string;
+    menteeAvailabilityWindows?: {
+      startAt: string;
+      endAt: string;
+    }[];
     isFirstSession: boolean;
     urgencyLevel?: 'low' | 'medium' | 'high';
   };
@@ -323,14 +327,14 @@ export type UpdateTutorProfilePayload = ApplyTutorProfilePayload;
 
 export interface CreateBookingPayload {
   tutorProfileId: string;
-  availabilitySlotId: string;
+  availabilitySlotId?: string;
   sessionType: string;
   bookingType?: BookingType;
   schedulingDetails?: {
-    requestedDateTime: string;
-    duration: number;
-    timeZone: string;
-    meetingPlatform: string;
+    requestedDateTime?: string;
+    duration?: number;
+    timeZone?: string;
+    meetingPlatform?: string;
   };
   bookingRequest: BookingSession['bookingRequest'];
   paymentReturnUrls?: {
@@ -339,6 +343,44 @@ export interface CreateBookingPayload {
     cancel?: string;
   };
   useEdumeeCredit?: boolean;
+}
+
+function buildCreateBookingRequestPayload(payload: CreateBookingPayload): CreateBookingPayload {
+  const requestPayload: CreateBookingPayload = {
+    tutorProfileId: payload.tutorProfileId,
+    sessionType: payload.sessionType,
+    bookingRequest: payload.bookingRequest,
+  };
+
+  if (payload.availabilitySlotId) {
+    requestPayload.availabilitySlotId = payload.availabilitySlotId;
+  }
+
+  if (payload.bookingType) {
+    requestPayload.bookingType = payload.bookingType;
+  }
+
+  const schedulingDetails: CreateBookingPayload['schedulingDetails'] = {};
+  if (payload.schedulingDetails?.timeZone) {
+    schedulingDetails.timeZone = payload.schedulingDetails.timeZone;
+  }
+  if (payload.bookingType === 'trial' && payload.schedulingDetails?.requestedDateTime) {
+    schedulingDetails.requestedDateTime = payload.schedulingDetails.requestedDateTime;
+  }
+  if (Object.keys(schedulingDetails).length > 0) {
+    requestPayload.schedulingDetails = schedulingDetails;
+  }
+
+  if (payload.bookingType === 'paid') {
+    if (payload.paymentReturnUrls) {
+      requestPayload.paymentReturnUrls = payload.paymentReturnUrls;
+    }
+    if (payload.useEdumeeCredit !== undefined) {
+      requestPayload.useEdumeeCredit = payload.useEdumeeCredit;
+    }
+  }
+
+  return requestPayload;
 }
 
 export interface SessionReview {
@@ -477,7 +519,7 @@ export const mentorService = {
   },
 
   createBooking(token: string, payload: CreateBookingPayload) {
-    return apiClient.post<CreateBookingResponse>('/booking-sessions', payload, token);
+    return apiClient.post<CreateBookingResponse>('/booking-sessions', buildCreateBookingRequestPayload(payload), token);
   },
 
   getMyBookings(token: string) {

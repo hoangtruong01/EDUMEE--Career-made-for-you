@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Calendar, Clock, Plus, Repeat, Save, Trash2, X } from 'lucide-react-native';
 import { mentorPortalQueryKey, useMentorPortalData } from '../../hooks/useMentorPortalData';
 import { mentorService, type BookingSession, type MentorAvailabilitySlot } from '../../services/mentor.service';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
 import {
   addDays,
   formatDateOnly,
@@ -26,6 +26,7 @@ import {
   EmptyState,
   InfoCard,
   LoadingState,
+  MENTOR_COLORS as COLORS,
   MessageBanner,
   Pill,
   PortalScreen,
@@ -49,7 +50,7 @@ function statusTone(status: string) {
   if (status === 'booked' || status === 'confirmed') return '#6366F1';
   if (status === 'pending') return '#38BDF8';
   if (status === 'rescheduled') return '#A855F7';
-  return '#94A3B8';
+  return COLORS.mutedSoft;
 }
 
 function statusLabel(status: string) {
@@ -564,8 +565,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surfaceSubtle,
     padding: 4,
   },
   segmentButton: {
@@ -602,9 +603,9 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: COLORS.border,
     color: COLORS.foreground,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.surface,
     textAlign: 'center',
     fontWeight: '900',
   },
@@ -629,8 +630,8 @@ const styles = StyleSheet.create({
     minWidth: 82,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
@@ -654,8 +655,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -702,8 +703,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surfaceSubtle,
     padding: SPACING.md,
   },
   emptyDraftText: {
@@ -720,8 +721,8 @@ const styles = StyleSheet.create({
     minHeight: 72,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
     padding: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
@@ -815,7 +816,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.borderSoft,
     padding: SPACING.lg,
     gap: SPACING.md,
   },
@@ -839,7 +840,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -847,8 +850,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 12,
     fontSize: 13,
@@ -860,7 +863,7 @@ const styles = StyleSheet.create({
   minutePill: {
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.border,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },

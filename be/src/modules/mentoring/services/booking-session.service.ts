@@ -39,6 +39,20 @@ interface CreateBookingInput {
   [key: string]: unknown;
 }
 
+interface BookingSchedulingInput {
+  requestedDateTime?: string | Date;
+  timeZone?: string;
+}
+
+interface MenteeAvailabilityWindowInput {
+  startAt?: string | Date;
+  endAt?: string | Date;
+}
+
+interface BookingRequestInput {
+  menteeAvailabilityWindows?: MenteeAvailabilityWindowInput[];
+}
+
 const SAME_MENTEE_BLOCKING_STATUSES = [
   BookingStatus.PENDING,
   BookingStatus.CONFIRMED,
@@ -118,8 +132,12 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
   async createForMentee(menteeId: string, createDto: CreateBookingInput): Promise<BookingSessionDocument> {
     if (!Types.ObjectId.isValid(menteeId)) throw new BadRequestException('Invalid menteeId');
     if (!Types.ObjectId.isValid(createDto.tutorProfileId)) throw new BadRequestException('Invalid tutorProfileId');
-    if (!createDto.availabilitySlotId || !Types.ObjectId.isValid(createDto.availabilitySlotId)) {
+    const bookingType = createDto.bookingType === BookingType.TRIAL ? BookingType.TRIAL : BookingType.PAID;
+    if (bookingType !== BookingType.TRIAL && (!createDto.availabilitySlotId || !Types.ObjectId.isValid(createDto.availabilitySlotId))) {
       throw new BadRequestException('availabilitySlotId is required');
+    }
+    if (bookingType === BookingType.TRIAL && createDto.availabilitySlotId && !Types.ObjectId.isValid(createDto.availabilitySlotId)) {
+      throw new BadRequestException('Invalid availabilitySlotId');
     }
 
     const tutor = await this.tutorProfileModel.findById(createDto.tutorProfileId).exec();
@@ -128,46 +146,72 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Tutor is not active');
     }
 
-    const bookingType = createDto.bookingType === BookingType.TRIAL ? BookingType.TRIAL : BookingType.PAID;
     const trialSourcePlan = bookingType === BookingType.TRIAL
       ? await this.resolveTrialSourcePlan(menteeId)
       : null;
+    const bookingInput = this.sanitizeCreateBookingInput(createDto);
 
-    const existingBooking = await this.resolveExistingSlotBooking(createDto.availabilitySlotId, menteeId);
+    if (bookingType === BookingType.TRIAL) {
+      const trialStartAt = this.resolveTrialStartAt(createDto);
+      const booking = new this.bookingSessionModel({
+        ...bookingInput,
+        bookingType,
+        schedulingDetails: this.buildTrialSchedulingDetails(trialStartAt, createDto),
+        menteeId: new Types.ObjectId(menteeId),
+        tutorProfileId: tutor._id,
+        mentorId: this.toObjectId(tutor.userId.toString()),
+        status: BookingStatus.PENDING,
+        paymentInfo: this.buildTrialPaymentInfo(tutor),
+        trialInfo: {
+          durationMinutes: TRIAL_BOOKING_DURATION_MINUTES,
+          ...(trialSourcePlan?._id ? { sourcePlanId: trialSourcePlan._id } : {}),
+        },
+      });
+      const saved = await booking.save();
+      return this.populateParticipantSummaries(saved);
+    }
+
+    const availabilitySlotId = createDto.availabilitySlotId as string;
+    const existingBooking = await this.resolveExistingSlotBooking(availabilitySlotId, menteeId);
     if (existingBooking) return existingBooking;
 
-    const slot = await this.mentorAvailabilityService.holdSlotForBooking(
-      createDto.availabilitySlotId,
+    const availableSlot = await this.mentorAvailabilityService.getAvailableSlotForBooking(
+      availabilitySlotId,
       createDto.tutorProfileId,
-      menteeId,
-      bookingType === BookingType.TRIAL ? { durationMinutes: TRIAL_BOOKING_DURATION_MINUTES } : undefined,
     );
+    const initialPaymentInfo = this.buildInitialPaymentInfo(tutor, createDto, availableSlot);
+    const requiresPositivePayment =
+      Number(initialPaymentInfo?.sessionPrice ?? 0) > 0;
+    const slot = requiresPositivePayment
+      ? availableSlot
+      : await this.mentorAvailabilityService.holdSlotForBooking(
+          availabilitySlotId,
+          createDto.tutorProfileId,
+          menteeId,
+          { expires: false },
+        );
 
     try {
       const booking = new this.bookingSessionModel({
-        ...createDto,
+        ...bookingInput,
         bookingType,
         schedulingDetails: this.buildSchedulingDetailsFromSlot(slot, createDto),
         availabilitySlotId: slot._id,
         menteeId: new Types.ObjectId(menteeId),
         tutorProfileId: tutor._id,
         mentorId: this.toObjectId(tutor.userId.toString()),
-        status: bookingType === BookingType.TRIAL ? BookingStatus.PENDING : BookingStatus.AWAITING_PAYMENT,
-        paymentInfo: bookingType === BookingType.TRIAL
-          ? this.buildTrialPaymentInfo(tutor)
-          : this.buildInitialPaymentInfo(tutor, createDto, slot),
-        trialInfo: bookingType === BookingType.TRIAL
-          ? {
-              durationMinutes: TRIAL_BOOKING_DURATION_MINUTES,
-              ...(trialSourcePlan?._id ? { sourcePlanId: trialSourcePlan._id } : {}),
-            }
-          : undefined,
+        status: requiresPositivePayment ? BookingStatus.AWAITING_PAYMENT : BookingStatus.PENDING,
+        paymentInfo: initialPaymentInfo,
       });
       const saved = await booking.save();
-      await this.mentorAvailabilityService.attachBooking(slot._id.toString(), saved._id.toString());
+      if (!requiresPositivePayment) {
+        await this.mentorAvailabilityService.attachBooking(slot._id.toString(), saved._id.toString());
+      }
       return this.populateParticipantSummaries(saved);
     } catch (error) {
-      await this.mentorAvailabilityService.releaseHeldSlot(slot._id.toString());
+      if (!requiresPositivePayment) {
+        await this.mentorAvailabilityService.releaseHeldSlot(slot._id.toString());
+      }
       if (this.isDuplicateAvailabilitySlotError(error)) {
         const existing = await this.resolveExistingSlotBooking(slot._id.toString(), menteeId);
         if (existing) return existing;
@@ -175,6 +219,19 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
       }
       throw error;
     }
+  }
+
+  private sanitizeCreateBookingInput(input: CreateBookingInput): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = { ...input };
+    delete sanitized.availabilitySlotId;
+    delete sanitized.tutorProfileId;
+    delete sanitized.menteeId;
+    delete sanitized.mentorId;
+    delete sanitized.status;
+    delete sanitized.paymentInfo;
+    delete sanitized.trialInfo;
+    delete sanitized.bookingType;
+    return sanitized;
   }
 
   async findAll(
@@ -877,22 +934,17 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     menteeId: string,
   ): Promise<BookingSessionDocument | null> {
     const existing = await this.findActiveBookingBySlot(availabilitySlotId);
-    if (!existing) return null;
-    if (!this.isActiveSlotBookingStatus(existing.status)) return null;
+    if (existing && this.isActiveSlotBookingStatus(existing.status)) {
+      if (existing.menteeId.toString() !== menteeId) {
+        throw new ConflictException('Khung gio da co nguoi dat');
+      }
 
-    if (existing.menteeId.toString() !== menteeId) {
-      throw new ConflictException('Khung gio da co nguoi dat');
+      if (SAME_MENTEE_BLOCKING_STATUSES.includes(existing.status)) {
+        throw new ConflictException('Ban da co booking dang xu ly cho khung gio nay');
+      }
     }
 
-    if (existing.status === BookingStatus.AWAITING_PAYMENT) {
-      return existing;
-    }
-
-    if (SAME_MENTEE_BLOCKING_STATUSES.includes(existing.status)) {
-      throw new ConflictException('Ban da co booking dang xu ly cho khung gio nay');
-    }
-
-    return null;
+    return this.findAwaitingPaymentBookingBySlotForMentee(availabilitySlotId, menteeId);
   }
 
   private async findActiveBookingBySlot(availabilitySlotId: string): Promise<BookingSessionDocument | null> {
@@ -901,6 +953,21 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
         .findOne({
           availabilitySlotId: new Types.ObjectId(availabilitySlotId),
           status: { $in: [...ACTIVE_SLOT_BOOKING_STATUSES] },
+        })
+        .sort({ createdAt: -1 }),
+    ).exec();
+  }
+
+  private async findAwaitingPaymentBookingBySlotForMentee(
+    availabilitySlotId: string,
+    menteeId: string,
+  ): Promise<BookingSessionDocument | null> {
+    return this.withParticipantSummaries(
+      this.bookingSessionModel
+        .findOne({
+          availabilitySlotId: new Types.ObjectId(availabilitySlotId),
+          menteeId: new Types.ObjectId(menteeId),
+          status: BookingStatus.AWAITING_PAYMENT,
         })
         .sort({ createdAt: -1 }),
     ).exec();
@@ -929,6 +996,65 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
   private async resolveTrialSourcePlan(menteeId: string) {
     await this.aiQuotaService.checkQuota(menteeId, AiFeature.MENTOR_BOOKING);
     return this.aiQuotaService.getPlanForUserOrFree(menteeId);
+  }
+
+  private resolveTrialStartAt(createDto: CreateBookingInput): Date {
+    const requestedStartAt = this.parseRequestedTrialStartAt(createDto);
+    if (!requestedStartAt) {
+      throw new BadRequestException('Trial requestedDateTime is required');
+    }
+    if (requestedStartAt < new Date()) {
+      throw new BadRequestException('Trial requestedDateTime must be in the future');
+    }
+    const requestedEndAt = new Date(requestedStartAt.getTime() + TRIAL_BOOKING_DURATION_MINUTES * 60_000);
+
+    const menteeWindows = this.parseMenteeAvailabilityWindows(createDto);
+    if (
+      menteeWindows.length > 0 &&
+      !menteeWindows.some((window) => this.isRangeInside(requestedStartAt, requestedEndAt, window.startAt, window.endAt))
+    ) {
+      throw new BadRequestException('Trial time must match a mentee availability window');
+    }
+
+    return requestedStartAt;
+  }
+
+  private parseRequestedTrialStartAt(createDto: CreateBookingInput): Date | undefined {
+    const schedulingDetails = createDto.schedulingDetails as BookingSchedulingInput | undefined;
+    if (!schedulingDetails?.requestedDateTime) return undefined;
+
+    const requestedStartAt = new Date(schedulingDetails.requestedDateTime);
+    if (Number.isNaN(requestedStartAt.getTime())) {
+      throw new BadRequestException('Invalid trial requestedDateTime');
+    }
+    return requestedStartAt;
+  }
+
+  private parseMenteeAvailabilityWindows(
+    createDto: CreateBookingInput,
+  ): { startAt: Date; endAt: Date }[] {
+    const bookingRequest = createDto.bookingRequest as BookingRequestInput | undefined;
+    const windows = bookingRequest?.menteeAvailabilityWindows;
+    if (windows === undefined) return [];
+    if (!Array.isArray(windows)) {
+      throw new BadRequestException('menteeAvailabilityWindows must be an array');
+    }
+    if (windows.length > 3) {
+      throw new BadRequestException('Only up to 3 mentee availability windows are allowed');
+    }
+
+    return windows.map((window, index) => {
+      const startAt = new Date(window?.startAt || '');
+      const endAt = new Date(window?.endAt || '');
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
+        throw new BadRequestException(`Invalid mentee availability window at index ${index}`);
+      }
+      return { startAt, endAt };
+    });
+  }
+
+  private isRangeInside(start: Date, end: Date, containerStart: Date, containerEnd: Date): boolean {
+    return start.getTime() >= containerStart.getTime() && end.getTime() <= containerEnd.getTime();
   }
 
   private isTrialBooking(booking: Pick<BookingSession, 'bookingType'>): boolean {
@@ -988,6 +1114,19 @@ export class BookingSessionService implements OnModuleInit, OnModuleDestroy {
     return {
       requestedDateTime: slot.startAt,
       duration,
+      timeZone: provided?.timeZone || 'Asia/Ho_Chi_Minh',
+      meetingPlatform: 'platform_built_in',
+    };
+  }
+
+  private buildTrialSchedulingDetails(
+    requestedStartAt: Date,
+    createDto: CreateBookingInput,
+  ): BookingSession['schedulingDetails'] {
+    const provided = createDto.schedulingDetails as Partial<BookingSession['schedulingDetails']> | undefined;
+    return {
+      requestedDateTime: requestedStartAt,
+      duration: TRIAL_BOOKING_DURATION_MINUTES,
       timeZone: provided?.timeZone || 'Asia/Ho_Chi_Minh',
       meetingPlatform: 'platform_built_in',
     };

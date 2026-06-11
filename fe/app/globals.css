@@ -223,6 +223,33 @@ h6 {
   box-shadow: var(--shadow-elevated);
 }
 
+@utility edumee-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+  scrollbar-gutter: stable;
+
+  &::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    background-clip: content-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.45);
+    background-clip: content-box;
+  }
+}
+
 @utility glass-card {
   background: hsl(var(--card) / 0.8);
   backdrop-filter: blur(16px);

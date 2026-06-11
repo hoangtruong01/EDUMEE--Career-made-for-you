@@ -15,7 +15,7 @@ import {
 } from 'lucide-react-native';
 import { mentorPortalQueryKey, updateMentorPortalBookingCache, useMentorPortalData } from '../../hooks/useMentorPortalData';
 import { mentorService, type BookingSession, type MentorAvailabilitySlot } from '../../services/mentor.service';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
 import {
   bookingStatusLabel,
   dateAtMinutes,
@@ -41,6 +41,7 @@ import {
   EmptyState,
   InfoCard,
   LoadingState,
+  MENTOR_COLORS as COLORS,
   MessageBanner,
   Pill,
   PortalScreen,
@@ -704,7 +705,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -750,7 +753,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   topicText: {
-    color: 'rgba(255,255,255,0.78)',
+    color: COLORS.muted,
     fontSize: 12,
     lineHeight: 18,
     marginTop: SPACING.md,
@@ -779,7 +782,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.borderSoft,
     padding: SPACING.lg,
     gap: SPACING.md,
   },
@@ -802,7 +805,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -815,7 +820,7 @@ const styles = StyleSheet.create({
   },
   detailBlock: {
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.surfaceSubtle,
     padding: SPACING.md,
   },
   detailLabel: {
@@ -851,8 +856,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 12,
     fontSize: 13,
@@ -864,7 +869,7 @@ const styles = StyleSheet.create({
   minutePill: {
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.border,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -920,7 +925,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 5,
   },
   peerBubble: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surfaceSubtle,
     borderBottomLeftRadius: 5,
   },
   systemBubble: {
@@ -952,8 +957,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 14,
     fontSize: 13,
@@ -974,7 +979,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: COLORS.border,
     padding: SPACING.lg,
     gap: SPACING.md,
   },

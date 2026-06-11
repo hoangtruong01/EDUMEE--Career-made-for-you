@@ -64,10 +64,12 @@ function HeaderAccountMenu({
   user,
   wallet,
   profileActive,
+  onLogout,
 }: {
   user: UserMe | null;
   wallet: WalletSummary | null;
   profileActive: boolean;
+  onLogout: () => void | Promise<void>;
 }) {
   return (
     <Popover>
@@ -76,7 +78,7 @@ function HeaderAccountMenu({
           type="button"
           aria-label="Mở menu tài khoản"
           className={cn(
-            'flex items-center gap-3 rounded-xl p-1.5 pl-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900',
+            'flex items-center gap-3 rounded-xl p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 sm:pl-3',
             profileActive
               ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
               : 'hover:bg-slate-100 dark:hover:bg-slate-800',
@@ -130,6 +132,16 @@ function HeaderAccountMenu({
               {wallet ? formatCurrency(wallet.availableBalance, wallet.currency) : '--'}
             </span>
           </Link>
+        </div>
+        <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Đăng xuất
+          </button>
         </div>
       </PopoverContent>
     </Popover>
@@ -199,17 +211,17 @@ function PortalShellInner({ children }: { children: ReactNode }) {
 
   if (!canUsePortalChrome) {
     return (
-      <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+      <div className="min-h-screen bg-[#f6f8fb] text-slate-950 dark:bg-slate-950 dark:text-slate-100">
         <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
-      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:flex">
+    <div className="min-h-screen bg-[#f6f8fb] text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col border-r border-slate-200 bg-white/95 dark:border-slate-800 dark:bg-slate-900 lg:flex">
         <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-5 dark:border-slate-800">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-500/10">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 ring-1 ring-sky-100 dark:bg-sky-500/10 dark:ring-sky-500/20">
             <Image src="/edumee-logo-icon.svg" alt="Edumee" width={28} height={28} />
           </div>
           <div>
@@ -227,10 +239,10 @@ function PortalShellInner({ children }: { children: ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                  'flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
                   active
-                    ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+                    ? 'bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -244,7 +256,7 @@ function PortalShellInner({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={handleLogout}
-            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
           >
             <LogOut className="h-4 w-4" />
             <span>Đăng xuất</span>
@@ -253,51 +265,65 @@ function PortalShellInner({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="lg:ml-64">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+          <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300 lg:hidden">
                 <GraduationCap className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Cổng mentor</p>
-                <h1 className="text-base font-semibold text-slate-950 dark:text-slate-50">
+                <h1 className="truncate text-base font-semibold text-slate-950 dark:text-slate-50">
                   {activePortalItem?.label || 'Không gian làm việc'}
                 </h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
               <NotificationBell className="rounded-xl" />
               <ThemeToggle />
-              <HeaderAccountMenu user={displayedUser} wallet={displayedWallet} profileActive={profileActive} />
+              <HeaderAccountMenu
+                user={displayedUser}
+                wallet={displayedWallet}
+                profileActive={profileActive}
+                onLogout={handleLogout}
+              />
             </div>
           </div>
-          <nav className="flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-2 dark:border-slate-800 sm:px-6 lg:hidden">
-            {portalItems.map((item) => {
-              const activePath = item.activePath || item.href;
-              const active = pathname === activePath || (activePath !== '/mentor-dashboard' && pathname.startsWith(activePath));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
         </header>
 
-        <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-5 sm:px-6 lg:px-8 lg:pb-8 lg:pt-6">
+          {children}
+        </main>
       </div>
+
+      <nav
+        aria-label="Điều hướng mentor"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 lg:hidden"
+      >
+        <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
+          {portalItems.map((item) => {
+            const activePath = item.activePath || item.href;
+            const active = pathname === activePath || (activePath !== '/mentor-dashboard' && pathname.startsWith(activePath));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-[10px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900',
+                  active
+                    ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                <span className="w-full truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

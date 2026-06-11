@@ -341,6 +341,7 @@ export class PaymentService {
     if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
       throw new ConflictException('Booking is not awaiting payment');
     }
+    await this.assertMentorBookingCheckoutAvailable(booking);
 
     const price = Number(booking.paymentInfo?.sessionPrice ?? 0);
     const currency = booking.paymentInfo?.currency || 'VND';
@@ -537,6 +538,11 @@ export class PaymentService {
         checkoutReference,
         redirectUrl: this.buildMentorCheckoutRedirectUrl(checkoutToken as string, savedPayment),
       };
+    }
+
+    const slotClaim = await this.claimMentorBookingSlotForPayment(payment, booking);
+    if (!slotClaim.claimed) {
+      throw new ConflictException('Khung gio da co nguoi thanh toan truoc');
     }
 
     await this.walletService.debit({
@@ -1148,7 +1154,7 @@ export class PaymentService {
   }
 
   async renderSepayCheckoutPage(token: string): Promise<string> {
-    const payment = await this.findPendingPaymentByCheckoutToken(token);
+    let payment = await this.findPendingPaymentByCheckoutToken(token);
 
     if (!payment) {
       return this.buildCheckoutErrorPageHtml(
@@ -1156,6 +1162,7 @@ export class PaymentService {
         'This checkout link is invalid, expired, or no longer available.',
       );
     }
+    payment = await this.closeMentorCheckoutIfSlotUnavailable(payment);
 
     if (payment.provider !== PaymentProvider.SEPAY) {
       return this.buildCheckoutErrorPageHtml(
@@ -1176,11 +1183,12 @@ export class PaymentService {
   }
 
   async getPaymentCheckoutSession(token: string): Promise<PaymentCheckoutSession> {
-    const payment = await this.findPendingPaymentByCheckoutToken(token);
+    let payment = await this.findPendingPaymentByCheckoutToken(token);
 
     if (!payment) {
       throw new NotFoundException('Checkout link is invalid or expired');
     }
+    payment = await this.closeMentorCheckoutIfSlotUnavailable(payment);
 
     if (payment.provider !== PaymentProvider.SEPAY) {
       throw new BadRequestException('Payment provider is not SePay');
@@ -1211,11 +1219,12 @@ export class PaymentService {
   }
 
   async getPaymentCheckoutStatus(token: string): Promise<PaymentCheckoutStatus> {
-    const payment = await this.findPendingPaymentByCheckoutToken(token);
+    let payment = await this.findPendingPaymentByCheckoutToken(token);
 
     if (!payment) {
       throw new NotFoundException('Checkout link is invalid or expired');
     }
+    payment = await this.closeMentorCheckoutIfSlotUnavailable(payment);
 
     if (payment.provider !== PaymentProvider.SEPAY) {
       throw new BadRequestException('Payment provider is not SePay');
@@ -1531,7 +1540,9 @@ export class PaymentService {
     const existingEvent = await this.findExistingEvent(payment, params.eventId);
     if (existingEvent) {
       await this.ensurePaidPaymentEntitlement(payment);
-      await this.financialLedgerService.postPaymentPaid(payment);
+      if (payment.status === PaymentStatus.PAID) {
+        await this.financialLedgerService.postPaymentPaid(payment);
+      }
       return {
         payment,
         idempotent: true,
@@ -1549,6 +1560,19 @@ export class PaymentService {
 
     if (payment.status !== PaymentStatus.PENDING) {
       throw new ConflictException(`Payment is not in a mutable pending state for ${params.sourceLabel}`);
+    }
+
+    if (payment.purpose === PaymentPurpose.MENTOR_BOOKING) {
+      const slotClaim = await this.claimMentorBookingSlotForPayment(payment);
+      if (!slotClaim.claimed) {
+        await this.refundUnclaimableMentorBookingPayment(payment, {
+          eventId: params.eventId,
+          providerPaymentId: params.providerPaymentId,
+          providerTransactionId: params.providerTransactionId,
+          payload: params.payload,
+        });
+        return { payment, idempotent: false };
+      }
     }
 
     await this.captureCreditHoldForPayment(payment);
@@ -1866,6 +1890,149 @@ export class PaymentService {
       .exec();
   }
 
+  private async assertMentorBookingCheckoutAvailable(booking: BookingSessionDocument): Promise<void> {
+    const isAvailable = await this.isMentorBookingSlotPayable(booking);
+    if (!isAvailable) {
+      throw new ConflictException('Khung gio da co nguoi thanh toan truoc');
+    }
+  }
+
+  private async isMentorBookingSlotPayable(booking: BookingSessionDocument): Promise<boolean> {
+    const slot = await this.mentorAvailabilitySlotModel
+      .findOne({
+        _id: booking.availabilitySlotId,
+        tutorProfileId: booking.tutorProfileId,
+        startAt: { $gte: new Date() },
+        $or: [
+          { status: MentorAvailabilitySlotStatus.AVAILABLE },
+          {
+            status: MentorAvailabilitySlotStatus.HELD,
+            bookingSessionId: booking._id,
+          },
+        ],
+      })
+      .exec();
+    return !!slot;
+  }
+
+  private async claimMentorBookingSlotForPayment(
+    payment: PaymentDocument,
+    preloadedBooking?: BookingSessionDocument,
+  ): Promise<{ claimed: boolean; booking?: BookingSessionDocument }> {
+    if (!payment.bookingSessionId) {
+      throw new ConflictException('Payment is missing a linked mentor booking');
+    }
+
+    const booking = preloadedBooking || await this.bookingSessionModel.findById(payment.bookingSessionId).exec();
+    if (!booking) throw new NotFoundException('Booking session not found');
+
+    if ([BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.RESCHEDULED].includes(booking.status)) {
+      return { claimed: true, booking };
+    }
+    if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
+      return { claimed: false, booking };
+    }
+
+    const slot = await this.mentorAvailabilitySlotModel
+      .findOneAndUpdate(
+        {
+          _id: booking.availabilitySlotId,
+          tutorProfileId: booking.tutorProfileId,
+          startAt: { $gte: new Date() },
+          $or: [
+            { status: MentorAvailabilitySlotStatus.AVAILABLE },
+            {
+              status: MentorAvailabilitySlotStatus.HELD,
+              bookingSessionId: booking._id,
+            },
+          ],
+        },
+        {
+          $set: {
+            status: MentorAvailabilitySlotStatus.HELD,
+            bookingSessionId: booking._id,
+            heldBy: booking.menteeId,
+          },
+          $unset: { heldUntil: 1 },
+        },
+        { new: true },
+      )
+      .exec();
+
+    return { claimed: !!slot, booking };
+  }
+
+  private async closeMentorCheckoutIfSlotUnavailable(payment: PaymentDocument): Promise<PaymentDocument> {
+    if (
+      payment.purpose !== PaymentPurpose.MENTOR_BOOKING ||
+      payment.provider !== PaymentProvider.SEPAY ||
+      payment.status !== PaymentStatus.PENDING ||
+      !payment.bookingSessionId
+    ) {
+      return payment;
+    }
+
+    const booking = await this.bookingSessionModel.findById(payment.bookingSessionId).exec();
+    if (!booking || booking.status !== BookingStatus.AWAITING_PAYMENT) return payment;
+    if (await this.isMentorBookingSlotPayable(booking)) return payment;
+
+    const eventId = `mentor-slot-unavailable:${payment._id.toString()}`;
+    const existingEvent = await this.findExistingEvent(payment, eventId);
+    if (existingEvent) return payment;
+
+    payment.status = PaymentStatus.CANCELLED;
+    payment.failureReason = 'Booking slot is no longer available';
+    payment.settlementStatus = PaymentSettlementStatus.WITHHELD;
+    await payment.save();
+    await this.releaseCreditHoldForPayment(payment, 'Khung gio mentor da co nguoi thanh toan truoc');
+    await this.updateMentorBookingPaymentState(payment, 'cancelled');
+    await this.paymentTransactionModel.create({
+      paymentId: payment._id,
+      eventId,
+      eventType: 'payment_cancelled',
+      status: PaymentTransactionStatus.FAILED,
+      payload: { reason: 'mentor_slot_unavailable' },
+    });
+    return payment;
+  }
+
+  private async refundUnclaimableMentorBookingPayment(
+    payment: PaymentDocument,
+    params: {
+      eventId: string;
+      providerPaymentId?: string;
+      providerTransactionId?: string;
+      payload: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    payment.status = PaymentStatus.PAID;
+    payment.paidAt = payment.paidAt || new Date();
+    payment.failureReason = undefined;
+    payment.providerPaymentId = params.providerPaymentId || payment.providerPaymentId;
+    await payment.save();
+
+    await this.paymentTransactionModel.create({
+      paymentId: payment._id,
+      eventId: params.eventId,
+      providerTransactionId: params.providerTransactionId,
+      eventType: 'payment_succeeded',
+      status: PaymentTransactionStatus.SUCCESS,
+      payload: params.payload,
+    });
+
+    await this.releaseCreditHoldForPayment(payment, 'Khung gio mentor da co nguoi thanh toan truoc');
+    await this.refundPaidPaymentToCredit(
+      payment,
+      Number(payment.amount || 0),
+      'Khung gio mentor da co nguoi thanh toan truoc',
+      `mentor-slot-unavailable-refund:${params.eventId}`,
+      params.providerTransactionId,
+      { ...params.payload, reason: 'mentor_slot_unavailable' },
+      { markPaymentRefunded: true, cashOnly: true },
+    );
+    await this.updateMentorBookingPaymentState(payment, 'refunded');
+  }
+
   private async activateMentorBookingFromPayment(payment: PaymentDocument): Promise<void> {
     if (!payment.bookingSessionId) {
       throw new ConflictException('Payment is missing a linked mentor booking');
@@ -1875,6 +2042,11 @@ export class PaymentService {
     if (!booking) throw new NotFoundException('Booking session not found');
     if (booking.status !== BookingStatus.AWAITING_PAYMENT) {
       return;
+    }
+
+    const slotClaim = await this.claimMentorBookingSlotForPayment(payment, booking);
+    if (!slotClaim.claimed) {
+      throw new ConflictException('Khung gio da co nguoi thanh toan truoc');
     }
 
     const updated = await this.bookingSessionModel.findByIdAndUpdate(payment.bookingSessionId, {
@@ -2003,7 +2175,7 @@ export class PaymentService {
     eventId: string,
     providerTransactionId?: string,
     payload: Record<string, unknown> = {},
-    options: { markPaymentRefunded?: boolean } = {},
+    options: { markPaymentRefunded?: boolean; cashOnly?: boolean } = {},
   ): Promise<void> {
     const refundAmount = Math.min(amount, this.getPaymentTotalAmount(payment));
     if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
@@ -2011,7 +2183,9 @@ export class PaymentService {
     }
 
     const settlementStatusBefore = payment.settlementStatus;
-    const refundSplit = this.splitRefundByPaymentSource(payment, refundAmount);
+    const refundSplit = options.cashOnly
+      ? { cashRefundAmount: this.roundCurrency(refundAmount), creditRefundAmount: 0 }
+      : this.splitRefundByPaymentSource(payment, refundAmount);
     const baseMetadata = {
       ...this.buildWalletPaymentMetadata(payment),
       paymentPurpose: payment.purpose,

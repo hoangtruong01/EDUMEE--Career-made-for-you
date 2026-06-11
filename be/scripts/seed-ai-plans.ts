@@ -15,6 +15,8 @@ type AiPlanDocumentModel = Model<AiPlan>;
 type PaymentModel = Model<Payment>;
 type UserSubscriptionModel = Model<UserSubscription>;
 
+const MENTOR_BOOKING_TRIAL_LIMIT = 5;
+
 type PlanSeed = {
   name: string;
   description: string;
@@ -61,7 +63,7 @@ const PLUS_LIMITS: PlanSeed['limits'] = {
   maxCareersPerComparison: 3,
   personalizedRoadmapsPerMonth: 20,
   simulationsPerMonth: 20,
-  mentorBookingsPerMonth: 5,
+  mentorBookingsPerMonth: MENTOR_BOOKING_TRIAL_LIMIT,
 };
 
 const PLAN_SEEDS: PlanSeed[] = [
@@ -288,6 +290,58 @@ export async function backfillLegacyVisibleCareerRecommendationLimits(
   return modifiedCount;
 }
 
+export async function backfillLegacyMentorBookingEntitlements(
+  aiPlanModel: AiPlanDocumentModel,
+): Promise<number> {
+  const result = await aiPlanModel.updateMany(
+    {
+      isDefaultPlan: { $ne: true },
+      $and: [
+        {
+          $or: [
+            { price: { $gt: 0 } },
+            { name: /plus|pro|business/i },
+            { seatLimit: { $gt: 0 } },
+            { 'features.teamDashboard': true },
+            { 'features.multiUserManagement': true },
+          ],
+        },
+        {
+          $or: [
+            { 'features.mentorBooking': { $ne: true } },
+            { 'limits.mentorBookingsPerMonth': { $exists: false } },
+            { 'limits.mentorBookingsPerMonth': null },
+            { 'limits.mentorBookingsPerMonth': { $lt: MENTOR_BOOKING_TRIAL_LIMIT } },
+          ],
+        },
+      ],
+    },
+    [
+      {
+        $set: {
+          'features.mentorBooking': true,
+          'limits.mentorBookingsPerMonth': {
+            $cond: [
+              { $gte: ['$limits.mentorBookingsPerMonth', MENTOR_BOOKING_TRIAL_LIMIT] },
+              '$limits.mentorBookingsPerMonth',
+              MENTOR_BOOKING_TRIAL_LIMIT,
+            ],
+          },
+        },
+      },
+    ],
+  ).exec();
+
+  const modifiedCount = result.modifiedCount || 0;
+  if (modifiedCount > 0) {
+    console.log(
+      `[seed:ai-plans] Backfilled mentor booking trial entitlement for ${modifiedCount} legacy paid plan(s).`,
+    );
+  }
+
+  return modifiedCount;
+}
+
 async function main(): Promise<void> {
   loadEnvFiles();
   await mongoose.connect(getDatabaseUri());
@@ -299,6 +353,7 @@ async function main(): Promise<void> {
   await migrateLegacyProPlan(aiPlanModel, paymentModel, subscriptionModel);
   await upsertPlans(aiPlanModel);
   await backfillLegacyVisibleCareerRecommendationLimits(aiPlanModel);
+  await backfillLegacyMentorBookingEntitlements(aiPlanModel);
 
   await aiPlanModel
     .updateMany(

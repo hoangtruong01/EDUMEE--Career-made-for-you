@@ -34,7 +34,6 @@ export enum BookingType {
 }
 
 export const ACTIVE_SLOT_BOOKING_STATUSES = [
-  BookingStatus.AWAITING_PAYMENT,
   BookingStatus.PENDING,
   BookingStatus.CONFIRMED,
   BookingStatus.RESCHEDULED,
@@ -77,8 +76,8 @@ export class BookingSession {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   mentorId!: Types.ObjectId; // Cached from TutorProfile for performance
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'MentorAvailabilitySlot' })
-  availabilitySlotId!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'MentorAvailabilitySlot' })
+  availabilitySlotId?: Types.ObjectId;
 
   @Prop({ type: String, enum: SessionType, required: true })
   sessionType!: SessionType;
@@ -143,6 +142,10 @@ export class BookingSession {
     }[];
     
     additionalNotes?: string;
+    menteeAvailabilityWindows?: {
+      startAt: Date;
+      endAt: Date;
+    }[];
     isFirstSession: boolean;
     urgencyLevel?: 'low' | 'medium' | 'high';
   };
@@ -337,6 +340,7 @@ BookingSessionSchema.index(
     unique: true,
     name: 'booking_session_active_slot_unique',
     partialFilterExpression: {
+      availabilitySlotId: { $exists: true },
       status: { $in: [...ACTIVE_SLOT_BOOKING_STATUSES] },
     },
   },

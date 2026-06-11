@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { Calendar, CalendarCheck, Home, MessageSquare, User } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { Platform, StyleSheet } from 'react-native';
-import { COLORS } from '../../src/theme';
+import { MENTOR_COLORS as COLORS } from '../../src/screens/mentor/MentorPortalUI';
 
 export default function MentorTabLayout() {
   return (
@@ -13,8 +13,9 @@ export default function MentorTabLayout() {
         tabBarInactiveTintColor: COLORS.muted,
         tabBarStyle: {
           position: 'absolute',
-          borderTopWidth: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderTopWidth: 1,
+          borderTopColor: COLORS.borderSoft,
+          backgroundColor: 'rgba(255, 255, 255, 0.96)',
           height: Platform.OS === 'ios' ? 88 : 76,
           paddingBottom: Platform.OS === 'ios' ? 28 : 14,
           paddingTop: 8,
@@ -30,7 +31,7 @@ export default function MentorTabLayout() {
             },
           }),
         },
-        tabBarBackground: () => <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />,
+        tabBarBackground: () => <BlurView intensity={35} tint="light" style={StyleSheet.absoluteFill} />,
         headerShown: false,
         tabBarLabelStyle: {
           fontSize: 10,

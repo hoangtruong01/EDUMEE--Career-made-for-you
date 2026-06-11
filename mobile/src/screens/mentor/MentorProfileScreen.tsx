@@ -15,7 +15,7 @@ import { CheckCircle2, ChevronDown, LogOut, Send, UserCheck, X } from 'lucide-re
 import { careerTagsService, type CareerTag, type SkillTag } from '../../services/career-tags.service';
 import { mentorService, type ApplyTutorProfilePayload, type TutorProfile } from '../../services/mentor.service';
 import { setAuthToken } from '../../services/api';
-import { COLORS, RADIUS, SPACING } from '../../theme';
+import { RADIUS, SPACING } from '../../theme';
 import { mentorPortalQueryKey, useMentorPortalData } from '../../hooks/useMentorPortalData';
 import { getId, getMentorTitle, profileStatusLabel } from './mentorUtils';
 import {
@@ -24,6 +24,7 @@ import {
   FormInput,
   InfoCard,
   LoadingState,
+  MENTOR_COLORS as COLORS,
   MessageBanner,
   Pill,
   PortalScreen,
@@ -115,7 +116,7 @@ function MultiSelectModal({
               value={query}
               onChangeText={setQuery}
               placeholder="Tìm kiếm..."
-              placeholderTextColor="rgba(226,232,240,0.45)"
+              placeholderTextColor={COLORS.mutedSoft}
               style={styles.searchInput}
             />
             <ScrollView contentContainerStyle={styles.optionList}>
@@ -521,8 +522,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -550,7 +551,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: COLORS.borderSoft,
     padding: SPACING.lg,
     gap: SPACING.md,
   },
@@ -569,7 +570,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -577,8 +580,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
     color: COLORS.foreground,
     paddingHorizontal: 12,
     fontSize: 13,
@@ -591,8 +594,8 @@ const styles = StyleSheet.create({
     minHeight: 54,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
     padding: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',

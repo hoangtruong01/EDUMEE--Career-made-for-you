@@ -34,7 +34,10 @@ describe('PaymentService', () => {
     findOne: jest.fn(),
   };
   const bookingSessionModel = {};
-  const mentorAvailabilitySlotModel = {};
+  const mentorAvailabilitySlotModel = {
+    findOne: jest.fn(),
+    findOneAndUpdate: jest.fn(),
+  };
 
   const aiPlanService = {
     findOne: jest.fn(),
@@ -87,6 +90,8 @@ describe('PaymentService', () => {
     (bookingSessionModel as any).find = jest.fn().mockReturnValue(createQuery([]));
     (bookingSessionModel as any).findById = jest.fn().mockReturnValue(createQuery(null));
     (bookingSessionModel as any).findByIdAndUpdate = jest.fn().mockReturnValue(createQuery(null));
+    mentorAvailabilitySlotModel.findOne.mockReturnValue(createQuery({ _id: new Types.ObjectId() }));
+    mentorAvailabilitySlotModel.findOneAndUpdate.mockReturnValue(createQuery({ _id: new Types.ObjectId() }));
     paymentTransactionModel.create.mockResolvedValue({});
     paymentTransactionModel.findOne.mockReturnValue(createQuery(null));
     paymentSettingModel.findOne.mockReturnValue(createQuery(null));
@@ -444,6 +449,8 @@ describe('PaymentService', () => {
       _id: bookingId,
       mentorId: new Types.ObjectId('507f1f77bcf86cd799439021'),
       tutorProfileId: new Types.ObjectId('507f1f77bcf86cd799439022'),
+      availabilitySlotId: new Types.ObjectId('507f1f77bcf86cd799439023'),
+      status: BookingStatus.AWAITING_PAYMENT,
       sessionType: 'career_guidance',
       schedulingDetails: {
         requestedDateTime: new Date('2026-05-17T11:30:00.000Z'),
@@ -454,7 +461,9 @@ describe('PaymentService', () => {
       },
     };
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
-    (bookingSessionModel as any).findById.mockReturnValueOnce(createQuery(booking));
+    (bookingSessionModel as any).findById
+      .mockReturnValueOnce(createQuery(booking))
+      .mockReturnValueOnce(createQuery(booking));
 
     const session = await service.getPaymentCheckoutSession('checkout-token');
 
@@ -671,6 +680,33 @@ describe('PaymentService', () => {
       }),
       { new: true },
     );
+  });
+
+  it('does not debit Edumee Credit when a full-credit mentor booking loses the slot race', async () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const bookingId = '507f1f77bcf86cd799439020';
+    const booking = {
+      _id: new Types.ObjectId(bookingId),
+      menteeId: new Types.ObjectId(userId),
+      tutorProfileId: new Types.ObjectId('507f1f77bcf86cd799439022'),
+      availabilitySlotId: new Types.ObjectId('507f1f77bcf86cd799439023'),
+      status: BookingStatus.AWAITING_PAYMENT,
+      paymentInfo: { sessionPrice: 50000, currency: 'VND' },
+    };
+    (bookingSessionModel as any).findById.mockReturnValue(createQuery(booking));
+    mentorAvailabilitySlotModel.findOne.mockReturnValue(createQuery({ _id: booking.availabilitySlotId }));
+    mentorAvailabilitySlotModel.findOneAndUpdate.mockReturnValue(createQuery(null));
+    walletService.getAvailableBalance.mockResolvedValue(50000);
+
+    await expect(
+      service.purchaseMentorBooking(userId, {
+        bookingSessionId: bookingId,
+        useEdumeeCredit: true,
+      }),
+    ).rejects.toThrow('Khung gio da co nguoi thanh toan truoc');
+
+    expect(walletService.debit).not.toHaveBeenCalled();
+    expect((bookingSessionModel as any).findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
   it('captures held Edumee Credit when a partial-credit SePay payment succeeds', async () => {
@@ -1158,6 +1194,8 @@ describe('PaymentService', () => {
       _id: bookingId,
       menteeId: payment.userId,
       mentorId: new Types.ObjectId('507f1f77bcf86cd799439021'),
+      tutorProfileId: new Types.ObjectId('507f1f77bcf86cd799439022'),
+      availabilitySlotId: new Types.ObjectId('507f1f77bcf86cd799439023'),
       status: BookingStatus.AWAITING_PAYMENT,
       sessionType: 'career_guidance',
       schedulingDetails: { requestedDateTime: new Date(), duration: 90 },
@@ -1166,7 +1204,9 @@ describe('PaymentService', () => {
     const updatedBooking = { ...booking, status: BookingStatus.PENDING };
     paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
     paymentTransactionModel.findOne.mockReturnValueOnce(createQuery(null));
-    (bookingSessionModel as any).findById.mockReturnValueOnce(createQuery(booking));
+    (bookingSessionModel as any).findById
+      .mockReturnValueOnce(createQuery(booking))
+      .mockReturnValueOnce(createQuery(booking));
     (bookingSessionModel as any).findByIdAndUpdate.mockReturnValueOnce(createQuery(updatedBooking));
 
     const result = await service.handleSepayBankWebhook('Apikey test-sepay-key', {
@@ -1210,6 +1250,79 @@ describe('PaymentService', () => {
         status: 'success',
       }),
     );
+  });
+
+  it('refunds a late mentor booking SePay transfer when another payment already claimed the slot', async () => {
+    configService.get.mockImplementation((key: string, fallback?: unknown) => {
+      if (key === 'SEPAY_BANK_WEBHOOK_API_KEY') return 'test-sepay-key';
+      if (key === 'SEPAY_BANK_TRANSFER_CODE_PREFIX') return 'EDU';
+      return fallback;
+    });
+    const paymentId = new Types.ObjectId('507f1f77bcf86cd799439099');
+    const bookingId = new Types.ObjectId('507f1f77bcf86cd799439020');
+    const payment = {
+      _id: paymentId,
+      userId: new Types.ObjectId('507f1f77bcf86cd799439011'),
+      bookingSessionId: bookingId,
+      purpose: PaymentPurpose.MENTOR_BOOKING,
+      provider: PaymentProvider.SEPAY,
+      checkoutReference: 'EDU9F2A7C1B4D8E',
+      amount: 500000,
+      subtotalAmount: 500000,
+      currency: 'VND',
+      status: PaymentStatus.PENDING,
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const booking = {
+      _id: bookingId,
+      menteeId: payment.userId,
+      tutorProfileId: new Types.ObjectId('507f1f77bcf86cd799439022'),
+      availabilitySlotId: new Types.ObjectId('507f1f77bcf86cd799439023'),
+      status: BookingStatus.AWAITING_PAYMENT,
+      paymentInfo: { sessionPrice: 500000, currency: 'VND' },
+    };
+    paymentModel.findOne.mockReturnValueOnce(createQuery(payment));
+    paymentTransactionModel.findOne.mockReturnValueOnce(createQuery(null));
+    (bookingSessionModel as any).findById
+      .mockReturnValueOnce(createQuery(booking))
+      .mockReturnValueOnce(createQuery(booking));
+    mentorAvailabilitySlotModel.findOneAndUpdate.mockReturnValue(createQuery(null));
+
+    const result = await service.handleSepayBankWebhook('Apikey test-sepay-key', {
+      id: 92706,
+      gateway: 'MBBank',
+      transactionDate: '2026-01-15 10:30:00',
+      accountNumber: '0123456789',
+      content: 'EDU9F2A7C1B4D8E thanh toan mentor',
+      transferType: 'in',
+      transferAmount: 500000,
+      referenceCode: 'SB-LATE',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        received: true,
+        processed: false,
+        paymentId: paymentId.toString(),
+        status: PaymentStatus.REFUNDED,
+      }),
+    );
+    expect(payment.status).toBe(PaymentStatus.REFUNDED);
+    expect(walletService.cashRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: payment.userId.toString(),
+        amount: 500000,
+        sourceType: 'payment_refund',
+      }),
+    );
+    expect((bookingSessionModel as any).findByIdAndUpdate).toHaveBeenCalledWith(
+      bookingId,
+      expect.objectContaining({
+        status: BookingStatus.CANCELLED_BY_MENTEE,
+        'paymentInfo.paymentStatus': 'refunded',
+      }),
+    );
+    expect(financialLedgerService.postPaymentPaid).not.toHaveBeenCalled();
   });
 
   it('activates an AI plan payment from a SePay bank webhook payload', async () => {
@@ -1286,6 +1399,8 @@ describe('PaymentService', () => {
       _id: bookingId,
       menteeId: payment.userId,
       mentorId: new Types.ObjectId('507f1f77bcf86cd799439021'),
+      tutorProfileId: new Types.ObjectId('507f1f77bcf86cd799439022'),
+      availabilitySlotId: new Types.ObjectId('507f1f77bcf86cd799439023'),
       status: BookingStatus.AWAITING_PAYMENT,
       sessionType: 'career_guidance',
       schedulingDetails: { requestedDateTime: new Date(), duration: 90 },
@@ -1296,7 +1411,9 @@ describe('PaymentService', () => {
       .mockReturnValueOnce(createQuery(payment))
       .mockReturnValueOnce(createQuery(payment));
     paymentTransactionModel.findOne.mockReturnValueOnce(createQuery(null));
-    (bookingSessionModel as any).findById.mockReturnValueOnce(createQuery(booking));
+    (bookingSessionModel as any).findById
+      .mockReturnValueOnce(createQuery(booking))
+      .mockReturnValueOnce(createQuery(booking));
     (bookingSessionModel as any).findByIdAndUpdate.mockReturnValueOnce(createQuery(updatedBooking));
 
     const result = await service.simulateCheckoutTestBankTransfer(

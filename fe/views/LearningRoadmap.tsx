@@ -540,12 +540,6 @@ const LearningRoadmap = () => {
     }
   };
 
-  const totalOverallProgress = useMemo(() => {
-    if (roadmapData.length === 0) return 0;
-    const current = roadmapData.find((p) => p.status === 'current');
-    return current ? current.progress : 0;
-  }, [roadmapData]);
-
   const scrollToQuestion = (index: number) => {
     const targetElement = document.getElementById(`question-block-${index}`);
     if (targetElement) {
@@ -711,7 +705,6 @@ const LearningRoadmap = () => {
                 >
                   <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.03] to-transparent group-hover/phase:animate-[shimmer_2s_infinite]" />
 
-                 
                   <div
                     role="button"
                     tabIndex={0}
