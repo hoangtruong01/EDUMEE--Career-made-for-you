@@ -21,6 +21,12 @@ export enum NotificationType {
   PAYMENT_PAID = 'payment_paid',
   WALLET_CREDIT_ADDED = 'wallet_credit_added',
   WALLET_CREDIT_USED = 'wallet_credit_used',
+  ROADMAP_GENERATED = 'roadmap_generated',
+  ROADMAP_LESSON_COMPLETED = 'roadmap_lesson_completed',
+  ROADMAP_TEST_FAILED = 'roadmap_test_failed',
+  ROADMAP_PHASE_COMPLETED = 'roadmap_phase_completed',
+  ROADMAP_STREAK_MILESTONE = 'roadmap_streak_milestone',
+  ROADMAP_INACTIVITY_REMINDER = 'roadmap_inactivity_reminder',
 }
 
 @Schema({

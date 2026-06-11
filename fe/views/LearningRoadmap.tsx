@@ -113,7 +113,7 @@ interface IMappedTask {
   description: string;
   formatType: string;
   displayBadge: string;
-  isTest: boolean; // Trường mới xác định xem bài viết là học liệu hay bài kiểm tra
+  isTest: boolean;
   quizQuestions: IQuizQuestion[];
   isRequired: boolean;
   hours: number;
@@ -314,6 +314,23 @@ const LearningRoadmap = () => {
     () => flatTasks.find((t) => t.id === activeStudyTaskId),
     [flatTasks, activeStudyTaskId],
   );
+
+  useEffect(() => {
+    const taskParam = searchParams.get('activeTask');
+    if (taskParam && flatTasks.length > 0) {
+      setActiveStudyTaskId(taskParam);
+
+      setTimeout(() => {
+        const targetElement = document.getElementById(`task-card-${taskParam}`);
+        if (targetElement) {
+          targetElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }
+      }, 700);
+    }
+  }, [searchParams, flatTasks]);
 
   const handleSelectOption = (
     taskId: string,
@@ -526,10 +543,9 @@ const LearningRoadmap = () => {
   const totalOverallProgress = useMemo(() => {
     if (roadmapData.length === 0) return 0;
     const current = roadmapData.find((p) => p.status === 'current');
-    return current ? current.progress : 0; // Đổi fallback từ 56 về 0 để phản ánh đúng tiến độ thực tế nếu chưa học
+    return current ? current.progress : 0;
   }, [roadmapData]);
 
-  // 🎯 UPGRADE 1: Hàm kích hoạt cuộn mượt (Smooth Scroll) tới vị trí ID câu hỏi cụ thể trong Grid
   const scrollToQuestion = (index: number) => {
     const targetElement = document.getElementById(`question-block-${index}`);
     if (targetElement) {
@@ -589,7 +605,7 @@ const LearningRoadmap = () => {
 
   return (
     <div className="min-h-screen pb-20">
-      <div className="relative overflow-hidden bg-gradient-card border-border/60 border-b px-4 py-12">
+      <div className="bg-gradient-card border-border/60 relative overflow-hidden border-b px-4 py-12">
         <div className="pointer-events-none absolute top-0 right-0 p-8 opacity-5">
           <Compass className="h-64 w-64" />
         </div>
@@ -604,7 +620,8 @@ const LearningRoadmap = () => {
           )}
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <div className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-bold tracking-wider uppercase shadow-sm backdrop-blur-md">
-              <BookOpen className="h-3.5 w-3.5 text-violet-400" /> Không gian học thực chiến tích hợp AI
+              <BookOpen className="h-3.5 w-3.5 text-violet-400" /> Không gian học thực chiến tích
+              hợp AI
             </div>
           </div>
           <h1 className="text-gradient-animate font-display mb-4 py-2 text-4xl leading-[1.2] font-extrabold tracking-tight md:text-6xl">
@@ -694,9 +711,18 @@ const LearningRoadmap = () => {
                 >
                   <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.03] to-transparent group-hover/phase:animate-[shimmer_2s_infinite]" />
 
-                  <button
+                 
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setExpanded(isExpanded ? null : i)}
-                    className="flex w-full cursor-pointer items-center gap-4 p-5 text-left focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setExpanded(isExpanded ? null : i);
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-4 p-5 text-left select-none focus:outline-none"
                   >
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500 transition-colors">
                       {phase.status === 'completed' ? (
@@ -750,7 +776,7 @@ const LearningRoadmap = () => {
                         <ChevronDown className="h-4 w-4" />
                       )}
                     </div>
-                  </button>
+                  </div>
 
                   <AnimatePresence>
                     {isExpanded && (
@@ -785,7 +811,6 @@ const LearningRoadmap = () => {
                                 {m.title}
                               </h4>
 
-                              {/* 🎯 UPGRADE 2: Xóa hoàn toàn dòng nối line mờ bên hông nhiệm vụ bằng cách triệt tiêu đường border trái */}
                               <div className="relative ml-1.5 space-y-3 pt-1">
                                 {m.tasks.map((task: IMappedTask) => {
                                   const isThisActive = activeStudyTaskId === task.id;
@@ -796,11 +821,11 @@ const LearningRoadmap = () => {
                                   return (
                                     <div
                                       key={task.id}
+                                      id={`task-card-${task.id}`}
                                       className={`group/task relative w-full rounded-xl border p-3.5 transition-all duration-300 ${isThisActive ? 'border-violet-500 bg-violet-500/5 shadow-md shadow-violet-500/5' : isTaskDone ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : isTaskLockedByCondition ? 'border-muted/40 bg-zinc-500/[0.02]' : 'bg-background border-border/80 hover:border-violet-500/20'}`}
                                     >
                                       <div className="flex items-center justify-between gap-2.5">
                                         <div className="min-w-0 flex-1">
-                                          {/* 🎯 UPGRADE 3: Hiển thị tên bài học thực tế, nhuộm màu chữ hiện đại kết hợp tag phân loại Bài học / Bài kiểm tra rõ ràng */}
                                           <h5
                                             className={`text-xs font-bold tracking-tight transition-colors duration-200 ${
                                               isTaskDone
@@ -1025,7 +1050,6 @@ const LearningRoadmap = () => {
                         <span className="text-muted-foreground block text-[10px] font-bold tracking-wider uppercase">
                           Lưới định vị câu hỏi nhanh (Click để di chuyển đến câu tương ứng):
                         </span>
-                        {/* 🎯 UPGRADE 1: Cấu hình lại các ô hiển thị câu hỏi thành các thẻ button có tương tác hover hiệu ứng và sự kiện Click Smooth Scroll */}
                         <div className="flex flex-wrap gap-1.5">
                           {activeTaskData.quizQuestions.map((_, idx: number) => {
                             const k = `${activeTaskData.id}-${idx}`;
@@ -1038,6 +1062,7 @@ const LearningRoadmap = () => {
                             const isDone = isLive || isHist;
                             return (
                               <button
+                                type="button"
                                 key={idx}
                                 onClick={() => scrollToQuestion(idx)}
                                 className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition-all duration-200 hover:scale-110 active:scale-95 ${isDone ? 'border-violet-500 bg-violet-600 text-white shadow-sm shadow-violet-500/20' : 'bg-background border-border/70 text-muted-foreground/60 hover:border-violet-500/40'}`}
@@ -1071,7 +1096,6 @@ const LearningRoadmap = () => {
                           if (!selectedList) selectedList = [];
 
                           return (
-                            /* 🎯 UPGRADE 1 CONTINUED: Thêm ID định vị cho khối câu hỏi nhằm kết nối tọa độ scroll vào luồng sự kiện click phía trên mượt mà */
                             <div
                               id={`question-block-${qIdx}`}
                               key={qIdx}

@@ -16,7 +16,14 @@ type NotificationAction = {
   external?: boolean;
   openChat?: boolean;
 };
-
+const roadmapNotificationTypes = new Set([
+  'roadmap_generated',
+  'roadmap_lesson_completed',
+  'roadmap_test_failed',
+  'roadmap_phase_completed',
+  'roadmap_streak_milestone',
+  'roadmap_inactivity_reminder',
+]);
 const bookingNotificationTypes = new Set([
   'mentor_booking_pending',
   'mentor_booking_confirmed',
@@ -58,7 +65,10 @@ function buildChatHref(notification: AppNotification, role?: string): string {
   return `${baseHref}?chatBooking=${encodeURIComponent(bookingId)}`;
 }
 
-function resolveNotificationAction(notification: AppNotification, role?: string): NotificationAction | null {
+function resolveNotificationAction(
+  notification: AppNotification,
+  role?: string,
+): NotificationAction | null {
   if (notification.type === 'mentor_booking_message' || notification.payload?.openChat === true) {
     return { href: buildChatHref(notification, role), label: 'Mở chat', openChat: true };
   }
@@ -94,7 +104,23 @@ function resolveNotificationAction(notification: AppNotification, role?: string)
       label: role === 'mentor' ? 'Xem booking' : 'Xem lịch mentor',
     };
   }
+  if (roadmapNotificationTypes.has(notification.type)) {
+    const roadmapId = getPayloadString(notification, 'roadmapId');
+    const taskId = getPayloadString(notification, 'taskId');
+    let href = '/learning-roadmap';
 
+    if (roadmapId) {
+      href += `?id=${encodeURIComponent(roadmapId)}`;
+      if (taskId && notification.payload?.autoOpenTest === true) {
+        href += `&activeTask=${encodeURIComponent(taskId)}`; // Đính kèm tham số bẻ chặng
+      }
+    }
+
+    return {
+      href,
+      label: notification.type === 'roadmap_test_failed' ? 'Làm lại bài thi' : 'Vào xem tiến độ',
+    };
+  }
   return null;
 }
 
@@ -106,37 +132,49 @@ export default function NotificationBell({ className }: { className?: string }) 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" className={cn('relative', className)} aria-label={ariaLabel}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn('relative', className)}
+          aria-label={ariaLabel}
+        >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-bold leading-none text-white">
+            <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] leading-none font-bold text-white">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 rounded-2xl p-0">
-        <div className="flex items-center justify-between border-b border-border p-4">
+        <div className="border-border flex items-center justify-between border-b p-4">
           <div>
             <p className="font-bold">Thông báo</p>
-            <p className="text-xs text-muted-foreground">{unreadCount} chưa đọc</p>
+            <p className="text-muted-foreground text-xs">{unreadCount} chưa đọc</p>
           </div>
           {unreadCount > 0 && (
-            <Button type="button" size="sm" variant="ghost" onClick={() => void markAllRead()} aria-label="Đánh dấu đã đọc">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void markAllRead()}
+              aria-label="Đánh dấu đã đọc"
+            >
               <CheckCheck className="h-4 w-4" />
             </Button>
           )}
         </div>
         <div className="max-h-96 overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="p-4 text-sm text-muted-foreground">Chưa có thông báo.</div>
+            <div className="text-muted-foreground p-4 text-sm">Chưa có thông báo.</div>
           ) : (
             notifications.slice(0, 10).map((notification) => {
               const action = resolveNotificationAction(notification, role);
               const content = (
                 <>
                   <p className="font-semibold">{notification.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{notification.body}</p>
+                  <p className="text-muted-foreground mt-1 text-sm">{notification.body}</p>
                   {action ? (
                     <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-600">
                       <LinkIcon className="h-3.5 w-3.5" />
@@ -155,7 +193,12 @@ export default function NotificationBell({ className }: { className?: string }) 
 
               if (action?.external) {
                 return (
-                  <a key={notification.id} href={action.href} onClick={handleNavigate} className={itemClassName}>
+                  <a
+                    key={notification.id}
+                    href={action.href}
+                    onClick={handleNavigate}
+                    className={itemClassName}
+                  >
                     {content}
                   </a>
                 );
@@ -179,7 +222,12 @@ export default function NotificationBell({ className }: { className?: string }) 
               }
 
               return action ? (
-                <Link key={notification.id} href={action.href} onClick={handleNavigate} className={itemClassName}>
+                <Link
+                  key={notification.id}
+                  href={action.href}
+                  onClick={handleNavigate}
+                  className={itemClassName}
+                >
                   {content}
                 </Link>
               ) : (

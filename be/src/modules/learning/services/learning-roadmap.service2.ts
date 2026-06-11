@@ -8,11 +8,12 @@ import {
   TaskProgressStatus,
 } from '../../../common/enums/learning.enum';
 import { AIService } from '../../../common/services/ai.service';
+import { NotificationType } from '../../notifications/schemas/notification.schema';
+import { NotificationService } from '../../notifications/services/notification.service';
 import { CreateLearningRoadmapDto, UpdateLearningRoadmapDto } from '../dto/learning-roadmap.dto2';
 import { LearningRoadmap, LearningRoadmapDocument } from '../schemas/learning-roadmap.schema2';
 import { SimulationTask } from '../schemas/simulation-task.schema2';
 import { TaskSubmission, TaskSubmissionDocument } from '../schemas/task-submission.schema2';
-
 export type CreateRoadmapPayload = CreateLearningRoadmapDto & {
   userId: Types.ObjectId;
   isTemplate: boolean;
@@ -131,6 +132,7 @@ export class LearningRoadmapService {
     @InjectModel('CareerInsight')
     private readonly careerInsightModel: Model<unknown>,
     private readonly aiService: AIService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private async hydrateRoadmapTasks(
@@ -470,14 +472,66 @@ export class LearningRoadmapService {
       overallProgress: 0,
       isTemplate: false,
     });
-
     const savedResult = await newRoadmap.save();
+
+    // 🚀 BẮN THÔNG BÁO REALTIME: Tạo lộ trình AI thành công
+    await this.notificationService.create({
+      recipientId: userId,
+      type: NotificationType.ROADMAP_GENERATED,
+      title: 'Khởi tạo lộ trình AI thành công 🎉',
+      body: `Hệ thống đã xây dựng xong bản đồ phát triển năng lực chuyên sâu cho nghề: ${careerTitle}. Bắt đầu cày ngay thôi!`,
+      payload: { roadmapId: savedResult._id.toString() },
+    });
+
     return this.roadmapModel
       .findById(savedResult._id)
       .exec()
       .then(async (doc) => this.hydrateRoadmapTasks(doc)) as Promise<LearningRoadmapDocument>;
   }
+  async checkInactivityReminders(): Promise<void> {
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
+    const roadmaps = await this.roadmapModel
+      .find({
+        status: RoadmapStatus.ACTIVE,
+        taskProgress: {
+          $elemMatch: {
+            status: TaskProgressStatus.IN_PROGRESS,
+            startedAt: { $lte: fortyEightHoursAgo },
+          },
+        },
+      })
+      .exec();
+
+    for (const roadmap of roadmaps) {
+      const activeProgress = roadmap.taskProgress.find(
+        (t) =>
+          t.status === TaskProgressStatus.IN_PROGRESS &&
+          t.startedAt &&
+          t.startedAt <= fortyEightHoursAgo,
+      );
+      if (activeProgress) {
+        const taskDetail = await this.taskModel.findById(activeProgress.taskId).lean().exec();
+        if (taskDetail) {
+          await this.notificationService.create({
+            recipientId: roadmap.userId.toString(),
+            type: NotificationType.ROADMAP_INACTIVITY_REMINDER,
+            title: 'Duy trì ngọn lửa học tập 🎯',
+            body: `Đừng bỏ cuộc giữa chừng! AI Mentor nhận thấy bạn chỉ còn một bước nữa là hoàn thành bài học '${taskDetail.title}'. Dành 10 phút hôm nay để bứt phá nhé!`,
+            payload: {
+              roadmapId: roadmap._id.toString(),
+              taskId: activeProgress.taskId.toString(),
+              autoOpenTest: true,
+            },
+          });
+
+          activeProgress.startedAt = new Date(); // Reset mốc tịnh tiến tránh spam liên tục
+          roadmap.markModified('taskProgress');
+          await roadmap.save();
+        }
+      }
+    }
+  }
   async updateTaskStatusAndUnlockNext(
     roadmapId: string,
     taskId: string,

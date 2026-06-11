@@ -3,14 +3,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, HydratedDocument, Model, Types } from 'mongoose';
 import { TaskFormatType, TaskProgressStatus } from '../../../common/enums/learning.enum';
 import { AIService } from '../../../common/services/ai.service';
+import { NotificationService, NotificationType } from '../../notifications';
 import { UpdateTaskSubmissionDto } from '../dto/index';
 import {
   IEvaluationRubric,
+  IQuizAnswerRecord,
   IQuizQuestion,
   SimulationTask,
 } from '../schemas/simulation-task.schema2';
 import {
-  IQuizAnswerRecord,
   ISubmissionContent,
   TaskSubmission,
   TaskSubmissionDocument,
@@ -22,7 +23,27 @@ interface IAIResponseGrading {
   score: number;
   comment?: string;
 }
+interface IRoadmapMilestone {
+  milestoneId: string;
+  title: string;
+  order: number;
+  taskIds: Types.ObjectId[];
+}
 
+interface IRoadmapPhase {
+  phaseId: string;
+  title: string;
+  estimatedDuration: string;
+  order: number;
+  milestones: IRoadmapMilestone[];
+}
+
+interface IRoadmapTaskProgress {
+  taskId: Types.ObjectId;
+  status: TaskProgressStatus;
+  startedAt?: Date;
+  completedAt?: Date;
+}
 @Injectable()
 export class TaskSubmissionService {
   private readonly logger = new Logger(TaskSubmissionService.name);
@@ -34,6 +55,7 @@ export class TaskSubmissionService {
     private readonly taskModel: Model<HydratedDocument<SimulationTask>>,
     private readonly roadmapService: LearningRoadmapService,
     private readonly userLearningProfileService: UserLearningProfileService,
+    private readonly notificationService: NotificationService,
     private readonly aiService: AIService,
   ) {}
 
@@ -50,9 +72,48 @@ export class TaskSubmissionService {
     const task = await this.taskModel.findById(taskObjId).exec();
     if (!task) throw new NotFoundException('Không tìm thấy bài tập hoặc bài kiểm tra này.');
 
+
+    if (task.formatType === TaskFormatType.READ) {
+      // 1. Cập nhật tiến độ lộ trình sang COMPLETED và mở khóa bài tiếp theo
+      await this.roadmapService.updateTaskStatusAndUnlockNext(
+        roadmapId,
+        taskId,
+        TaskProgressStatus.COMPLETED,
+      );
+
+      // 2. Tăng chuỗi ngày học (Streak) và ghi nhận hoạt động
+      await this.userLearningProfileService.updateLearningActivity(userId);
+
+      // 3. Bắn thông báo hoàn thành bài học Realtime về Client
+      await this.notificationService.create({
+        recipientId: userId,
+        type: NotificationType.ROADMAP_LESSON_COMPLETED,
+        title: 'Hoàn thành bài học chuyên môn 📚',
+        body: `Chúc mừng bạn đã tích lũy xong cấu phần kiến thức bài: "${task.title}".`,
+        payload: { roadmapId, taskId },
+      });
+
+      const readSubmission = new this.submissionModel({
+        taskId: taskObjId,
+        userId: userObjId,
+        roadmapId: roadmapObjId,
+        status: TaskProgressStatus.COMPLETED,
+        submittedAt: new Date(),
+        evaluationResult: {
+          overallScore: 100,
+          passed: true,
+          strengths: ['Đã đọc và tích lũy hoàn tất nội dung lý thuyết nền tảng.'],
+          areasForImprovement: [],
+        },
+      });
+
+      return readSubmission.save();
+    }
+
     let submission = await this.submissionModel
       .findOne({ taskId: taskObjId, userId: userObjId, roadmapId: roadmapObjId })
       .exec();
+
     if (!submission) {
       submission = new this.submissionModel({
         taskId: taskObjId,
@@ -74,9 +135,7 @@ export class TaskSubmissionService {
     const quizQuestions: IQuizQuestion[] = task.quizQuestions ?? [];
     const evaluationRubric: IEvaluationRubric[] = task.evaluationRubric ?? [];
 
-    if (formatType === TaskFormatType.READ) {
-      finalScore = 100;
-    } else if (formatType === TaskFormatType.QUIZ) {
+    if (formatType === TaskFormatType.QUIZ) {
       finalScore = this.calculateQuizScore(quizQuestions, content.quizAnswers ?? [], aiComments);
     } else if (formatType === TaskFormatType.TEXT) {
       finalScore = await this.gradeTextWithAI(
@@ -136,8 +195,67 @@ export class TaskSubmissionService {
         TaskProgressStatus.COMPLETED,
       );
       await this.userLearningProfileService.updateLearningActivity(userId);
+
+      const msgTitle = 'Vượt qua cấu phần khảo thí 🎉';
+      const msgBody = `Xuất sắc! Bạn đã vượt qua bài kiểm tra "${task.title}" với số điểm đạt chuẩn đầu ra: ${roundedScore}/100 điểm.`;
+
+      await this.notificationService.create({
+        recipientId: userId,
+        type: NotificationType.ROADMAP_LESSON_COMPLETED,
+        title: msgTitle,
+        body: msgBody,
+        payload: { roadmapId, taskId },
+      });
+
+      const currentRoadmap = await this.roadmapService.getRoadmapById(roadmapId);
+      if (currentRoadmap && Array.isArray(currentRoadmap.phases)) {
+        const roadmapPhases = currentRoadmap.phases as unknown as IRoadmapPhase[];
+        const taskProgressList = currentRoadmap.taskProgress as unknown as IRoadmapTaskProgress[];
+
+        const currentPhase = roadmapPhases.find(
+          (phase) =>
+            Array.isArray(phase.milestones) &&
+            phase.milestones.some(
+              (milestone) =>
+                Array.isArray(milestone.taskIds) &&
+                milestone.taskIds.some((id) => id.toString() === taskId),
+            ),
+        );
+
+        if (currentPhase && Array.isArray(currentPhase.milestones)) {
+          const phaseTaskIds: string[] = currentPhase.milestones.flatMap((milestone) =>
+            Array.isArray(milestone.taskIds) ? milestone.taskIds.map((id) => id.toString()) : [],
+          );
+
+          const progressStates = taskProgressList.filter(
+            (progress) => progress?.taskId && phaseTaskIds.includes(progress.taskId.toString()),
+          );
+
+          const isPhaseFinished =
+            progressStates.length > 0 &&
+            progressStates.every((progress) => progress.status === TaskProgressStatus.COMPLETED);
+
+          if (isPhaseFinished) {
+            await this.notificationService.create({
+              recipientId: userId,
+              type: NotificationType.ROADMAP_PHASE_COMPLETED,
+              title: 'Vượt chặng năng lực thành công 🏆',
+              body: `Chúc mừng bạn đã hoàn thành trọn vẹn 100% mục tiêu đào tạo của Giai đoạn: "${currentPhase.title}".`,
+              payload: { roadmapId, phaseId: currentPhase.phaseId },
+            });
+          }
+        }
+      }
     } else {
-      submission.status = TaskProgressStatus.IN_PROGRESS;
+      submission.status = TaskProgressStatus.FAILED;
+
+      await this.notificationService.create({
+        recipientId: userId,
+        type: NotificationType.ROADMAP_TEST_FAILED,
+        title: 'Kết quả khảo thí chưa đạt ⚠️',
+        body: `Bài kiểm tra "${task.title}" của bạn đạt ${roundedScore}/100 điểm (Yêu cầu: 65 điểm). Nhấp vào đây để tự động mở lại bài thi và cải thiện điểm số ngay!`,
+        payload: { roadmapId, taskId, score: roundedScore, autoOpenTest: true },
+      });
     }
 
     return submission.save();

@@ -8,7 +8,10 @@ export interface IQuizOption {
   value: number;
   label: string;
 }
-
+export interface IQuizAnswerRecord {
+  questionIndex: number;
+  selectedValue: number;
+}
 export interface IQuizQuestion {
   questionText: string;
   options: IQuizOption[];

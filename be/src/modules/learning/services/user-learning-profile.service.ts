@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { NotificationType } from '../../notifications/schemas/notification.schema';
+import { NotificationService } from '../../notifications/services/notification.service';
 import {
   UserLearningProfile,
   UserLearningProfileDocument,
 } from '../schemas/user-learning-profile.schema';
-
 @Injectable()
 export class UserLearningProfileService {
   constructor(
     @InjectModel(UserLearningProfile.name)
     private readonly profileModel: Model<UserLearningProfileDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Hàm này được gọi mỗi khi User hoàn thành hoặc Skip 1 bài học
@@ -62,12 +64,29 @@ export class UserLearningProfileService {
     return profile.save();
   }
 
-  private checkAndAwardAchievements(profile: UserLearningProfileDocument): void {
+  private async checkAndAwardAchievements(profile: UserLearningProfileDocument): Promise<void> {
+    const userIdStr = profile.userId.toString();
+
     if (profile.totalTasksCompleted === 1 && !profile.achievements.includes('FIRST_BLOOD')) {
       profile.achievements.push('FIRST_BLOOD');
+      await this.notificationService.create({
+        recipientId: userIdStr,
+        type: NotificationType.ROADMAP_STREAK_MILESTONE,
+        title: 'Mở khóa thành tựu mới 🌟',
+        body: 'Hệ thống AI vừa cấp Huy hiệu danh giá [Khởi Đầu Thực Chiến] vào Hồ sơ của bạn nhờ bài nộp thành công đầu tiên!',
+        payload: { badge: 'FIRST_BLOOD' },
+      });
     }
+
     if (profile.currentStreak === 7 && !profile.achievements.includes('STREAK_7_DAYS')) {
       profile.achievements.push('STREAK_7_DAYS');
+      await this.notificationService.create({
+        recipientId: userIdStr,
+        type: NotificationType.ROADMAP_STREAK_MILESTONE,
+        title: 'Duy trì chuỗi học tập thần sầu 🔥',
+        body: 'Xuất sắc! Bạn đã kiên trì thực chiến liên tục suốt 7 ngày. Huy hiệu [Chiến Binh Bứt Phá] đã thuộc về bạn.',
+        payload: { streak: 7, badge: 'STREAK_7_DAYS' },
+      });
     }
   }
 }

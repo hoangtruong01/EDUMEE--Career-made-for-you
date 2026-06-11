@@ -50,12 +50,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Home size={20} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="orientation"
-        options={{
-          title: 'Lộ trình',
-        }}
-      />
+
       <Tabs.Screen
         name="explore"
         options={{

@@ -1,13 +1,20 @@
-// app/(tabs)/orientation.tsx
+// mobile/app/(tabs)/orientation.tsx
 import {
+  AlertTriangle,
   Award,
+  Bell,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Compass,
   FileText,
   GraduationCap,
+  MailOpen,
   Play,
   Sparkles,
+  Trophy,
   X,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -29,7 +36,7 @@ import { GlassView } from '../../src/components/GlassView';
 import { api } from '../../src/services/api';
 import { COLORS, SPACING } from '../../src/theme';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface IQuizOption {
   value: number;
@@ -74,6 +81,23 @@ interface IRoadmapPhase {
   kpi: string;
 }
 
+interface IAppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  readAt?: string;
+  createdAt: string;
+  payload?: {
+    roadmapId?: string;
+    taskId?: string;
+    score?: number;
+    autoOpenTest?: boolean;
+    badge?: string;
+    streak?: number;
+  };
+}
+
 export default function OrientationScreen() {
   const [activeTab, setActiveTab] = useState<'roadmap' | 'simulation'>('roadmap');
   const [phases, setPhases] = useState<IRoadmapPhase[]>([]);
@@ -82,22 +106,42 @@ export default function OrientationScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [roadmapId, setRoadmapId] = useState<string | null>(null);
 
-  // Workspace Modal states
+  const [notifications, setNotifications] = useState<IAppNotification[]>([]);
+  const [notifModalVisible, setNotifModalVisible] = useState<boolean>(false);
+
   const [workspaceVisible, setWorkspaceVisible] = useState<boolean>(false);
   const [activeTask, setActiveTask] = useState<IMappedTask | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Khảo thí states
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [textAnswer, setTextAnswer] = useState<string>('');
 
   useEffect(() => {
     void fetchActiveRoadmap();
+    void fetchNotifications();
+
+    const interval = setInterval(() => {
+      void fetchNotifications();
+    }, 15000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchActiveRoadmap = async () => {
+  const fetchNotifications = async () => {
     try {
-      setLoading(true);
+      const response = await api.get('/notifications');
+      const data = response.data?.data || response.data;
+      if (Array.isArray(data)) {
+        setNotifications(data);
+      }
+    } catch (error) {
+      console.error('Lỗi khi tải thông báo trên di động:', error);
+    }
+  };
+
+  // 🟢 ĐÃ FIX: Thêm tham số silent (mặc định là false) để hỗ trợ nạp ngầm im lặng, không bị đơ loading
+  const fetchActiveRoadmap = async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
       const response = await api.get('/learning-roadmaps/latest');
       const responseData = response.data?.data || response.data;
 
@@ -167,7 +211,7 @@ export default function OrientationScreen() {
           } else if (!foundCurrent) {
             status = 'current';
             foundCurrent = true;
-            setExpandedPhaseId(p.phaseId || p.id || p._id); // Tự động bung chặng hiện tại cực thông minh
+            setExpandedPhaseId(p.phaseId || p.id || p._id);
           } else {
             status = 'locked';
           }
@@ -192,9 +236,43 @@ export default function OrientationScreen() {
       }
     } catch (error) {
       console.error('Lỗi khi tải ma trận lộ trình học:', error);
-      Alert.alert('Lỗi đồng bộ', 'Không thể nạp dữ liệu lộ trình học. Vui lòng thử lại sau.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const handleNotificationSelect = async (notif: IAppNotification) => {
+    try {
+      setNotifModalVisible(false);
+      if (!notif.readAt) {
+        await api.patch(`/notifications/${notif.id}/read`);
+        void fetchNotifications();
+      }
+
+      if (notif.payload?.taskId && notif.payload?.autoOpenTest === true) {
+        const targetTaskId = notif.payload.taskId;
+        let targetTaskObj: IMappedTask | null = null;
+
+        for (const phase of phases) {
+          for (const milestone of phase.milestones) {
+            const found = milestone.tasks.find((t) => t.id === targetTaskId);
+            if (found) {
+              targetTaskObj = found;
+              break;
+            }
+          }
+        }
+
+        if (targetTaskObj) {
+          handleOpenWorkspace(targetTaskObj);
+        } else {
+          Alert.alert('Thông báo', 'Bài khảo thí này nằm ở chặng năng lực nâng cao chưa mở khóa.');
+        }
+      } else {
+        Alert.alert(notif.title, notif.body);
+      }
+    } catch (err) {
+      console.error('Lỗi điều hướng click thông báo:', err);
     }
   };
 
@@ -219,10 +297,7 @@ export default function OrientationScreen() {
       (activeTask.formatType === 'TEXT' || activeTask.formatType === 'HYBRID') &&
       textAnswer.trim().length < 10
     ) {
-      Alert.alert(
-        'Cảnh báo',
-        'Nội dung phân tích thực hành tự luận quá ngắn (tối thiểu 10 ký tự)!',
-      );
+      Alert.alert('Cảnh báo', 'Nội dung phân tích thực hành tự luận quá ngắn!');
       return;
     }
 
@@ -243,35 +318,50 @@ export default function OrientationScreen() {
         },
       });
 
-      Alert.alert(
-        'Thành công 🎉',
-        'Hệ thống AI Mentor đã ghi nhận và chấm điểm bài làm của bạn!',
-        [
-          {
-            text: 'Tuyệt vời',
-            onPress: () => {
-              setWorkspaceVisible(false);
-              void fetchActiveRoadmap();
+
+      if (activeTask.formatType === 'READ') {
+        Alert.alert(
+          'Hoàn thành bài học 📚',
+          'Hệ thống đã ghi nhận tiến trình tích lũy lý thuyết của bạn!',
+          [
+            {
+              text: 'Tuyệt vời',
+              onPress: () => {
+                setWorkspaceVisible(false);
+                void fetchActiveRoadmap(true); 
+                void fetchNotifications();
+              },
             },
-          },
-        ],
-        { cancelable: false },
-      );
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Thành công 🎉',
+          'Hệ thống AI Mentor đã ghi nhận bài làm cấu phần khảo thí của bạn!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setWorkspaceVisible(false);
+                void fetchActiveRoadmap(true);
+                void fetchNotifications();
+              },
+            },
+          ],
+        );
+      }
     } catch (error) {
-      console.error(error);
-      Alert.alert('Ghi nhận', 'Hệ thống đã cập nhật tiến trình học chặng này cục bộ!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setWorkspaceVisible(false);
-            void fetchActiveRoadmap();
-          },
-        },
-      ]);
-    } finally {
+      setWorkspaceVisible(false);
+      void fetchActiveRoadmap(true);
+    }
+    {
       setSubmitting(false);
     }
   };
+
+  const unreadNotifCount = useMemo(() => {
+    return notifications.filter((n) => !n.readAt).length;
+  }, [notifications]);
 
   const totalOverallProgress = useMemo(() => {
     if (phases.length === 0) return 0;
@@ -292,25 +382,41 @@ export default function OrientationScreen() {
     <View style={styles.mainWrapper}>
       <StatusBar barStyle="light-content" />
 
-      {/* 🌟 UPGRADE 1: TABS CHUYỂN ĐỔI CAO CẤP DIỆN DIỆN ĐẸP MẮT */}
       <View style={styles.tabHeaderRow}>
+        <View style={{ flexDirection: 'row', flex: 1, gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setActiveTab('roadmap')}
+            activeOpacity={0.8}
+            style={[styles.tabButton, activeTab === 'roadmap' && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, activeTab === 'roadmap' && styles.tabTextActive]}>
+              Lộ Trình Học AI
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('simulation')}
+            activeOpacity={0.8}
+            style={[styles.tabButton, activeTab === 'simulation' && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, activeTab === 'simulation' && styles.tabTextActive]}>
+              Không Gian Giả Lập
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
-          onPress={() => setActiveTab('roadmap')}
-          activeOpacity={0.8}
-          style={[styles.tabButton, activeTab === 'roadmap' && styles.tabButtonActive]}
+          onPress={() => setNotifModalVisible(true)}
+          style={styles.bellButtonContainer}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.tabText, activeTab === 'roadmap' && styles.tabTextActive]}>
-            Lộ Trình Học AI
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setActiveTab('simulation')}
-          activeOpacity={0.8}
-          style={[styles.tabButton, activeTab === 'simulation' && styles.tabButtonActive]}
-        >
-          <Text style={[styles.tabText, activeTab === 'simulation' && styles.tabTextActive]}>
-            Không Gian Giả Lập
-          </Text>
+          <Bell size={20} color="#FFF" />
+          {unreadNotifCount > 0 && (
+            <View style={styles.bellBadgeRed}>
+              <Text style={styles.bellBadgeText}>
+                {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -320,9 +426,8 @@ export default function OrientationScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* 🌟 UPGRADE 2: BANNER GLASSMORPHISM TOÀN DIỆN, THOÁNG ĐÃNG, HIỆN ĐẠI */}
           <GlassView intensity={40} style={styles.topOverviewCard}>
-            <View className="mb-3 flex-row items-center">
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
               <View style={styles.iconWrapper}>
                 <Award size={22} color="#FBBF24" />
               </View>
@@ -345,7 +450,6 @@ export default function OrientationScreen() {
 
           <Text style={styles.sectionHeaderTitle}>BẢN ĐỒ PHÁT TRIỂN NĂNG LỰC</Text>
 
-          {/* 🌟 UPGRADE 3: DANH SÁCH CHẶNG PHASES HIỂN THỊ RỘNG RÃI, KHÔNG CÒN CHẬT CHỘI */}
           {phases.map((phase, pIndex) => {
             const isExpanded = expandedPhaseId === phase.phaseId;
             const isLocked = phase.status === 'locked';
@@ -368,13 +472,10 @@ export default function OrientationScreen() {
                   <View style={styles.phaseNumberBadge}>
                     <Text style={styles.phaseNumberText}>0{pIndex + 1}</Text>
                   </View>
-
-                  {/* 🟢 ĐÃ FIX ts(17002): Thay thế thẻ <div> bằng thẻ <View> chuẩn React Native */}
                   <View style={{ flex: 1, marginLeft: 14 }}>
                     <Text style={styles.phaseTag}>THỜI LƯỢNG: {phase.phase.toUpperCase()}</Text>
                     <Text style={styles.phaseTitle}>{phase.title}</Text>
                   </View>
-
                   {!isLocked && (
                     <View style={styles.arrowIconCircle}>
                       {isExpanded ? (
@@ -399,7 +500,6 @@ export default function OrientationScreen() {
                           <Text style={styles.milestoneTitleText}>{milestone.title}</Text>
                         </View>
 
-                        {/* 🎯 UPGRADE 4: XÓA BỎ HOÀN TOÀN ĐƯỜNG LINE MỜ BÊN HÔNG NHIỆM VỤ */}
                         <View style={styles.taskListContainer}>
                           {milestone.tasks.map((task) => (
                             <TouchableOpacity
@@ -494,7 +594,99 @@ export default function OrientationScreen() {
         </View>
       )}
 
-      {/* ================= 🌟 UPGRADE 5: WORKSPACE MODAL FULL-SCREEN TRÀN VIỀN RỘNG RÃI ================= */}
+      <Modal
+        visible={notifModalVisible}
+        animationType="slide"
+        transparent={true}
+        statusBarTranslucent
+      >
+        <View style={styles.notifOverlayFullScreen}>
+          <GlassView intensity={60} style={styles.notifCenterContainer}>
+            <View style={styles.notifHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Bell size={20} color={COLORS.secondary} />
+                <Text style={styles.notifHeaderTitle}>
+                  Trung Tâm Thông Báo ({unreadNotifCount})
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setNotifModalVisible(false)}
+                style={styles.notifCloseCircle}
+              >
+                <X size={16} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {notifications.length === 0 ? (
+                <View style={styles.notifEmptyStateBox}>
+                  <MailOpen size={36} color="#475569" />
+                  <Text
+                    style={{ color: '#64748B', fontSize: 13, marginTop: 10, fontWeight: '600' }}
+                  >
+                    Hộp thư thông báo của bạn trống trơn
+                  </Text>
+                </View>
+              ) : (
+                notifications.map((item) => {
+                  let NotifIcon = Compass;
+                  let iconBg = 'rgba(59,130,246,0.1)';
+                  let iconColor = '#3B82F6';
+
+                  if (item.type === 'roadmap_lesson_completed') {
+                    NotifIcon = BookOpen;
+                    iconBg = 'rgba(16,185,129,0.1)';
+                    iconColor = '#10B981';
+                  } else if (item.type === 'roadmap_test_failed') {
+                    NotifIcon = AlertTriangle;
+                    iconBg = 'rgba(239,68,68,0.1)';
+                    iconColor = '#EF4444';
+                  } else if (item.type === 'roadmap_phase_completed') {
+                    NotifIcon = Trophy;
+                    iconBg = 'rgba(245,158,11,0.1)';
+                    iconColor = '#F59E0B';
+                  } else if (item.type === 'roadmap_streak_milestone') {
+                    NotifIcon = Sparkles;
+                    iconBg = 'rgba(139,92,246,0.1)';
+                    iconColor = '#8B5CF6';
+                  } else if (item.type === 'roadmap_inactivity_reminder') {
+                    NotifIcon = Clock;
+                    iconBg = 'rgba(244,63,94,0.1)';
+                    iconColor = '#F43F5E';
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleNotificationSelect(item)}
+                      activeOpacity={0.7}
+                      style={[styles.notifCardItem, !item.readAt && styles.notifCardUnread]}
+                    >
+                      <View style={[styles.notifIconOuter, { backgroundColor: iconBg }]}>
+                        <NotifIcon size={16} color={iconColor} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.notifCardTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.notifCardBody} numberOfLines={3}>
+                          {item.body}
+                        </Text>
+                      </View>
+                      {!item.readAt && <View style={styles.unreadDotIndicator} />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </GlassView>
+        </View>
+      </Modal>
+
       <Modal
         visible={workspaceVisible}
         animationType="slide"
@@ -502,7 +694,6 @@ export default function OrientationScreen() {
         statusBarTranslucent
       >
         <View style={styles.modalOverlayFullScreen}>
-          {/* Header vùng đỉnh rộng rãi */}
           <View style={styles.modalHeaderRowNew}>
             <View style={{ flex: 1, marginRight: 16 }}>
               <Text style={styles.modalTagNew}>WORKSPACE KHẢO THÍ ĐỘC QUYỀN</Text>
@@ -519,14 +710,13 @@ export default function OrientationScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Body cuộn mượt độc lập hoàn toàn, không lồng ghép chật chội */}
           <ScrollView
             style={styles.modalBodyScrollNew}
             contentContainerStyle={styles.modalScrollContentNew}
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.docSectionBoxNew}>
-              <View className="mb-2 flex-row items-center">
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <FileText size={14} color={COLORS.secondary} />
                 <Text style={styles.sectionSubHeaderNew}>Giáo trình hướng dẫn nghiệp vụ:</Text>
               </View>
@@ -535,7 +725,7 @@ export default function OrientationScreen() {
 
             {activeTask?.quizQuestions && activeTask.quizQuestions.length > 0 && (
               <View style={styles.interactiveZoneNew}>
-                <View className="mb-3 flex-row items-center">
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                   <Sparkles size={14} color="#A78BFA" />
                   <Text style={styles.sectionSubHeaderNew}>Lưới câu hỏi trắc nghiệm tự động:</Text>
                 </View>
@@ -587,7 +777,7 @@ export default function OrientationScreen() {
 
             {(activeTask?.formatType === 'TEXT' || activeTask?.formatType === 'HYBRID') && (
               <View style={styles.interactiveZoneNew}>
-                <View className="mb-2 flex-row items-center">
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                   <FileText size={14} color="#60A5FA" />
                   <Text style={styles.sectionSubHeaderNew}>
                     IDE biên soạn mã nguồn / Phân tích tự luận:
@@ -606,18 +796,24 @@ export default function OrientationScreen() {
             )}
           </ScrollView>
 
-          {/* Khối Footer cố định tràn cạnh dưới nút bấm to rõ ràng */}
           <View style={styles.modalFooterFixedNew}>
             <TouchableOpacity
-              style={styles.submitTaskButtonNew}
-              onPress={void handleSubmitWorkspace}
+              style={[
+                styles.submitTaskButtonNew,
+                activeTask?.formatType === 'READ' && { backgroundColor: '#3B82F6' },
+              ]}
+              onPress={() => handleSubmitWorkspace()}
               activeOpacity={0.8}
               disabled={submitting}
             >
               {submitting ? (
                 <ActivityIndicator size="small" color="#FFF" />
               ) : (
-                <Text style={styles.submitTaskButtonTextNew}>Nộp bài lên AI Mentor</Text>
+                <Text style={styles.submitTaskButtonTextNew}>
+                  {activeTask?.formatType === 'READ'
+                    ? 'Xác nhận hoàn thành bài học 📚'
+                    : 'Nộp bài lên AI Mentor 🚀'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -627,7 +823,6 @@ export default function OrientationScreen() {
   );
 }
 
-/* ── THÀNH PHẦN BADGE PHÂN LOẠI NHIỆM VỤ ĐẸP MẮT ── */
 const BadgeLabel = ({ isTest, text }: { isTest: boolean; text: string }) => {
   return (
     <View style={[styles.badgeContainer, isTest ? styles.badgeTest : styles.badgeRead]}>
@@ -640,7 +835,14 @@ const BadgeLabel = ({ isTest, text }: { isTest: boolean; text: string }) => {
 
 const styles = StyleSheet.create({
   mainWrapper: { flex: 1, backgroundColor: '#05070F', paddingTop: 50 },
-  tabHeaderRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 16, gap: 10 },
+  tabHeaderRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   tabButton: {
     flex: 1,
     paddingVertical: 12,
@@ -658,6 +860,31 @@ const styles = StyleSheet.create({
   centerBox: { justifyContent: 'center', alignItems: 'center', height: SCREEN_HEIGHT * 0.5 },
   loadingText: { color: COLORS.muted, fontSize: 13, marginTop: 12, fontWeight: '600' },
   emptyText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+
+  bellButtonContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bellBadgeRed: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#EF4444',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  bellBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '900' },
 
   topOverviewCard: {
     padding: 20,
@@ -701,7 +928,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     letterSpacing: 1,
   },
-
   phaseCard: {
     marginBottom: 16,
     padding: 18,
@@ -807,7 +1033,81 @@ const styles = StyleSheet.create({
   badgeTextTest: { color: '#F59E0B' },
   badgeTextRead: { color: '#3B82F6' },
 
-  /* NEW WORKSPACE TRÀN VIỀN PHẢN HỒI CAO CẤP */
+  /* NOTIFICATION CENTER FULLSCREEN GLASS LAYOUT */
+  notifOverlayFullScreen: {
+    flex: 1,
+    backgroundColor: 'rgba(5,7,15,0.95)',
+    justifyContent: 'flex-end',
+  },
+  notifCenterContainer: {
+    height: SCREEN_HEIGHT * 0.85,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#0A0E1A',
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  notifHeaderTitle: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  notifCloseCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#1E293B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifEmptyStateBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 60,
+    gap: 10,
+  },
+  notifCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#05070F',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 12,
+    position: 'relative',
+  },
+  notifCardUnread: {
+    borderColor: 'rgba(59,130,246,0.2)',
+    backgroundColor: 'rgba(59,130,246,0.02)',
+  },
+  notifIconOuter: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifCardTitle: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  notifCardBody: { color: '#94A3B8', fontSize: 12, marginTop: 4, lineHeight: 16 },
+  unreadDotIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+    position: 'absolute',
+    top: 18,
+    right: 16,
+  },
+
+  /* WORKSPACE MODAL LAYOUT */
   modalOverlayFullScreen: { flex: 1, backgroundColor: '#05070F', paddingTop: 50 },
   modalHeaderRowNew: {
     flexDirection: 'row',
